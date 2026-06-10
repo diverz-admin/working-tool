@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifySession, SESSION_COOKIE } from "@/lib/session";
 
-const PUBLIC_PATHS = ["/login", "/api/auth/login", "/api/auth/logout", "/users/new", "/api/users"];
+const PUBLIC_PATHS = ["/login", "/api/auth/login", "/api/auth/logout", "/users/new", "/api/users", "/api/debug-me"];
 
 const MANAGER_PATHS = ["/approval", "/operations", "/api/approvals", "/api/annual", "/api/monthly", "/api/costs", "/api/sales-targets"];
 
