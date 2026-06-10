@@ -1,15 +1,45 @@
 "use client";
 
-import { useActionState } from "react";
-import { loginAction } from "@/app/actions/login";
+import { useState } from "react";
 
 export default function LoginPage() {
-  const [state, action, pending] = useActionState(loginAction, null);
+  const [error, setError]     = useState("");
+  const [pending, setPending] = useState(false);
 
   const inp = [
     "w-full px-4 py-3 rounded-xl text-sm outline-none border transition-colors",
     "focus:border-[#3182F6]",
   ].join(" ");
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError("");
+    setPending(true);
+
+    const form = e.currentTarget;
+    const username = (form.elements.namedItem("username") as HTMLInputElement).value.trim();
+    const password = (form.elements.namedItem("password") as HTMLInputElement).value;
+
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+
+      if (res.ok) {
+        window.location.href = "/dashboard";
+        return;
+      }
+
+      const data = await res.json();
+      setError(data.error ?? "로그인에 실패했습니다.");
+    } catch {
+      setError("네트워크 오류가 발생했습니다.");
+    } finally {
+      setPending(false);
+    }
+  }
 
   return (
     <div
@@ -35,7 +65,7 @@ export default function LoginPage() {
         >
           <h2 className="text-base font-bold mb-5" style={{ color: "#191F28" }}>로그인</h2>
 
-          <form action={action} className="space-y-3">
+          <form onSubmit={handleSubmit} className="space-y-3">
             <div>
               <label className="block text-xs font-semibold mb-1.5" style={{ color: "#475569" }}>
                 아이디
@@ -64,12 +94,12 @@ export default function LoginPage() {
               />
             </div>
 
-            {state?.error && (
+            {error && (
               <div
                 className="px-3.5 py-2.5 rounded-xl text-xs font-medium"
                 style={{ background: "rgba(239,68,68,0.07)", color: "#EF4444", border: "1px solid rgba(239,68,68,0.18)" }}
               >
-                {state.error}
+                {error}
               </div>
             )}
 
