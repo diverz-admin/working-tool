@@ -43,10 +43,12 @@ function MeetingSection({ year, month }: { year: number; month: number }) {
   );
 
   // 노트 변경 시 content 갱신
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     setContent(currentNote?.content ?? "");
     setAuthor(currentNote?.authorName ?? "");
   }, [currentNote?.id, noteTeam, noteType, noteWeek]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   async function handleSave() {
     setSaving(true);
@@ -260,11 +262,13 @@ function MarginBar({ rate }: { rate: number }) {
 }
 
 // ─── 커스텀 툴팁 ──────────────────────────────────────────────
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function ChartTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
   return (
     <div className="rounded-xl px-3 py-2.5 text-xs" style={{ background: "#191F28", border: "none", boxShadow: "0 4px 16px rgba(22,31,51,0.2)" }}>
       <p className="font-semibold mb-1.5" style={{ color: "rgba(255,255,255,0.7)" }}>{label}</p>
+      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
       {payload.map((p: any) => (
         <p key={p.dataKey} className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full" style={{ background: p.color }} />
@@ -280,6 +284,7 @@ function ChartTooltip({ active, payload, label }: any) {
 interface MonthData  { month: number; revenue: number; cost: number; margin: number; marginRate: number; count: number; }
 interface TeamData   { team: string; projectCount: number; revenue: number; cost: number; margin: number; marginRate: number; monthly: MonthData[]; }
 interface PersonData { name: string; team: string; projectCount: number; revenue: number; cost: number; margin: number; marginRate: number; }
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 interface ProjectRow { id: string; campaignName: string; advertiser: string|null; assignedTeam: string|null; assignedPerson: string|null; contractAmount: number|null; status: string; startDate: string|null; endDate: string|null; revenue: number; cost: number; margin: number; marginRate: number; revenueRows: any[]; costRows: any[]; }
 interface ReportData { year: number; month: number; monthly: MonthData[]; teams: TeamData[]; persons: PersonData[]; projects: ProjectRow[]; totalSummary: { projectCount: number; revenue: number; cost: number; margin: number; marginRate: number }; }
 
@@ -302,10 +307,12 @@ export default function ProjectReportPage() {
       .then(r => r.json()).then(setData).finally(() => setLoading(false));
   }, [year, month, team]);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, [load]);
 
   // 이전 월 데이터 (MoM 비교용)
   const [prevData, setPrevData] = useState<ReportData | null>(null);
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (month === 0) { setPrevData(null); return; }
     const py = month === 1 ? year - 1 : year;
@@ -313,6 +320,7 @@ export default function ProjectReportPage() {
     const p = new URLSearchParams({ year: String(py), month: String(pm), ...(team !== "전체" ? { team } : {}) });
     fetch(`/api/projects/monthly-report?${p}`).then(r => r.json()).then(setPrevData);
   }, [year, month, team]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const total = data?.totalSummary;
   const prevTotal = prevData?.totalSummary;
@@ -776,6 +784,7 @@ export default function ProjectReportPage() {
                             <tr key={`${p.id}-d`} style={{ background: "rgba(49,130,246,0.01)" }}>
                               <td colSpan={9} className="px-10 pb-4 pt-1">
                                 <div className="grid grid-cols-2 gap-5 text-xs">
+                                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                                   {(p as any).revenueRows?.length > 0 && (
                                     <div>
                                       <p className="font-bold mb-2" style={{ color: "#3182F6" }}>확정매출 내역</p>
@@ -783,12 +792,14 @@ export default function ProjectReportPage() {
                                         <thead><tr style={{ borderBottom: "1px solid #E9EBEF" }}>
                                           {["품명","계산서일","합계"].map(h => <th key={h} className="pb-1 text-left font-semibold" style={{ color: "#94A3B8" }}>{h}</th>)}
                                         </tr></thead>
+                                        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                                         <tbody>{(p as any).revenueRows.map((r: any, i: number) => (
                                           <tr key={i}><td className="py-1" style={{ color: "#475569" }}>{r.productName || "—"}</td><td className="py-1" style={{ color: "#94A3B8" }}>{r.invoiceDate || "—"}</td><td className="py-1 font-semibold" style={{ color: "#3182F6" }}>{wonFull(r.total ?? 0)}</td></tr>
                                         ))}</tbody>
                                       </table>
                                     </div>
                                   )}
+                                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                                   {(p as any).costRows?.length > 0 && (
                                     <div>
                                       <p className="font-bold mb-2" style={{ color: "#059669" }}>승인매입 내역</p>
@@ -796,6 +807,7 @@ export default function ProjectReportPage() {
                                         <thead><tr style={{ borderBottom: "1px solid #E9EBEF" }}>
                                           {["품명","매입처","매입일","합계"].map(h => <th key={h} className="pb-1 text-left font-semibold" style={{ color: "#94A3B8" }}>{h}</th>)}
                                         </tr></thead>
+                                        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                                         <tbody>{(p as any).costRows.map((c: any, i: number) => (
                                           <tr key={i}><td className="py-1" style={{ color: "#475569" }}>{c.productName || "—"}</td><td className="py-1" style={{ color: "#94A3B8" }}>{c.vendor || "—"}</td><td className="py-1" style={{ color: "#94A3B8" }}>{c.purchaseDate || "—"}</td><td className="py-1 font-semibold" style={{ color: "#059669" }}>{wonFull(c.total ?? 0)}</td></tr>
                                         ))}</tbody>

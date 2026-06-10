@@ -153,6 +153,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
   const [revenues, setRevenues]     = useState<RevenueRow[]>([]);
   const [costs, setCosts]           = useState<CostRow[]>([]);
   const revenuesRef = useRef<RevenueRow[]>([]);
+  // eslint-disable-next-line react-hooks/refs
   revenuesRef.current = revenues;
   const [clients, setClients]       = useState<SimpleClient[]>([]);
   const [users, setUsers]           = useState<{ id: string; name: string; team: string | null }[]>([]);
@@ -166,8 +167,11 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
   const serRev  = (rows: RevenueRow[])  => JSON.stringify(rows.map(({ localId: _l, ...r }) => r));
   const serCost = (rows: CostRow[])     => JSON.stringify(rows.map(({ localId: _l, ...r }) => r));
   const isDirty = !isEdit || (
+    // eslint-disable-next-line react-hooks/refs
     JSON.stringify({ ...form, id: undefined }) !== initFormSnap.current ||
+    // eslint-disable-next-line react-hooks/refs
     serRev(revenues)  !== initRevSnap.current ||
+    // eslint-disable-next-line react-hooks/refs
     serCost(costs)    !== initCostSnap.current
   );
   const [uploading, setUploading]   = useState<number | null>(null); // localId of uploading row

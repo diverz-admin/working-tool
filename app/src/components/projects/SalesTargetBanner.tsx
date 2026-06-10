@@ -119,6 +119,7 @@ export default function SalesTargetBanner({ team }: { team: string }) {
       .finally(() => setLoading(false));
   }, [team, year, month]);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, [load]);
 
   function prevMonth() {

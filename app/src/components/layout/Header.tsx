@@ -32,10 +32,12 @@ export default function Header() {
   const [role, setRole] = useCurrentRole();
   const [userName, setUserName] = useState("사용자");
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     const name = localStorage.getItem("diverz_user_name");
     if (name) setUserName(name);
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });

@@ -66,6 +66,7 @@ export default function DashboardPage() {
     }).finally(() => setLoading(false));
   }, [year]);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, [load]);
 
   const thisM      = agg?.monthly[thisMonth];

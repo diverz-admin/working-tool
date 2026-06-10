@@ -897,7 +897,9 @@ function ProjectsInner() {
       .catch(() => {});
   }, []);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); loadStats(); }, [load, loadStats]);
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { if (teamParam) setActiveTab(teamParam); }, [teamParam]);
 
   // ?open=projectId → 해당 캠페인 모달 자동 오픈

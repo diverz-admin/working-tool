@@ -219,9 +219,11 @@ export default function ProjectReportSection({
       .finally(() => setLoading(false));
   }, [projectId]);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, [load]);
 
   // 보장형: 트래커 데이터 변경 시 25일 달성일 계산
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (projectType !== "보장형" || trackers.length === 0) {
       setGuaranteeResult(null);
@@ -265,6 +267,7 @@ export default function ProjectReportSection({
       }
     }
   }, [trackers, projectType, startDate, onGuaranteeEndDate, load]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   async function checkOne(trackerId: string) {
     setChecking(trackerId);

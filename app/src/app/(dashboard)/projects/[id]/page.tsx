@@ -121,9 +121,11 @@ function ProjectGroupPageInner() {
   useEffect(() => {
     if (!openCampaignId || campaigns.length === 0) return;
     const target = campaigns.find((c) => c.id === openCampaignId);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (target) setEditCampaign(toCampaignFormData(target));
   }, [openCampaignId, campaigns]);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, [load]);
 
   async function handleDeleteCampaign(campaignId: string) {

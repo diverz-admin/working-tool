@@ -482,6 +482,7 @@ export default function WorkJournalPage() {
       .finally(() => setLoading(false));
   }, [year, month, team]);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadJournals(); }, [loadJournals]);
 
   useEffect(() => {

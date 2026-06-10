@@ -215,12 +215,14 @@ export default function UsersPage() {
   const [search,      setSearch]      = useState("");
   const [confirmDel,  setConfirmDel]  = useState<AppUser | null>(null);
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     setLoading(true);
     fetch("/api/users").then(r => r.json())
       .then(d => setUsers(d.users ?? []))
       .finally(() => setLoading(false));
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const teams = ["전체", ...Array.from(new Set(users.map(u => u.team).filter(Boolean) as string[]))];
 

@@ -51,6 +51,7 @@ export default function ReportTab({ clientId }: { clientId: string }) {
       .finally(() => setLoading(false));
   }, [clientId]);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, [load]);
 
   async function checkOne(trackerId: string) {

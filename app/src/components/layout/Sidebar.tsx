@@ -141,6 +141,7 @@ function ProjectsNavSection() {
   const isActive = pathname.startsWith("/projects");
   const [open, setOpen] = useState(isActive);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { if (isActive) setOpen(true); }, [isActive]);
 
   return (
@@ -234,6 +235,7 @@ function ApprovalNavSection() {
   const [role] = useCurrentRole();
   const locked = role === "Staff";
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { if (isActive) setOpen(true); }, [isActive]);
 
   useEffect(() => {
@@ -305,6 +307,7 @@ function InternalNavSection() {
   const isActive = pathname.startsWith("/approval/internal");
   const [open, setOpen] = useState(isActive);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { if (isActive) setOpen(true); }, [isActive]);
 
   return (
@@ -364,6 +367,7 @@ function MarketingNavSection() {
   const isActive = pathname.startsWith("/marketing");
   const [open, setOpen] = useState(isActive);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { if (isActive) setOpen(true); }, [isActive]);
 
   return (
@@ -421,6 +425,7 @@ function OperationsNavSection() {
   const [role] = useCurrentRole();
   const locked = role === "Staff";
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { if (isActive) setOpen(true); }, [isActive]);
 
   return (

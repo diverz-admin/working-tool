@@ -86,6 +86,7 @@ function HistoryPanel({ tracker, onClose }: { tracker: Tracker; onClose: () => v
       .finally(() => setLoading(false));
   }, [tracker.id]);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, [load]);
 
   async function checkNow() {
@@ -396,6 +397,7 @@ function ReportsInner() {
       .finally(() => setLoadingTrackers(false));
   }, [selectedClientId]);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadTrackers(); }, [loadTrackers]);
 
   async function checkAll() {

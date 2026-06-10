@@ -5,7 +5,7 @@ import { asc, eq } from "drizzle-orm";
 
 export async function GET(req: NextRequest) {
   const tabType = req.nextUrl.searchParams.get("tabType") ?? null;
-  let query = db.select().from(productSections).orderBy(asc(productSections.sortOrder), asc(productSections.createdAt));
+  const query = db.select().from(productSections).orderBy(asc(productSections.sortOrder), asc(productSections.createdAt));
   if (tabType) {
     const rows = await db.select().from(productSections)
       .where(eq(productSections.tabType, tabType))

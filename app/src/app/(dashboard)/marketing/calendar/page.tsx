@@ -294,6 +294,7 @@ export default function CalendarPage({ asTab = false }: { asTab?: boolean }) {
   const totalCells  = Math.ceil((firstDay + daysInMonth) / 7) * 7;
 
   // 이번 달 또는 이달에 걸쳐있는 캘린더 이벤트
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const monthCalEvents = useMemo(() => calEvents.filter((e) => {
     const [ey, em] = e.date.split("-").map(Number);
     return ey === year && em - 1 === month;

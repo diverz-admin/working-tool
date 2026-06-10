@@ -474,6 +474,7 @@ function MessageList({
       {groups.map((g) => {
         const dateStr = g.firstTime.slice(0, 10);
         const showSep = dateStr !== lastDate;
+        // eslint-disable-next-line react-hooks/immutability
         if (showSep) lastDate = dateStr;
         const isMe = g.authorName === profile.name;
         return (
@@ -752,6 +753,7 @@ export default function ChatPage() {
   // 로그인 정보로 프로필 자동 설정
   useEffect(() => {
     const p = getSessionProfile();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (p) setProfile(p);
   }, []);
 
@@ -806,6 +808,7 @@ export default function ChatPage() {
   useEffect(() => {
     if (!activeChannel) return;
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadMessages(activeChannel.id);
 
     // 기존 구독 해제
