@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { verifySession, SESSION_COOKIE } from "@/lib/session";
+import { decodeSession, SESSION_COOKIE } from "@/lib/session";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { eq } from "drizzle-orm";
@@ -7,27 +7,33 @@ import { UserProvider } from "@/lib/UserContext";
 import Sidebar from "@/components/layout/Sidebar";
 import Header from "@/components/layout/Header";
 
+export const dynamic = "force-dynamic";
+
 export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const cookieStore = await cookies();
-  const token   = cookieStore.get(SESSION_COOKIE)?.value;
-  const payload = token ? await verifySession(token) : null;
-
   let userName: string = "사용자";
   let userRole: "Admin" | "Manager" | "Staff" = "Staff";
 
-  if (payload) {
-    const [user] = await db
-      .select({ name: users.name, role: users.role })
-      .from(users)
-      .where(eq(users.id, payload.id));
-    if (user) {
-      userName = user.name;
-      userRole = user.role as "Admin" | "Manager" | "Staff";
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get(SESSION_COOKIE)?.value;
+    const payload = token ? decodeSession(token) : null;
+
+    if (payload?.id) {
+      const [user] = await db
+        .select({ name: users.name, role: users.role })
+        .from(users)
+        .where(eq(users.id, payload.id));
+      if (user) {
+        userName = user.name;
+        userRole = user.role as "Admin" | "Manager" | "Staff";
+      }
     }
+  } catch {
+    // 세션 읽기 실패 시 기본값 유지
   }
 
   return (

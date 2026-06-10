@@ -47,6 +47,21 @@ export async function createSession(
   return `${encoded}.${toBase64url(sig)}`;
 }
 
+// Decode WITHOUT signature check — use only behind middleware that already verified.
+export function decodeSession(token: string): SessionPayload | null {
+  const dot = token.lastIndexOf(".");
+  if (dot < 0) return null;
+  try {
+    const payload = JSON.parse(
+      new TextDecoder().decode(fromBase64url(token.slice(0, dot))),
+    ) as SessionPayload;
+    if (Date.now() > payload.exp) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
 export async function verifySession(token: string): Promise<SessionPayload | null> {
   const dot = token.lastIndexOf(".");
   if (dot < 0) return null;
