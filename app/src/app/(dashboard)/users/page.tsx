@@ -10,6 +10,7 @@ interface AppUser {
   id: string;
   name: string;
   email: string;
+  username: string | null;
   role: Role;
   team: string | null;
   position: string | null;
@@ -40,6 +41,7 @@ function avatarColor(name: string) {
 interface FormState {
   name: string; email: string; role: Role;
   team: string; position: string; phone: string; status: Status; joinedAt: string;
+  username: string; password: string;
 }
 
 function emptyForm(): FormState {
@@ -47,6 +49,7 @@ function emptyForm(): FormState {
     name: "", email: "", role: "Staff", team: "",
     position: "", phone: "", status: "활성",
     joinedAt: new Date().toISOString().slice(0, 10),
+    username: "", password: "",
   };
 }
 
@@ -63,7 +66,8 @@ function UserModal({
       ? { name: initial.name, email: initial.email, role: initial.role,
           team: initial.team ?? "", position: initial.position ?? "",
           phone: initial.phone ?? "",
-          status: initial.status, joinedAt: initial.joinedAt }
+          status: initial.status, joinedAt: initial.joinedAt,
+          username: initial.username ?? "", password: "" }
       : emptyForm()
   );
   const [saving, setSaving] = useState(false);
@@ -79,9 +83,16 @@ function UserModal({
     setSaving(true); setError(null);
     const url    = isEdit ? `/api/users/${initial!.id}` : "/api/users";
     const method = isEdit ? "PATCH" : "POST";
+    const body: Record<string, unknown> = {
+      name: form.name, email: form.email, role: form.role,
+      team: form.team || null, position: form.position || null,
+      phone: form.phone || null, status: form.status, joinedAt: form.joinedAt,
+      username: form.username.trim() || null,
+    };
+    if (form.password) body.password = form.password;
     const res = await fetch(url, {
       method, headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...form, team: form.team || null, position: form.position || null, phone: form.phone || null }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) {
       const d = await res.json();
@@ -161,6 +172,24 @@ function UserModal({
               placeholder="010-0000-0000" className={inp} style={inpS} />
           </div>
 
+          <div style={{ borderTop: "1px solid #F1F5F9", paddingTop: "1rem" }}>
+            <p className="text-xs font-semibold mb-3" style={{ color: "#94A3B8" }}>로그인 정보</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold mb-1.5" style={{ color: "#64748B" }}>아이디</label>
+                <input value={form.username} onChange={e => set("username", e.target.value)}
+                  placeholder="로그인 아이디" className={inp} style={inpS} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1.5" style={{ color: "#64748B" }}>
+                  {isEdit ? "새 비밀번호" : "비밀번호"}
+                </label>
+                <input type="password" value={form.password} onChange={e => set("password", e.target.value)}
+                  placeholder={isEdit ? "변경 시 입력 (선택)" : "비밀번호 입력"} className={inp} style={inpS} />
+              </div>
+            </div>
+          </div>
+
           <div>
             <label className="block text-xs font-semibold mb-1.5" style={{ color: "#64748B" }}>상태</label>
             <div className="flex gap-2">
@@ -230,7 +259,7 @@ export default function UsersPage() {
     if (filterRole   !== "전체" && u.role   !== filterRole)   return false;
     if (filterTeam   !== "전체" && u.team   !== filterTeam)   return false;
     if (filterStatus !== "전체" && u.status !== filterStatus) return false;
-    if (search && !u.name.includes(search) && !u.email.includes(search)) return false;
+    if (search && !u.name.includes(search) && !u.email.includes(search) && !(u.username?.includes(search))) return false;
     return true;
   });
 
@@ -387,7 +416,12 @@ export default function UsersPage() {
                         style={{ background: isActive ? avatarColor(u.name) : "#CBD5E1" }}>
                         {initials(u.name)}
                       </div>
-                      <span className="font-semibold" style={{ color: isActive ? "#191F28" : "#94A3B8" }}>{u.name}</span>
+                      <div>
+                        <div className="font-semibold" style={{ color: isActive ? "#191F28" : "#94A3B8" }}>{u.name}</div>
+                        {u.username && (
+                          <div className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>@{u.username}</div>
+                        )}
+                      </div>
                     </div>
                   </td>
 
