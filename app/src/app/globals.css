@@ -1,0 +1,28 @@
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css");
+@import "tailwindcss";
+
+@theme inline {
+  --color-diverz-primary: #3182F6;
+  --color-diverz-dark: #191F28;
+  --color-diverz-white: #FFFFFF;
+  --color-diverz-bg: #F2F4F6;
+  --color-diverz-border: #E5E8EB;
+  --font-sans: "Pretendard", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-display: "Montserrat", "Pretendard", sans-serif;
+}
+
+:root {
+  --diverz-primary: #3182F6;
+  --diverz-dark: #191F28;
+  --diverz-white: #FFFFFF;
+  --diverz-bg: #F2F4F6;
+  --diverz-border: #E5E8EB;
+}
+
+body {
+  background: #F2F4F6;
+  color: #191F28;
+  font-family: "Pretendard", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
