@@ -1,8 +1,8 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { useCurrentRole, type UserRole } from "@/lib/useCurrentRole";
-import { useState, useEffect } from "react";
+import { useUser } from "@/lib/UserContext";
+import type { UserRole } from "@/lib/UserContext";
 
 const pageTitles: Record<string, string> = {
   "/dashboard": "대시보드",
@@ -28,29 +28,11 @@ const ROLE_COLORS: Record<UserRole, string> = { Admin: "#EF4444", Manager: "#F97
 export default function Header() {
   const pathname = usePathname();
   const router   = useRouter();
+  const { name: userName, role: userRole } = useUser();
   const title = getTitle(pathname);
-  const [role, setRole] = useCurrentRole();
-  const [userName, setUserName] = useState("사용자");
-
-  /* eslint-disable react-hooks/set-state-in-effect */
-  useEffect(() => {
-    fetch("/api/auth/me")
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (!data?.user) return;
-        setUserName(data.user.name);
-        setRole(data.user.role as UserRole);
-        localStorage.setItem("diverz_user_role", data.user.role);
-        localStorage.setItem("diverz_user_name", data.user.name);
-        localStorage.setItem("diverz_user_team", data.user.team ?? "");
-      });
-  }, []);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
-    localStorage.removeItem("diverz_user_role");
-    localStorage.removeItem("diverz_user_name");
     router.push("/login");
   }
 
@@ -89,21 +71,16 @@ export default function Header() {
           />
         </button>
         <div className="flex items-center gap-2">
-          <select
-            value={role}
-            onChange={(e) => setRole(e.target.value as UserRole)}
-            className="text-xs font-semibold px-2 py-1 rounded-lg border outline-none cursor-pointer"
+          <span
+            className="text-xs font-semibold px-2 py-1 rounded-lg"
             style={{
-              background: `${ROLE_COLORS[role]}12`,
-              borderColor: `${ROLE_COLORS[role]}40`,
-              color: ROLE_COLORS[role],
+              background: `${ROLE_COLORS[userRole]}12`,
+              border: `1px solid ${ROLE_COLORS[userRole]}40`,
+              color: ROLE_COLORS[userRole],
             }}
-            title="현재 역할 (개발용)"
           >
-            {(["Admin", "Manager", "Staff"] as UserRole[]).map((r) => (
-              <option key={r} value={r}>{ROLE_LABELS[r]}</option>
-            ))}
-          </select>
+            {ROLE_LABELS[userRole]}
+          </span>
           <div
             className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold"
             style={{ background: "#3182F6" }}

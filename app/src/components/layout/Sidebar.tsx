@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useState, useEffect, Suspense } from "react";
-import { useCurrentRole } from "@/lib/useCurrentRole";
+import { useUser } from "@/lib/UserContext";
 
 const TEAMS = ["영업 1팀", "영업 2팀"];
 
@@ -232,7 +232,7 @@ function ApprovalNavSection() {
   const isActive = pathname.startsWith("/approval") && !pathname.startsWith("/approval/internal");
   const [open, setOpen] = useState(isActive);
   const [counts, setCounts] = useState<{ confirm: number; payment: number }>({ confirm: 0, payment: 0 });
-  const [role] = useCurrentRole();
+  const { role } = useUser();
   const locked = role === "Staff";
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -422,7 +422,7 @@ function OperationsNavSection() {
   const pathname = usePathname();
   const isActive = pathname.startsWith("/operations") || pathname.startsWith("/users");
   const [open, setOpen] = useState(isActive);
-  const [role] = useCurrentRole();
+  const { role } = useUser();
   const locked = role === "Staff";
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
