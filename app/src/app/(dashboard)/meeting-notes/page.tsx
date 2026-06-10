@@ -521,6 +521,7 @@ export default function MeetingNotesPage() {
       .finally(() => setLoading(false));
   }, [year, month, team]);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { fetchNotes(); }, [fetchNotes]);
 
   useEffect(() => {

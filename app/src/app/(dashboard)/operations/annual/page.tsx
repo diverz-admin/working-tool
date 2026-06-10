@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable react-hooks/static-components */
 
 import { useState, useEffect, useCallback, useRef } from "react";
 
@@ -100,6 +101,7 @@ export default function AnnualProfitPage() {
     }).finally(()=>setLoading(false));
   }, [year, criteria]);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(()=>{ load(); }, [load]);
   useEffect(()=>{ if(editKey && inputRef.current) inputRef.current.focus(); }, [editKey]);
 

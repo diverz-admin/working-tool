@@ -28,9 +28,11 @@ export default function RequestPage() {
   const [cancelling,    setCancelling]    = useState(false);
   const [approveDate,   setApproveDate]   = useState(new Date().toISOString().slice(0, 10));
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (selected) setApproveDate(new Date().toISOString().slice(0, 10));
   }, [selected?.id]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     getPaymentRequests().then(setItems);

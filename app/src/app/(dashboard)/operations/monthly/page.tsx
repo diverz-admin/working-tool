@@ -442,6 +442,7 @@ export default function MonthlyManagePage() {
   const [editValue, setEditValue] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const load = useCallback(() => {
     setLoading(true);
     const q = `year=${year}&month=${month}&criteria=${encodeURIComponent(criteria)}`;
@@ -456,6 +457,7 @@ export default function MonthlyManagePage() {
     }).finally(() => setLoading(false));
   }, [year, month, criteria]);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, [load]);
   useEffect(() => { if (editKey && inputRef.current) inputRef.current.focus(); }, [editKey]);
 

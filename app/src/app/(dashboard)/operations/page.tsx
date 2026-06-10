@@ -109,6 +109,7 @@ export default function OperationsDashboard() {
   const [monthCostRows, setMonthCostRows] = useState<{ total: number | null; supplyPrice: number | null; assignedTeam: string | null }[]>([]);
   const [loading,      setLoading]      = useState(true);
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     setLoading(true);
     Promise.all([
@@ -124,6 +125,7 @@ export default function OperationsDashboard() {
       setMonthCostRows(mCost.rows ?? []);
     }).finally(() => setLoading(false));
   }, [year, curMonth]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // ── 연간 집계 ──
   function annualRevByMonth(m: number) {

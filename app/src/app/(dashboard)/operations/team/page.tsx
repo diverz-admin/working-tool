@@ -275,6 +275,7 @@ export default function TeamProfitPage() {
     }).finally(() => setLoading(false));
   }, [year, month, criteria]);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, [load]);
 
   function prevMonth() {

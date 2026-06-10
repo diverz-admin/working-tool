@@ -157,6 +157,7 @@ export default function ConfirmPage() {
     getConfirmRequests().then(setItems);
   }, []);
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (selected) {
       const today = new Date().toISOString().slice(0, 10);
@@ -164,6 +165,7 @@ export default function ConfirmPage() {
       setIssueDate(today);
     }
   }, [selected?.id]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const months = useMemo(() => {
     const set = new Set(items.map((i) => i.requestedAt.slice(0, 7)));

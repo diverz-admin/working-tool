@@ -35,6 +35,9 @@ interface WorkRow {
 
 type FilterTab = "전체" | "미완료" | "완료";
 
+const TAB_COLORS: Record<FilterTab, string> = { 완료: "#059669", 미완료: "#F97316", 전체: "#191F28" };
+const emptyLogEntry = () => ({ date: new Date().toISOString().slice(0, 10), qty: "", note: "" });
+
 function daysLeft(dateStr: string | null): number | null {
   if (!dateStr) return null;
   const diff = new Date(dateStr).setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0);
@@ -71,34 +74,48 @@ export default function WorkCheckPage() {
       .catch(() => setLoading(false));
   }, []);
 
-  // 데이터에 존재하는 월 목록 (내림차순)
-  const months = useMemo(() => {
-    const s = new Set(rows.map(rowMonth).filter(Boolean) as string[]);
-    return Array.from(s).sort((a, b) => b.localeCompare(a));
+  // 데이터에 존재하는 월 목록 + 팀 목록 (단일 패스)
+  const { months, teams } = useMemo(() => {
+    const ms = new Set<string>();
+    const ts = new Set<string>();
+    for (const r of rows) {
+      const m = rowMonth(r);
+      if (m) ms.add(m);
+      if (r.assignedTeam) ts.add(r.assignedTeam);
+    }
+    return {
+      months: Array.from(ms).sort((a, b) => b.localeCompare(a)),
+      teams:  Array.from(ts).sort(),
+    };
   }, [rows]);
 
-  const teams = useMemo(() => {
-    const s = new Set(rows.map((r) => r.assignedTeam).filter(Boolean) as string[]);
-    return Array.from(s).sort();
+  // 월별 미완료 건수 사전 계산
+  const incompleteByMonth = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const r of rows) {
+      const m = rowMonth(r);
+      if (m && !r.workCompleted) map.set(m, (map.get(m) ?? 0) + 1);
+    }
+    return map;
   }, [rows]);
 
-  const filtered = useMemo(() => rows.filter((r) => {
-    const monthOk = rowMonth(r) === selectedMonth;
-    const teamOk  = filterTeam === "전체" || r.assignedTeam === filterTeam;
-    const tabOk   =
+  // 선택된 월 기준 행 → filtered는 그 위에 팀/탭 필터 적용
+  const monthRows = useMemo(() => rows.filter((r) => rowMonth(r) === selectedMonth), [rows, selectedMonth]);
+
+  const filtered = useMemo(() => monthRows.filter((r) => {
+    const teamOk = filterTeam === "전체" || r.assignedTeam === filterTeam;
+    const tabOk  =
       filterTab === "전체"  ? true :
       filterTab === "미완료" ? !r.workCompleted :
       Boolean(r.workCompleted);
-    return monthOk && teamOk && tabOk;
-  }), [rows, selectedMonth, filterTab, filterTeam]);
+    return teamOk && tabOk;
+  }), [monthRows, filterTab, filterTeam]);
 
-  // 선택된 월 기준 카운트
-  const monthRows = useMemo(() => rows.filter((r) => rowMonth(r) === selectedMonth), [rows, selectedMonth]);
-  const totals = {
-    전체:  monthRows.length,
-    미완료: monthRows.filter((r) => !r.workCompleted).length,
-    완료:  monthRows.filter((r) =>  r.workCompleted).length,
-  };
+  const totals = useMemo(() => {
+    const t = { 전체: monthRows.length, 미완료: 0, 완료: 0 };
+    for (const r of monthRows) r.workCompleted ? t.완료++ : t.미완료++;
+    return t;
+  }, [monthRows]);
 
   // group → campaign → rows
   const grouped = useMemo(() => {
@@ -117,11 +134,14 @@ export default function WorkCheckPage() {
   async function toggleComplete(row: WorkRow) {
     const next = !row.workCompleted;
     setRows(prev => prev.map(r => r.id === row.id ? { ...r, workCompleted: next, completedAt: next ? new Date().toISOString() : null } : r));
-    await fetch(`/api/project-revenues/${row.id}`, {
+    const res = await fetch(`/api/project-revenues/${row.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ workCompleted: next }),
     });
+    if (!res.ok) {
+      setRows(prev => prev.map(r => r.id === row.id ? { ...r, workCompleted: row.workCompleted, completedAt: row.completedAt } : r));
+    }
   }
 
   async function addLog(revenueId: string) {
@@ -139,7 +159,7 @@ export default function WorkCheckPage() {
       completedQty: data.completedQty,
       dailyLogs: [...r.dailyLogs, data.log].sort((a, b) => a.date.localeCompare(b.date)),
     } : r));
-    setAddForm(prev => ({ ...prev, [revenueId]: { date: new Date().toISOString().slice(0, 10), qty: "", note: "" } }));
+    setAddForm(prev => ({ ...prev, [revenueId]: emptyLogEntry() }));
     setSaving(null);
   }
 
@@ -189,7 +209,7 @@ export default function WorkCheckPage() {
             const [y, mo] = m.split("-");
             const label = `${y}.${mo}`;
             const isActive = selectedMonth === m;
-            const incompleteInMonth = rows.filter((r) => rowMonth(r) === m && !r.workCompleted).length;
+            const incompleteInMonth = incompleteByMonth.get(m) ?? 0;
             return (
               <button key={m} onClick={() => setMonth(m)}
                 className="relative flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
@@ -224,9 +244,7 @@ export default function WorkCheckPage() {
                 className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-all"
                 style={{
                   background: isActive ? "#fff" : "transparent",
-                  color: isActive
-                    ? tab === "완료" ? "#059669" : tab === "미완료" ? "#F97316" : "#191F28"
-                    : "#94A3B8",
+                  color: isActive ? TAB_COLORS[tab] : "#94A3B8",
                   boxShadow: isActive ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
                 }}
               >
@@ -474,8 +492,8 @@ export default function WorkCheckPage() {
                                             <div className="flex items-center gap-2 flex-wrap">
                                               <input
                                                 type="date"
-                                                value={addForm[row.id]?.date ?? new Date().toISOString().slice(0, 10)}
-                                                onChange={(e) => setAddForm(prev => ({ ...prev, [row.id]: { ...prev[row.id] ?? { date: "", qty: "", note: "" }, date: e.target.value } }))}
+                                                value={addForm[row.id]?.date ?? emptyLogEntry().date}
+                                                onChange={(e) => setAddForm(prev => ({ ...prev, [row.id]: { ...(prev[row.id] ?? emptyLogEntry()), date: e.target.value } }))}
                                                 className="text-xs px-2.5 py-1.5 rounded-lg outline-none border"
                                                 style={{ background: "#fff", borderColor: "#E9EBEF", color: "#191F28" }}
                                               />
@@ -484,7 +502,7 @@ export default function WorkCheckPage() {
                                                 min={0}
                                                 placeholder="수량"
                                                 value={addForm[row.id]?.qty ?? ""}
-                                                onChange={(e) => setAddForm(prev => ({ ...prev, [row.id]: { ...prev[row.id] ?? { date: new Date().toISOString().slice(0, 10), qty: "", note: "" }, qty: e.target.value } }))}
+                                                onChange={(e) => setAddForm(prev => ({ ...prev, [row.id]: { ...(prev[row.id] ?? emptyLogEntry()), qty: e.target.value } }))}
                                                 className="text-xs px-2.5 py-1.5 rounded-lg outline-none border w-20 text-center"
                                                 style={{ background: "#fff", borderColor: "#E9EBEF", color: "#191F28" }}
                                               />
@@ -492,7 +510,7 @@ export default function WorkCheckPage() {
                                                 type="text"
                                                 placeholder="메모 (선택)"
                                                 value={addForm[row.id]?.note ?? ""}
-                                                onChange={(e) => setAddForm(prev => ({ ...prev, [row.id]: { ...prev[row.id] ?? { date: new Date().toISOString().slice(0, 10), qty: "", note: "" }, note: e.target.value } }))}
+                                                onChange={(e) => setAddForm(prev => ({ ...prev, [row.id]: { ...(prev[row.id] ?? emptyLogEntry()), note: e.target.value } }))}
                                                 className="text-xs px-2.5 py-1.5 rounded-lg outline-none border flex-1 min-w-24"
                                                 style={{ background: "#fff", borderColor: "#E9EBEF", color: "#191F28" }}
                                               />
