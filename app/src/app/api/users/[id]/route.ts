@@ -16,22 +16,18 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     if (dup) return NextResponse.json({ error: "이미 사용 중인 아이디입니다." }, { status: 409 });
   }
 
-  const updateData: Record<string, unknown> = {
-    name:      body.name?.trim(),
-    email:     body.email?.trim(),
-    role:      body.role,
-    team:      body.team     || null,
-    position:  body.position || null,
-    phone:     body.phone    || null,
-    status:    body.status,
-    joinedAt:  body.joinedAt || undefined,
-    username:  body.username?.trim() || null,
-    updatedAt: new Date(),
-  };
+  const updateData: Record<string, unknown> = { updatedAt: new Date() };
 
-  if (body.password) {
-    updateData.passwordHash = await hashPassword(body.password);
-  }
+  if (body.name     !== undefined) updateData.name     = body.name?.trim();
+  if (body.email    !== undefined) updateData.email    = body.email?.trim();
+  if (body.role     !== undefined) updateData.role     = body.role;
+  if (body.team     !== undefined) updateData.team     = body.team || null;
+  if (body.position !== undefined) updateData.position = body.position || null;
+  if (body.phone    !== undefined) updateData.phone    = body.phone || null;
+  if (body.status   !== undefined) updateData.status   = body.status;
+  if (body.joinedAt !== undefined) updateData.joinedAt = body.joinedAt || undefined;
+  if ("username" in body)          updateData.username = body.username?.trim() || null;
+  if (body.password)               updateData.passwordHash = await hashPassword(body.password);
 
   const [row] = await db.update(users).set(updateData).where(eq(users.id, id)).returning();
   if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });

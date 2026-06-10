@@ -34,8 +34,16 @@ export default function Header() {
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    const name = localStorage.getItem("diverz_user_name");
-    if (name) setUserName(name);
+    fetch("/api/auth/me")
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data?.user) return;
+        setUserName(data.user.name);
+        setRole(data.user.role as UserRole);
+        localStorage.setItem("diverz_user_role", data.user.role);
+        localStorage.setItem("diverz_user_name", data.user.name);
+        localStorage.setItem("diverz_user_team", data.user.team ?? "");
+      });
   }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
 
