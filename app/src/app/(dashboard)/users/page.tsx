@@ -15,6 +15,7 @@ interface AppUser {
   team: string | null;
   position: string | null;
   phone: string | null;
+  workPhone: string | null;
   status: Status;
   joinedAt: string;
 }
@@ -40,14 +41,14 @@ function avatarColor(name: string) {
 
 interface FormState {
   name: string; email: string; role: Role;
-  team: string; position: string; phone: string; status: Status; joinedAt: string;
+  team: string; position: string; phone: string; workPhone: string; status: Status; joinedAt: string;
   username: string; password: string;
 }
 
 function emptyForm(): FormState {
   return {
     name: "", email: "", role: "Staff", team: "",
-    position: "", phone: "", status: "활성",
+    position: "", phone: "", workPhone: "", status: "활성",
     joinedAt: new Date().toISOString().slice(0, 10),
     username: "", password: "",
   };
@@ -65,7 +66,7 @@ function UserModal({
     initial
       ? { name: initial.name, email: initial.email, role: initial.role,
           team: initial.team ?? "", position: initial.position ?? "",
-          phone: initial.phone ?? "",
+          phone: initial.phone ?? "", workPhone: initial.workPhone ?? "",
           status: initial.status, joinedAt: initial.joinedAt,
           username: initial.username ?? "", password: "" }
       : emptyForm()
@@ -86,7 +87,7 @@ function UserModal({
     const body: Record<string, unknown> = {
       name: form.name, email: form.email, role: form.role,
       team: form.team || null, position: form.position || null,
-      phone: form.phone || null, status: form.status, joinedAt: form.joinedAt,
+      phone: form.phone || null, workPhone: form.workPhone || null, status: form.status, joinedAt: form.joinedAt,
       username: form.username.trim() || null,
     };
     if (form.password) body.password = form.password;
@@ -166,10 +167,17 @@ function UserModal({
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold mb-1.5" style={{ color: "#64748B" }}>휴대폰 번호</label>
-            <input type="tel" value={form.phone} onChange={e => set("phone", e.target.value)}
-              placeholder="010-0000-0000" className={inp} style={inpS} />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: "#64748B" }}>휴대폰 번호</label>
+              <input type="tel" value={form.phone} onChange={e => set("phone", e.target.value)}
+                placeholder="010-0000-0000" className={inp} style={inpS} />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: "#64748B" }}>업무폰 번호</label>
+              <input type="tel" value={form.workPhone} onChange={e => set("workPhone", e.target.value)}
+                placeholder="02-0000-0000" className={inp} style={inpS} />
+            </div>
           </div>
 
           <div style={{ borderTop: "1px solid #F1F5F9", paddingTop: "1rem" }}>
@@ -389,7 +397,7 @@ export default function UsersPage() {
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: "#F8FAFC", borderBottom: "1px solid #E9EBEF" }}>
-              {["사용자", "이메일", "권한", "소속 팀", "직책", "입사일", "상태", ""].map(h => (
+              {["사용자", "휴대폰 번호", "권한", "소속 팀", "직책", "입사일", "상태", ""].map(h => (
                 <th key={h} className="px-5 py-3 text-left text-xs font-semibold" style={{ color: "#64748B" }}>{h}</th>
               ))}
             </tr>
@@ -425,7 +433,7 @@ export default function UsersPage() {
                     </div>
                   </td>
 
-                  <td className="px-5 py-3.5 text-xs" style={{ color: "#475569" }}>{u.email}</td>
+                  <td className="px-5 py-3.5 text-xs" style={{ color: "#475569" }}>{u.phone || "—"}</td>
 
                   <td className="px-5 py-3.5">
                     <span className="text-xs font-semibold px-2 py-1 rounded-full"

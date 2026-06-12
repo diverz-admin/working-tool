@@ -10,6 +10,7 @@ export const users = pgTable("users", {
   status:       text("status").notNull().default("활성"),  // 활성 | 비활성
   joinedAt:     date("joined_at").notNull().defaultNow(),
   phone:        text("phone"),
+  workPhone:    text("work_phone"),
   username:     text("username").unique(),
   passwordHash: text("password_hash"),
   createdAt:    timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

@@ -26,6 +26,7 @@ interface FormState {
   status: Status;
   joinedAt: string;
   phone: string;
+  workPhone: string;
   username: string;
   password: string;
   passwordConfirm: string;
@@ -34,7 +35,7 @@ interface FormState {
 function emptyForm(): FormState {
   return {
     name: "", email: "", role: "Staff", team: "",
-    position: "", phone: "", status: "활성",
+    position: "", phone: "", workPhone: "", status: "활성",
     joinedAt: new Date().toISOString().slice(0, 10),
     username: "", password: "", passwordConfirm: "",
   };
@@ -73,8 +74,9 @@ export default function NewUserPage() {
           role:     form.role,
           team:     form.team     || null,
           position: form.position || null,
-          phone:    form.phone    || null,
-          status:   form.status,
+          phone:     form.phone     || null,
+          workPhone: form.workPhone || null,
+          status:    form.status,
           joinedAt: form.joinedAt,
           username: form.username || null,
           password: form.password || null,
@@ -180,6 +182,19 @@ export default function NewUserPage() {
                 className={inp} style={inpS}
               />
             </div>
+            <div>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: "#475569" }}>업무폰 번호</label>
+              <input
+                type="tel"
+                value={form.workPhone}
+                onChange={e => set("workPhone", e.target.value)}
+                placeholder="02-0000-0000"
+                className={inp} style={inpS}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold mb-1.5" style={{ color: "#475569" }}>입사일</label>
               <input

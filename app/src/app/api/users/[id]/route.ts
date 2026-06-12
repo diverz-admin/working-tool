@@ -24,6 +24,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (body.team     !== undefined) updateData.team     = body.team || null;
   if (body.position !== undefined) updateData.position = body.position || null;
   if (body.phone    !== undefined) updateData.phone    = body.phone || null;
+  if (body.workPhone !== undefined) updateData.workPhone = body.workPhone || null;
   if (body.status   !== undefined) updateData.status   = body.status;
   if (body.joinedAt !== undefined) updateData.joinedAt = body.joinedAt || undefined;
   if ("username" in body)          updateData.username = body.username?.trim() || null;

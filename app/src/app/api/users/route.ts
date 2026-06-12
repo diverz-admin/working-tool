@@ -30,6 +30,7 @@ export async function POST(req: NextRequest) {
       team:         body.team     || null,
       position:     body.position || null,
       phone:        body.phone    || null,
+      workPhone:    body.workPhone || null,
       status:       body.status   ?? "활성",
       joinedAt:     body.joinedAt || new Date().toISOString().slice(0, 10),
       username:     body.username?.trim() || null,
