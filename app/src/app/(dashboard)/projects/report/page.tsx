@@ -186,13 +186,13 @@ function MeetingSection({ year, month }: { year: number; month: number }) {
           value={content}
           onChange={e => setContent(e.target.value)}
           onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === "s") { e.preventDefault(); handleSave(); } }}
-          rows={12}
+          rows={24}
           placeholder={noteType === "월간"
             ? `${month}월 월간회의 내용을 입력하세요.\n\n예)\n• 이번 달 목표 달성 현황\n• 주요 이슈 및 액션 아이템\n• 다음 달 계획`
             : `${month}월 ${noteWeek}주차 주간회의 내용을 입력하세요.\n\n예)\n• 금주 진행 현황\n• 이슈 사항\n• 다음 주 계획`
           }
           className="w-full px-4 py-3 text-sm rounded-xl outline-none border resize-none leading-relaxed transition-colors focus:border-[#3182F6]"
-          style={{ background: "#F8FAFC", borderColor: "#E9EBEF", color: "#191F28" }}
+          style={{ background: "#F8FAFC", borderColor: "#E9EBEF", color: "#191F28", minHeight: 560 }}
         />
         <p className="text-xs mt-1.5 px-1" style={{ color: "#B0B8C1" }}>⌘S / Ctrl+S 로 저장</p>
 
