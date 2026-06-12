@@ -10,6 +10,7 @@ interface Channel {
   name: string;
   description: string | null;
   createdAt: string;
+  latestMessageAt: string | null;
 }
 
 interface Message {
@@ -749,10 +750,14 @@ export default function ChatPage() {
   const [notifications, setNotifications] = useState<MentionNotification[]>([]);
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
   const [mentionToast, setMentionToast]   = useState<MentionNotification | null>(null);
+  const [lastReadAt, setLastReadAt]       = useState<Record<string, string>>({});
+  const [latestMsgAt, setLatestMsgAt]     = useState<Record<string, string>>({});
   const notifRef   = useRef<HTMLDivElement>(null);
   const bottomRef  = useRef<HTMLDivElement>(null);
   const supabaseRef = useRef(createClient());
   const subRef      = useRef<ReturnType<typeof supabaseRef.current.channel> | null>(null);
+  const allChSubRef       = useRef<ReturnType<typeof supabaseRef.current.channel> | null>(null);
+  const activeChannelRef  = useRef<Channel | null>(null);
 
   useEffect(() => {
     fetchProfile().then((p) => {
@@ -761,13 +766,59 @@ export default function ChatPage() {
     });
   }, []);
 
+  // localStorage에서 읽음 시간 복원
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("diverz_chat_lastread");
+      if (stored) setLastReadAt(JSON.parse(stored));
+    } catch { /* ignore */ }
+  }, []);
+
   useEffect(() => {
     fetch("/api/chat/channels")
       .then((r) => r.json())
       .then((d) => {
-        setChannels(d.channels ?? []);
-        if (d.channels?.length) setActiveChannel(d.channels[0]);
+        const chs: Channel[] = d.channels ?? [];
+        setChannels(chs);
+        // 채널별 최근 메시지 시간 초기화
+        const map: Record<string, string> = {};
+        chs.forEach((ch) => { if (ch.latestMessageAt) map[ch.id] = ch.latestMessageAt; });
+        setLatestMsgAt(map);
+        if (chs.length) {
+          setActiveChannel(chs[0]);
+          activeChannelRef.current = chs[0];
+          // 첫 채널은 열리자마자 읽음 처리
+          const now = new Date().toISOString();
+          setLastReadAt((prev) => {
+            const next = { ...prev, [chs[0].id]: now };
+            try { localStorage.setItem("diverz_chat_lastread", JSON.stringify(next)); } catch { /* ignore */ }
+            return next;
+          });
+        }
       });
+  }, []);
+
+  // 모든 채널의 새 메시지를 postgres_changes로 감지 → latestMsgAt 업데이트
+  useEffect(() => {
+    if (allChSubRef.current) supabaseRef.current.removeChannel(allChSubRef.current);
+    const sub = supabaseRef.current
+      .channel("chat:all-unread")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "chat_messages" },
+        (payload) => {
+          const row = payload.new as { channel_id: string; created_at: string };
+          if (activeChannelRef.current?.id === row.channel_id) return;
+          setLatestMsgAt((prev) => {
+            const existing = prev[row.channel_id];
+            if (!existing || row.created_at > existing) return { ...prev, [row.channel_id]: row.created_at };
+            return prev;
+          });
+        }
+      )
+      .subscribe();
+    allChSubRef.current = sub;
+    return () => { supabaseRef.current.removeChannel(sub); };
   }, []);
 
   useEffect(() => {
@@ -775,6 +826,21 @@ export default function ChatPage() {
       .then((r) => r.json())
       .then((d) => setUserList((d.users ?? []).map((u: { id: string; name: string; team: string | null }) => ({ id: u.id, name: u.name, team: u.team }))));
   }, []);
+
+  const markChannelRead = useCallback((channelId: string) => {
+    const now = new Date().toISOString();
+    setLastReadAt((prev) => {
+      const next = { ...prev, [channelId]: now };
+      try { localStorage.setItem("diverz_chat_lastread", JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
+
+  const switchChannel = useCallback((ch: Channel) => {
+    setActiveChannel(ch);
+    activeChannelRef.current = ch;
+    markChannelRead(ch.id);
+  }, [markChannelRead]);
 
   const loadNotifications = useCallback((name: string) => {
     fetch(`/api/chat/notifications?name=${encodeURIComponent(name)}`)
@@ -818,6 +884,9 @@ export default function ChatPage() {
         if (prev.find((m) => m.id === payload.id)) return prev;
         return [...prev, payload];
       });
+      // 현재 활성 채널은 열려있으므로 즉시 읽음 처리
+      setLatestMsgAt((prev) => ({ ...prev, [activeChannel.id]: new Date().toISOString() }));
+      markChannelRead(activeChannel.id);
     })
     .on("broadcast", { event: "edit_message" }, ({ payload }: { payload: { id: string; content: string } }) => {
       setMessages((prev) => prev.map((m) => m.id === payload.id ? { ...m, content: payload.content } : m));
@@ -911,6 +980,7 @@ export default function ChatPage() {
   function handleChannelCreated(ch: Channel) {
     setChannels((prev) => [...prev, ch]);
     setActiveChannel(ch);
+    activeChannelRef.current = ch;
     setShowAddChannel(false);
   }
 
@@ -920,7 +990,9 @@ export default function ChatPage() {
     setChannels((prev) => prev.filter((c) => c.id !== ch.id));
     if (activeChannel?.id === ch.id) {
       const remaining = channels.filter((c) => c.id !== ch.id);
-      setActiveChannel(remaining[0] ?? null);
+      const next = remaining[0] ?? null;
+      setActiveChannel(next);
+      activeChannelRef.current = next;
     }
   }
 
@@ -955,17 +1027,20 @@ export default function ChatPage() {
 
             {channels.map((ch) => {
               const isActive = activeChannel?.id === ch.id;
+              const isUnread = !isActive && latestMsgAt[ch.id] != null &&
+                (!lastReadAt[ch.id] || latestMsgAt[ch.id] > lastReadAt[ch.id]);
               return (
                 <div key={ch.id} className="group relative">
                   <button
-                    onClick={() => setActiveChannel(ch)}
+                    onClick={() => switchChannel(ch)}
                     className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-left transition-colors"
                     style={{
                       background: isActive ? "rgba(49,130,246,0.1)" : "transparent",
                       color: isActive ? "#3182F6" : "#4E5968",
                     }}>
                     <span className="text-sm font-bold" style={{ color: isActive ? "#3182F6" : "#94A3B8" }}>#</span>
-                    <span className="text-sm font-medium truncate flex-1">{ch.name}</span>
+                    <span className={`text-sm truncate flex-1 ${isUnread ? "font-bold" : "font-medium"}`}
+                      style={{ color: isUnread ? "#191F28" : undefined }}>{ch.name}</span>
                   </button>
                   <button onClick={() => handleDeleteChannel(ch)}
                     className="absolute right-1 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-100"
