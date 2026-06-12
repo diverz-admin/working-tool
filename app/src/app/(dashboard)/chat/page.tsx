@@ -129,13 +129,22 @@ function groupMessages(messages: Message[]): MessageGroup[] {
   return groups;
 }
 
-function getSessionProfile(): Profile | null {
+async function fetchProfile(): Promise<Profile | null> {
+  try {
+    // API에서 먼저 시도 (세션 기반 인증)
+    const res = await fetch("/api/auth/me");
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.user?.name) return { name: data.user.name, team: data.user.team ?? "" };
+    }
+  } catch { /* fallthrough */ }
+  // localStorage 폴백
   try {
     const name = localStorage.getItem("diverz_user_name");
     const team = localStorage.getItem("diverz_user_team") ?? "";
-    if (!name) return null;
-    return { name, team };
-  } catch { return null; }
+    if (name) return { name, team };
+  } catch { /* ignore */ }
+  return null;
 }
 
 function extractMentions(text: string): string[] {
@@ -222,7 +231,7 @@ function CreateChannelModal({ onClose, onCreated }: { onClose: () => void; onCre
               style={{ borderColor: "#D6D0D0", color: "#616061" }}>취소</button>
             <button type="submit" disabled={saving || !name.trim()}
               className="flex-1 py-2.5 text-sm font-bold rounded-lg text-white transition-opacity hover:opacity-90 disabled:opacity-40"
-              style={{ background: "#007A5A" }}>
+              style={{ background: "linear-gradient(135deg, #3182F6 0%, #2462D8 100%)" }}>
               {saving ? "생성 중..." : "만들기"}
             </button>
           </div>
@@ -387,7 +396,7 @@ function MessageGroupItem({
                       <div className="flex items-center gap-2">
                         <button onClick={() => actions.onEditSave(m.id)}
                           className="px-3 py-1 text-xs font-bold rounded-lg text-white"
-                          style={{ background: "#007A5A" }}>저장</button>
+                          style={{ background: "linear-gradient(135deg, #3182F6 0%, #2462D8 100%)" }}>저장</button>
                         <button onClick={actions.onEditCancel}
                           className="px-3 py-1 text-xs font-bold rounded-lg border"
                           style={{ color: "#616061", borderColor: "#D6D0D0" }}>취소</button>
@@ -704,7 +713,7 @@ function MessageInput({ channelName, onSend, disabled, users }: {
           <button onClick={send} disabled={!canSend}
             className="w-8 h-8 flex items-center justify-center rounded-lg transition-all disabled:opacity-30"
             title="전송 (Enter)"
-            style={{ background: canSend ? "#007A5A" : "#E8E8E8" }}>
+            style={{ background: canSend ? "linear-gradient(135deg, #3182F6 0%, #2462D8 100%)" : "#E9EBEF" }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
               stroke={canSend ? "#FFFFFF" : "#97979C"} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <line x1="22" y1="2" x2="11" y2="13"/>
@@ -746,9 +755,10 @@ export default function ChatPage() {
   const subRef      = useRef<ReturnType<typeof supabaseRef.current.channel> | null>(null);
 
   useEffect(() => {
-    const p = getSessionProfile();
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (p) setProfile(p);
+    fetchProfile().then((p) => {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (p) setProfile(p);
+    });
   }, []);
 
   useEffect(() => {
@@ -915,109 +925,93 @@ export default function ChatPage() {
   const unreadCount = notifications.filter((n) => !n.isRead).length;
 
   return (
-    <div className="flex rounded-2xl overflow-hidden" style={{ height: "calc(100vh - 100px)", background: "#FFFFFF", border: "1px solid #D6D0D0" }}>
+    <div className="flex rounded-2xl overflow-hidden" style={{ height: "calc(100vh - 116px)", background: "#FFFFFF", border: "1px solid #E9EBEF" }}>
 
-      {/* ── 다크 사이드바 (Slack 스타일) ── */}
-      <aside className="w-60 flex flex-col shrink-0" style={{ background: "#3F0E40" }}>
+      {/* ── 사이드바 (DIVERZ 디자인) ── */}
+      <aside className="w-56 flex flex-col shrink-0" style={{ background: "#F8FAFC", borderRight: "1px solid #E9EBEF" }}>
 
         {/* 워크스페이스 헤더 */}
-        <div className="px-4 py-3.5 flex items-center justify-between cursor-pointer"
-          style={{ borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="text-base font-black tracking-wide truncate" style={{ color: "#FFFFFF" }}>DIVERZ</span>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth="2.5" strokeLinecap="round">
-              <polyline points="6 9 12 15 18 9"/>
-            </svg>
-          </div>
-          {/* 새 메시지 작성 아이콘 */}
-          <button className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors"
-            style={{ background: "rgba(255,255,255,0.1)" }}
-            title="새 메시지">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.8)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-            </svg>
-          </button>
+        <div className="px-4 py-4 flex items-center gap-2" style={{ borderBottom: "1px solid #E9EBEF" }}>
+          <div className="w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs font-black shrink-0"
+            style={{ background: "#3182F6" }}>D</div>
+          <span className="text-sm font-black tracking-wide" style={{ color: "#191F28" }}>DIVERZ</span>
         </div>
 
         {/* 채널 목록 */}
         <div className="flex-1 overflow-y-auto py-3">
-          {/* 채널 섹션 헤더 */}
-          <div className="flex items-center justify-between px-4 py-0.5 mb-0.5">
-            <button className="flex items-center gap-1 group">
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2.5" strokeLinecap="round">
-                <polyline points="6 9 12 15 18 9"/>
-              </svg>
-              <span className="text-sm font-bold" style={{ color: "rgba(255,255,255,0.55)" }}>채널</span>
-            </button>
-            <button onClick={() => setShowAddChannel(true)}
-              className="w-5 h-5 flex items-center justify-center rounded transition-colors hover:bg-white/10"
-              title="채널 추가" style={{ color: "rgba(255,255,255,0.55)" }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-              </svg>
-            </button>
+          <div className="px-3 mb-1">
+            <div className="flex items-center justify-between px-2 mb-1">
+              <span className="text-xs font-bold" style={{ color: "#94A3B8" }}>채널</span>
+              <button onClick={() => setShowAddChannel(true)}
+                className="w-5 h-5 flex items-center justify-center rounded hover:bg-slate-200 transition-colors"
+                title="채널 추가">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2.5" strokeLinecap="round">
+                  <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+              </button>
+            </div>
+
+            {channels.map((ch) => {
+              const isActive = activeChannel?.id === ch.id;
+              return (
+                <div key={ch.id} className="group relative">
+                  <button
+                    onClick={() => setActiveChannel(ch)}
+                    className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-left transition-colors"
+                    style={{
+                      background: isActive ? "rgba(49,130,246,0.1)" : "transparent",
+                      color: isActive ? "#3182F6" : "#4E5968",
+                    }}>
+                    <span className="text-sm font-bold" style={{ color: isActive ? "#3182F6" : "#94A3B8" }}>#</span>
+                    <span className="text-sm font-medium truncate flex-1">{ch.name}</span>
+                  </button>
+                  <button onClick={() => handleDeleteChannel(ch)}
+                    className="absolute right-1 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-100"
+                    title="채널 삭제">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2.5" strokeLinecap="round">
+                      <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                  </button>
+                </div>
+              );
+            })}
+
+            {channels.length === 0 && (
+              <button onClick={() => setShowAddChannel(true)}
+                className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg transition-colors hover:bg-slate-100 text-left"
+                style={{ color: "#94A3B8" }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                  <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+                <span className="text-sm">채널 추가</span>
+              </button>
+            )}
           </div>
-
-          {channels.map((ch) => {
-            const isActive = activeChannel?.id === ch.id;
-            return (
-              <div key={ch.id} className="group relative mx-1">
-                <button
-                  onClick={() => setActiveChannel(ch)}
-                  className="w-full flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-left transition-colors"
-                  style={{
-                    background: isActive ? "rgba(255,255,255,0.18)" : "transparent",
-                    color: isActive ? "#FFFFFF" : "rgba(255,255,255,0.62)",
-                  }}>
-                  <span className="font-bold shrink-0" style={{ fontSize: 15 }}>#</span>
-                  <span className="text-sm font-medium truncate flex-1">{ch.name}</span>
-                </button>
-                <button onClick={() => handleDeleteChannel(ch)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white/20"
-                  title="채널 삭제">
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="2.5" strokeLinecap="round">
-                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                  </svg>
-                </button>
-              </div>
-            );
-          })}
-
-          {channels.length === 0 && (
-            <button onClick={() => setShowAddChannel(true)}
-              className="w-full flex items-center gap-2 px-4 py-1.5 transition-colors hover:bg-white/10 text-left"
-              style={{ color: "rgba(255,255,255,0.55)" }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-              </svg>
-              <span className="text-sm">채널 추가</span>
-            </button>
-          )}
         </div>
 
-        {/* 내 프로필 (사이드바 하단) */}
-        {profile ? (
-          <div className="px-3 py-3" style={{ borderTop: "1px solid rgba(255,255,255,0.1)" }}>
-            <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-white/10 cursor-pointer transition-colors">
+        {/* 내 프로필 */}
+        <div className="p-3" style={{ borderTop: "1px solid #E9EBEF" }}>
+          {profile ? (
+            <div className="flex items-center gap-2.5 px-2 py-2 rounded-xl">
               <div className="relative shrink-0">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold"
+                <div className="w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs font-bold"
                   style={{ background: authorColor(profile.name) }}>
                   {initials(profile.name)}
                 </div>
-                <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 flex items-center justify-center"
-                  style={{ background: "#2BAC76", borderColor: "#3F0E40" }} />
+                <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2"
+                  style={{ background: "#10B981", borderColor: "#F8FAFC" }} />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold truncate" style={{ color: "#FFFFFF" }}>{profile.name}</p>
-                {profile.team && <p className="text-xs truncate" style={{ color: "rgba(255,255,255,0.55)" }}>{profile.team}</p>}
+                <p className="text-xs font-bold truncate" style={{ color: "#191F28" }}>{profile.name}</p>
+                {profile.team && <p className="text-xs truncate" style={{ color: "#94A3B8" }}>{profile.team}</p>}
               </div>
             </div>
-          </div>
-        ) : (
-          <div className="px-4 py-3" style={{ borderTop: "1px solid rgba(255,255,255,0.1)" }}>
-            <p className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>로그인 정보 없음</p>
-          </div>
-        )}
+          ) : (
+            <div className="px-2 py-2">
+              <p className="text-xs" style={{ color: "#B0B8C1" }}>로딩 중...</p>
+            </div>
+          )}
+        </div>
       </aside>
 
       {/* ── 메시지 영역 ── */}
@@ -1025,14 +1019,14 @@ export default function ChatPage() {
         {activeChannel ? (
           <>
             {/* 채널 헤더 */}
-            <div className="flex items-center justify-between px-6 py-3 border-b" style={{ borderColor: "#DDDDDD" }}>
+            <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: "#E9EBEF" }}>
               <div className="flex items-center gap-2 min-w-0">
-                <span className="text-lg font-black" style={{ color: "#1D1C1D" }}>#</span>
-                <h2 className="text-base font-bold" style={{ color: "#1D1C1D" }}>{activeChannel.name}</h2>
+                <span className="text-base font-black" style={{ color: "#94A3B8" }}>#</span>
+                <h2 className="text-base font-bold" style={{ color: "#191F28" }}>{activeChannel.name}</h2>
                 {activeChannel.description && (
                   <>
-                    <div className="w-px h-4 mx-1" style={{ background: "#D6D0D0" }} />
-                    <p className="text-sm truncate" style={{ color: "#616061" }}>{activeChannel.description}</p>
+                    <div className="w-px h-4 mx-1" style={{ background: "#E9EBEF" }} />
+                    <p className="text-sm truncate" style={{ color: "#94A3B8" }}>{activeChannel.description}</p>
                   </>
                 )}
               </div>
@@ -1045,30 +1039,30 @@ export default function ChatPage() {
                       setShowNotifDropdown((v) => !v);
                       if (!showNotifDropdown) handleMarkAllRead();
                     }}
-                    className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors hover:bg-slate-100"
+                    className="relative w-9 h-9 flex items-center justify-center rounded-xl transition-colors hover:bg-slate-100"
                     title="멘션 알림">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-                      stroke={unreadCount > 0 ? "#E01E5A" : "#616061"}
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                      stroke={unreadCount > 0 ? "#3182F6" : "#94A3B8"}
                       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
                       <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
                     </svg>
                     {unreadCount > 0 && (
-                      <span className="text-xs font-bold px-1.5 py-0.5 rounded-full text-white"
-                        style={{ background: "#E01E5A", fontSize: 10 }}>{unreadCount}</span>
+                      <span className="absolute top-1 right-1 w-2 h-2 rounded-full"
+                        style={{ background: "#EF4444" }} />
                     )}
                   </button>
 
                   {showNotifDropdown && (
-                    <div className="absolute right-0 top-11 w-80 rounded-xl border shadow-2xl z-50 overflow-hidden"
-                      style={{ background: "#FFFFFF", borderColor: "#D6D0D0" }}>
+                    <div className="absolute right-0 top-11 w-80 rounded-2xl border shadow-xl z-50 overflow-hidden"
+                      style={{ background: "#FFFFFF", borderColor: "#E9EBEF" }}>
                       <div className="px-4 py-3 border-b flex items-center justify-between"
-                        style={{ borderColor: "#ECECEC", background: "#F8F8F8" }}>
-                        <span className="text-sm font-bold" style={{ color: "#1D1C1D" }}>내 멘션</span>
+                        style={{ borderColor: "#F1F5F9", background: "#F8FAFC" }}>
+                        <span className="text-sm font-bold" style={{ color: "#191F28" }}>내 멘션</span>
                         {notifications.length > 0 && (
                           <button onClick={handleMarkAllRead}
-                            className="text-xs font-semibold transition-colors hover:opacity-70"
-                            style={{ color: "#1264A3" }}>모두 읽음</button>
+                            className="text-xs font-medium transition-colors hover:opacity-70"
+                            style={{ color: "#3182F6" }}>모두 읽음</button>
                         )}
                       </div>
                       <div className="overflow-y-auto" style={{ maxHeight: 320 }}>
@@ -1096,7 +1090,7 @@ export default function ChatPage() {
                                   <p className="text-xs mt-0.5" style={{ color: "#97979C" }}>{formatTime(n.createdAt)}</p>
                                 </div>
                                 {!n.isRead && (
-                                  <div className="w-2 h-2 rounded-full shrink-0 mt-1.5" style={{ background: "#1264A3" }} />
+                                  <div className="w-2 h-2 rounded-full shrink-0 mt-1.5" style={{ background: "#3182F6" }} />
                                 )}
                               </div>
                             </button>
@@ -1121,15 +1115,15 @@ export default function ChatPage() {
                   </div>
                 </div>
               ) : messages.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center gap-4">
-                  <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-2xl font-black"
-                    style={{ background: "#3F0E40", color: "#FFFFFF" }}>#</div>
+                <div className="h-full flex flex-col items-center justify-center gap-3">
+                  <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl font-black"
+                    style={{ background: "rgba(49,130,246,0.08)", color: "#3182F6" }}>#</div>
                   <div className="text-center">
-                    <p className="text-xl font-bold" style={{ color: "#1D1C1D" }}>#{activeChannel.name}</p>
+                    <p className="text-base font-bold" style={{ color: "#191F28" }}>#{activeChannel.name} 채널에 오신 것을 환영합니다!</p>
                     {activeChannel.description && (
-                      <p className="text-sm mt-1" style={{ color: "#616061" }}>{activeChannel.description}</p>
+                      <p className="text-sm mt-1" style={{ color: "#94A3B8" }}>{activeChannel.description}</p>
                     )}
-                    <p className="text-sm mt-2" style={{ color: "#97979C" }}>이 채널의 첫 번째 메시지입니다. 지금 메시지를 보내보세요!</p>
+                    <p className="text-sm mt-2" style={{ color: "#B0B8C1" }}>첫 번째 메시지를 보내보세요.</p>
                   </div>
                 </div>
               ) : (
@@ -1153,28 +1147,20 @@ export default function ChatPage() {
             </div>
 
             {/* 입력창 */}
-            {profile ? (
-              <MessageInput
-                channelName={activeChannel.name}
-                onSend={handleSend}
-                disabled={sending}
-                users={userList}
-              />
-            ) : (
-              <div className="px-6 pb-4">
-                <div className="px-4 py-3 rounded-xl text-sm text-center" style={{ background: "#F8F8F8", color: "#616061", border: "1px solid #D6D0D0" }}>
-                  메시지를 보내려면 로그인하세요.
-                </div>
-              </div>
-            )}
+            <MessageInput
+              channelName={activeChannel.name}
+              onSend={handleSend}
+              disabled={sending || !profile}
+              users={userList}
+            />
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center gap-4" style={{ color: "#97979C" }}>
-            <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-2xl font-black"
-              style={{ background: "#3F0E40", color: "#FFFFFF" }}>#</div>
+          <div className="flex-1 flex flex-col items-center justify-center gap-3">
+            <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl font-black"
+              style={{ background: "rgba(49,130,246,0.08)", color: "#3182F6" }}>#</div>
             <div className="text-center">
-              <p className="text-base font-bold" style={{ color: "#1D1C1D" }}>채널을 선택하세요</p>
-              <p className="text-sm mt-1" style={{ color: "#97979C" }}>왼쪽에서 채널을 선택하거나 새 채널을 만들어보세요.</p>
+              <p className="text-base font-bold" style={{ color: "#191F28" }}>채널을 선택하세요</p>
+              <p className="text-sm mt-1" style={{ color: "#94A3B8" }}>왼쪽에서 채널을 선택하거나 새 채널을 만들어보세요.</p>
             </div>
           </div>
         )}
@@ -1187,8 +1173,8 @@ export default function ChatPage() {
 
       {/* 멘션 토스트 알림 */}
       {mentionToast && (
-        <div className="fixed bottom-6 right-6 z-50 flex items-start gap-3 px-4 py-3.5 rounded-xl shadow-2xl"
-          style={{ background: "#FFFFFF", border: "1px solid #D6D0D0", maxWidth: 340 }}>
+        <div className="fixed bottom-6 right-6 z-50 flex items-start gap-3 px-4 py-3.5 rounded-2xl shadow-xl"
+          style={{ background: "#FFFFFF", border: "1px solid #E9EBEF", maxWidth: 320 }}>
           <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold shrink-0"
             style={{ background: authorColor(mentionToast.fromName) }}>
             {initials(mentionToast.fromName)}
