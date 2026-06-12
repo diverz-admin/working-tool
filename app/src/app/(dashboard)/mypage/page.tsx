@@ -317,7 +317,7 @@ export default function MyPage() {
         </div>
 
         {/* 목록 */}
-        <div className="divide-y" style={{ divideColor: "#F1F5F9" }}>
+        <div className="divide-y" style={{ borderColor: "#F1F5F9" }}>
           {loading ? (
             <div className="py-12 text-center text-sm" style={{ color: "#94A3B8" }}>불러오는 중...</div>
           ) : filtered.length === 0 ? (
