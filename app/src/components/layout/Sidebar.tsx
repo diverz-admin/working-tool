@@ -120,7 +120,6 @@ const navItems = [
   { href: "/meeting-notes",  label: "회의/미팅록",  icon: IC.meeting },
   { href: "/work-journal",   label: "업무일지",    icon: IC.journal },
   { href: "/chat",           label: "채팅",        icon: IC.chat },
-  { href: "/mypage",         label: "마이페이지",  icon: IC.mypage },
 ];
 
 function NavItem({ href, label, icon }: { href: string; label: string; icon: React.ReactNode }) {
@@ -515,7 +514,6 @@ export default function Sidebar() {
           <NavItem {...navItems[3]} />
           <NavItem {...navItems[4]} />
           <NavItem {...navItems[5]} />
-          <NavItem {...navItems[6]} />
           <InternalNavSection />
           <ApprovalNavSection />
           <OperationsNavSection />

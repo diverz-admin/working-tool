@@ -224,7 +224,10 @@ export default function Header() {
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <button
+            onClick={() => router.push("/mypage")}
+            className="flex items-center gap-2 px-2 py-1 rounded-xl transition-colors hover:bg-slate-50"
+          >
             <span className="text-xs font-semibold px-2 py-1 rounded-lg"
               style={{ background: `${ROLE_COLORS[userRole]}12`, border: `1px solid ${ROLE_COLORS[userRole]}40`, color: ROLE_COLORS[userRole] }}>
               {ROLE_LABELS[userRole]}
@@ -234,7 +237,7 @@ export default function Header() {
               {userName.slice(0, 1)}
             </div>
             <span className="text-sm font-medium" style={{ color: "#191F28" }}>{userName}</span>
-          </div>
+          </button>
 
           <button onClick={handleLogout}
             className="text-sm border rounded-xl px-3 py-1.5 transition-colors font-medium"
