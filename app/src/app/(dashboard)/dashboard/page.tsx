@@ -69,12 +69,12 @@ export default function DashboardPage() {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, [load]);
 
-  const thisM      = agg?.monthly[thisMonth];
-  const prevM      = agg?.monthly[prevMonth];
+  const thisM      = agg?.monthly?.[thisMonth];
+  const prevM      = agg?.monthly?.[prevMonth];
   const thisTot    = thisM?.total ?? 0;
   const prevTot    = prevM?.total ?? 0;
   const diff       = prevTot > 0 ? ((thisTot - prevTot) / prevTot * 100) : 0;
-  const thisCost   = costAgg?.monthly[thisMonth]?.total ?? 0;
+  const thisCost   = costAgg?.monthly?.[thisMonth]?.total ?? 0;
   const profit     = thisTot - thisCost;
   const yearProfit = (agg?.yearTotal ?? 0) - (costAgg?.yearTotal ?? 0);
 

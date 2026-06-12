@@ -294,10 +294,6 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
 
   function setField(f: keyof ProjectFormData, v: string) {
     setForm((p) => ({ ...p, [f]: v }));
-    // 시작일 변경 시 모든 매출행 paymentDate 동기화
-    if (f === "startDate") {
-      setRevenues((p) => p.map((r) => ({ ...r, paymentDate: v })));
-    }
     // 관리형/보장형: endDate 변경 시 미완료 매출행 workEndDate 자동 동기화
     if (f === "endDate" && v && (form.projectType === "관리형" || form.projectType === "보장형")) {
       setRevenues((p) => p.map((r) => r.workCompleted ? r : { ...r, workEndDate: v }));
@@ -403,7 +399,6 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
     const newRev  = emptyRevenue();
     const newCost = emptyCost();
     newRev.linkedCostLocalId = newCost.localId;
-    newRev.paymentDate = form.startDate;
     setRevenues((p) => [...p, newRev]);
     setCosts((p) => [...p, newCost]);
   }
