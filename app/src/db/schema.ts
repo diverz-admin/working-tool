@@ -433,6 +433,14 @@ export const userTodos = pgTable("user_todos", {
 
 export type UserTodo = typeof userTodos.$inferSelect;
 
+export const appSettings = pgTable("app_settings", {
+  key:       text("key").primaryKey(),
+  value:     text("value").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type AppSetting = typeof appSettings.$inferSelect;
+
 export const workDailyLogs = pgTable("work_daily_logs", {
   id:        uuid("id").primaryKey().defaultRandom(),
   revenueId: uuid("revenue_id").notNull().references(() => projectRevenues.id, { onDelete: "cascade" }),

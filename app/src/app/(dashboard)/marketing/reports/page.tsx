@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   LineChart, Line, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip,
@@ -200,87 +200,306 @@ function MetaTab() {
   );
 }
 
+// ─── 인스타그램 타입 ──────────────────────────────────────────
+interface IgProfile { id: string; username: string; name?: string; biography?: string; followers_count: number; follows_count?: number; media_count: number; profile_picture_url?: string; }
+interface IgMedia   { id: string; caption?: string; media_type: string; timestamp: string; like_count?: number; comments_count?: number; thumbnail_url?: string; media_url?: string; permalink?: string; }
+interface IgStats   { connected: boolean; error?: string; profile?: IgProfile; media?: IgMedia[]; monthlyInsights?: { month: string; 도달: number; 노출: number }[]; thisMonth?: { posts: number; likes: number; comments: number }; tokenExpiresAt?: string | null; }
+
 // ─── 인스타그램 탭 ────────────────────────────────────────────
 function InstagramTab() {
+  const [stats, setStats]         = useState<IgStats | null>(null);
+  const [loading, setLoading]     = useState(true);
+  const [showSetup, setShowSetup] = useState(false);
+  const [token, setToken]         = useState("");
+  const [userId, setUserId]       = useState("");
+  const [saving, setSaving]       = useState(false);
+  const [saveError, setSaveError] = useState("");
+
+  const fetchStats = useCallback(() => {
+    setLoading(true);
+    fetch("/api/instagram/stats")
+      .then((r) => r.json())
+      .then((d: IgStats) => { setStats(d); setLoading(false); })
+      .catch(() => { setStats({ connected: false }); setLoading(false); });
+  }, []);
+
+  useEffect(() => { fetchStats(); }, [fetchStats]);
+
+  async function handleConnect() {
+    setSaving(true); setSaveError("");
+    const res = await fetch("/api/instagram/connect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accessToken: token, igUserId: userId }),
+    });
+    const data = await res.json();
+    if (!res.ok) { setSaveError(data.error ?? "연결 실패"); setSaving(false); return; }
+    setShowSetup(false); setToken(""); setUserId("");
+    fetchStats();
+    setSaving(false);
+  }
+
+  async function handleDisconnect() {
+    if (!confirm("Instagram 계정 연결을 해제할까요?")) return;
+    await fetch("/api/instagram/connect", { method: "DELETE" });
+    fetchStats();
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <svg className="animate-spin" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#E1306C" strokeWidth="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+        <span className="ml-3 text-sm" style={{ color: "#94A3B8" }}>Instagram 데이터 불러오는 중...</span>
+      </div>
+    );
+  }
+
+  // ── 미연결 상태 ─────────────────────────────────────────────
+  if (!stats?.connected) {
+    return (
+      <div className="space-y-5">
+        {/* 연결 안내 카드 */}
+        <div className="rounded-2xl p-8 flex flex-col items-center gap-4 text-center" style={{ background: "#fff", border: "1px solid #E9EBEF" }}>
+          <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ background: "linear-gradient(135deg, #E1306C, #833AB4)" }}>
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="2" width="20" height="20" rx="5"/>
+              <circle cx="12" cy="12" r="4"/>
+              <circle cx="17.5" cy="6.5" r="1" fill="white" stroke="none"/>
+            </svg>
+          </div>
+          <div>
+            <p className="text-base font-bold mb-1" style={{ color: "#191F28" }}>Instagram 계정을 연결하세요</p>
+            <p className="text-sm" style={{ color: "#64748B" }}>실시간 팔로워, 게시물 성과, 도달 데이터를 자동으로 불러옵니다.</p>
+          </div>
+          <button onClick={() => setShowSetup(true)}
+            className="px-5 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90 transition-opacity"
+            style={{ background: "linear-gradient(135deg, #E1306C, #833AB4)" }}>
+            계정 연결하기
+          </button>
+          {stats?.error && <p className="text-xs" style={{ color: "#EF4444" }}>오류: {stats.error}</p>}
+        </div>
+
+        {/* 설정 모달 */}
+        {showSetup && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}>
+            <div className="rounded-2xl p-6 w-full max-w-md mx-4" style={{ background: "#fff", border: "1px solid #E9EBEF" }}>
+              <h3 className="text-base font-bold mb-1" style={{ color: "#191F28" }}>Instagram 계정 연결</h3>
+              <p className="text-xs mb-5" style={{ color: "#94A3B8" }}>Meta Graph API 액세스 토큰을 입력하세요.</p>
+
+              {/* 토큰 발급 안내 */}
+              <div className="rounded-xl p-4 mb-4 text-xs space-y-1.5" style={{ background: "#F8FAFC", border: "1px solid #E9EBEF" }}>
+                <p className="font-bold" style={{ color: "#475569" }}>토큰 발급 방법</p>
+                <p style={{ color: "#64748B" }}>① <a href="https://developers.facebook.com" target="_blank" rel="noreferrer" className="underline" style={{ color: "#3182F6" }}>developers.facebook.com</a> → 앱 만들기 → 비즈니스</p>
+                <p style={{ color: "#64748B" }}>② 제품 추가 → Instagram Graph API 선택</p>
+                <p style={{ color: "#64748B" }}>③ Graph API Explorer → 앱 선택 → 사용자 토큰 생성</p>
+                <p style={{ color: "#64748B" }}>④ 권한 추가: <code className="px-1 rounded" style={{ background: "#E9EBEF" }}>instagram_basic, instagram_manage_insights, pages_show_list</code></p>
+                <p style={{ color: "#64748B" }}>⑤ 장기 토큰 교환: Settings → 장기 액세스 토큰으로 변환 (60일)</p>
+                <p style={{ color: "#64748B" }}>⑥ Instagram 계정 ID: 비즈니스 설정 → 계정 → Instagram → 계정 ID 복사</p>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-semibold mb-1" style={{ color: "#64748B" }}>Instagram 계정 ID (숫자)</label>
+                  <input value={userId} onChange={(e) => setUserId(e.target.value)}
+                    placeholder="예: 17841400000000000"
+                    className="w-full px-3 py-2 text-sm rounded-xl outline-none border focus:border-[#E1306C]"
+                    style={{ background: "#F8FAFC", borderColor: "#E9EBEF", color: "#191F28" }} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1" style={{ color: "#64748B" }}>장기 액세스 토큰</label>
+                  <textarea value={token} onChange={(e) => setToken(e.target.value)}
+                    rows={3} placeholder="EAAxxxxxx..."
+                    className="w-full px-3 py-2 text-sm rounded-xl outline-none border resize-none focus:border-[#E1306C]"
+                    style={{ background: "#F8FAFC", borderColor: "#E9EBEF", color: "#191F28" }} />
+                </div>
+                {saveError && <p className="text-xs" style={{ color: "#EF4444" }}>{saveError}</p>}
+              </div>
+
+              <div className="flex justify-end gap-2 mt-5">
+                <button onClick={() => { setShowSetup(false); setSaveError(""); }}
+                  className="px-4 py-2 rounded-xl text-sm font-semibold border"
+                  style={{ borderColor: "#E9EBEF", color: "#64748B" }}>취소</button>
+                <button onClick={handleConnect} disabled={saving || !token || !userId}
+                  className="px-4 py-2 rounded-xl text-sm font-bold text-white disabled:opacity-50"
+                  style={{ background: "linear-gradient(135deg, #E1306C, #833AB4)" }}>
+                  {saving ? "연결 중..." : "연결하기"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── 연결된 상태 ─────────────────────────────────────────────
+  const { profile, media = [], monthlyInsights = [], thisMonth } = stats;
+  const recentPosts = [...media].sort((a, b) => (b.like_count ?? 0) - (a.like_count ?? 0)).slice(0, 10);
+  const totalLikes    = thisMonth?.likes ?? 0;
+  const totalComments = thisMonth?.comments ?? 0;
+  const engRate = profile && totalLikes + totalComments > 0 && media.length > 0
+    ? ((totalLikes + totalComments) / media.length / 100).toFixed(2)
+    : "—";
+
+  const daysLeft = stats.tokenExpiresAt
+    ? Math.max(0, Math.round((new Date(stats.tokenExpiresAt).getTime() - Date.now()) / 86400000))
+    : null;
+
   return (
     <div className="space-y-5">
-      {/* KPI */}
+      {/* 계정 헤더 */}
+      <div className="rounded-2xl p-5 flex items-center justify-between" style={{ background: "#fff", border: "1px solid #E9EBEF" }}>
+        <div className="flex items-center gap-4">
+          {profile?.profile_picture_url ? (
+            <img src={profile.profile_picture_url} alt={profile.username} className="w-12 h-12 rounded-full object-cover" />
+          ) : (
+            <div className="w-12 h-12 rounded-full flex items-center justify-center text-white text-lg font-black"
+              style={{ background: "linear-gradient(135deg, #E1306C, #833AB4)" }}>
+              {profile?.username?.[0]?.toUpperCase() ?? "I"}
+            </div>
+          )}
+          <div>
+            <div className="flex items-center gap-2">
+              <p className="text-base font-bold" style={{ color: "#191F28" }}>@{profile?.username}</p>
+              <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: "rgba(225,48,108,0.1)", color: "#E1306C" }}>
+                실시간 연동
+              </span>
+            </div>
+            {profile?.biography && <p className="text-xs mt-0.5 truncate max-w-sm" style={{ color: "#64748B" }}>{profile.biography}</p>}
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          {daysLeft !== null && daysLeft <= 15 && (
+            <span className="text-xs px-2 py-1 rounded-lg font-semibold" style={{ background: "rgba(245,158,11,0.1)", color: "#D97706" }}>
+              토큰 만료 D-{daysLeft}
+            </span>
+          )}
+          <button onClick={() => setShowSetup(true)}
+            className="text-xs px-3 py-1.5 rounded-xl border transition-colors hover:bg-slate-50"
+            style={{ borderColor: "#E9EBEF", color: "#64748B" }}>토큰 갱신</button>
+          <button onClick={handleDisconnect}
+            className="text-xs px-3 py-1.5 rounded-xl transition-colors"
+            style={{ background: "rgba(239,68,68,0.07)", color: "#EF4444" }}>연결 해제</button>
+        </div>
+      </div>
+
+      {/* KPI 카드 */}
       <div className="grid grid-cols-5 gap-4">
-        {IG_KPI.map((k) => <KpiCard key={k.label} {...k} />)}
+        <KpiCard label="팔로워" value={(profile?.followers_count ?? 0).toLocaleString()} sub={`팔로잉 ${(profile?.follows_count ?? 0).toLocaleString()}`} color="#E1306C" />
+        <KpiCard label="총 게시물" value={(profile?.media_count ?? 0).toLocaleString()} sub="누적 게시물 수" color="#833AB4" />
+        <KpiCard label="이번달 게시물" value={`${thisMonth?.posts ?? 0}건`} sub={`최근 30일 기준`} color="#F59E0B" />
+        <KpiCard label="이번달 좋아요" value={(totalLikes).toLocaleString()} sub="이번달 게시물 합계" color="#6366F1" up={true} />
+        <KpiCard label="이번달 댓글" value={(totalComments).toLocaleString()} sub={`평균 인게이지먼트 ${engRate}`} color="#10B981" up={true} />
       </div>
 
       {/* 차트 2열 */}
       <div className="grid grid-cols-2 gap-5">
-        {/* 팔로워 추이 */}
+        {/* 도달/노출 추이 */}
         <div className="rounded-2xl p-5" style={{ background: "#fff", border: "1px solid #E9EBEF" }}>
-          <h3 className="text-sm font-bold mb-4" style={{ color: "#191F28" }}>팔로워 추이</h3>
-          <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={IG_MONTHLY}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
-              <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 10, fill: "#94A3B8" }} axisLine={false} tickLine={false} domain={["auto", "auto"]} />
-              <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v: unknown, n: unknown) => [Number(v).toLocaleString(), n as string]} />
-              <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
-              <Line type="monotone" dataKey="팔로워" stroke="#E1306C" strokeWidth={2.5} dot={{ r: 4 }} activeDot={{ r: 6 }} />
-              <Line type="monotone" dataKey="신규" stroke="#6366F1" strokeWidth={2} strokeDasharray="4 2" dot={{ r: 3 }} />
-            </LineChart>
-          </ResponsiveContainer>
+          <h3 className="text-sm font-bold mb-4" style={{ color: "#191F28" }}>월별 도달·노출 추이</h3>
+          {monthlyInsights.length > 0 ? (
+            <ResponsiveContainer width="100%" height={200}>
+              <LineChart data={monthlyInsights}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 10, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
+                <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v: unknown, n: unknown) => [Number(v).toLocaleString(), n as string]} />
+                <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+                <Line type="monotone" dataKey="도달" stroke="#E1306C" strokeWidth={2.5} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                <Line type="monotone" dataKey="노출" stroke="#833AB4" strokeWidth={2} strokeDasharray="4 2" dot={{ r: 3 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-[200px] flex items-center justify-center flex-col gap-2">
+              <p className="text-xs font-semibold" style={{ color: "#94A3B8" }}>인사이트 데이터 없음</p>
+              <p className="text-xs" style={{ color: "#CBD5E1" }}>instagram_manage_insights 권한이 필요합니다</p>
+            </div>
+          )}
         </div>
 
-        {/* 인게이지먼트 */}
+        {/* 최근 게시물 좋아요/댓글 */}
         <div className="rounded-2xl p-5" style={{ background: "#fff", border: "1px solid #E9EBEF" }}>
-          <h3 className="text-sm font-bold mb-4" style={{ color: "#191F28" }}>인게이지먼트 추이</h3>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={IG_MONTHLY} barGap={4}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
-              <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 10, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
-              <Tooltip contentStyle={TOOLTIP_STYLE} />
-              <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
-              <Bar dataKey="좋아요" fill="#E1306C" radius={[3, 3, 0, 0]} maxBarSize={20} />
-              <Bar dataKey="댓글"   fill="#8B5CF6" radius={[3, 3, 0, 0]} maxBarSize={20} />
-            </BarChart>
-          </ResponsiveContainer>
+          <h3 className="text-sm font-bold mb-4" style={{ color: "#191F28" }}>최근 게시물 인게이지먼트</h3>
+          {media.length > 0 ? (
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={media.slice(0, 8).reverse().map((m) => ({
+                날짜: new Date(m.timestamp).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" }),
+                좋아요: m.like_count ?? 0,
+                댓글: m.comments_count ?? 0,
+              }))} barGap={4}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                <XAxis dataKey="날짜" tick={{ fontSize: 10, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 10, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
+                <Tooltip contentStyle={TOOLTIP_STYLE} />
+                <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+                <Bar dataKey="좋아요" fill="#E1306C" radius={[3, 3, 0, 0]} maxBarSize={20} />
+                <Bar dataKey="댓글"   fill="#833AB4" radius={[3, 3, 0, 0]} maxBarSize={20} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-[200px] flex items-center justify-center">
+              <p className="text-xs" style={{ color: "#94A3B8" }}>게시물이 없습니다</p>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* 게시물 성과 */}
+      {/* 게시물 성과 테이블 */}
       <div className="rounded-2xl overflow-hidden" style={{ background: "#fff", border: "1px solid #E9EBEF" }}>
-        <div className="px-5 py-4" style={{ borderBottom: "1px solid #F1F5F9" }}>
-          <h3 className="text-sm font-bold" style={{ color: "#191F28" }}>게시물 성과 (이번달 TOP 5)</h3>
+        <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: "1px solid #F1F5F9" }}>
+          <h3 className="text-sm font-bold" style={{ color: "#191F28" }}>최근 게시물 성과 (좋아요 순)</h3>
+          <span className="text-xs" style={{ color: "#94A3B8" }}>최근 {Math.min(recentPosts.length, 10)}개</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr style={{ background: "#F8FAFC" }}>
-                {["게시물","날짜","좋아요","댓글","저장","도달","인게이지먼트율"].map((h) => (
-                  <th key={h} className="px-5 py-3 text-left text-xs font-semibold" style={{ color: "#64748B" }}>{h}</th>
+                {["","게시물 내용","유형","날짜","좋아요","댓글","인게이지먼트"].map((h) => (
+                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold" style={{ color: "#64748B" }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {IG_POSTS.map((p, i) => {
-                const engRate = ((p.좋아요 + p.댓글) / p.도달 * 100).toFixed(2);
+              {recentPosts.map((p, i) => {
+                const thumbnail = p.thumbnail_url ?? (p.media_type !== "VIDEO" ? p.media_url : undefined);
+                const caption   = p.caption ? p.caption.slice(0, 50) + (p.caption.length > 50 ? "…" : "") : "(캡션 없음)";
+                const likes     = p.like_count ?? 0;
+                const comments  = p.comments_count ?? 0;
+                const eng       = likes + comments > 0 ? `${likes + comments}` : "—";
                 return (
-                  <tr key={i} className="border-t" style={{ borderColor: "#F1F5F9" }}>
-                    <td className="px-5 py-3.5 font-semibold text-xs max-w-[200px]" style={{ color: "#191F28" }}>
-                      <div className="flex items-center gap-1.5">
-                        {i === 0 && <span className="text-xs px-1.5 py-0.5 rounded font-bold" style={{ background: "rgba(225,48,108,0.1)", color: "#E1306C" }}>TOP</span>}
-                        {p.title}
-                      </div>
-                    </td>
-                    <td className="px-5 py-3.5 text-xs" style={{ color: "#94A3B8" }}>{p.date}</td>
-                    <td className="px-5 py-3.5 text-xs font-medium" style={{ color: "#E1306C" }}>{p.좋아요.toLocaleString()}</td>
-                    <td className="px-5 py-3.5 text-xs" style={{ color: "#475569" }}>{p.댓글}</td>
-                    <td className="px-5 py-3.5 text-xs" style={{ color: "#475569" }}>{p.저장}</td>
-                    <td className="px-5 py-3.5 text-xs" style={{ color: "#475569" }}>{p.도달.toLocaleString()}</td>
-                    <td className="px-5 py-3.5">
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 h-1.5 rounded-full" style={{ background: "#F1F5F9", minWidth: 60 }}>
-                          <div className="h-1.5 rounded-full" style={{ width: `${Math.min(parseFloat(engRate) * 10, 100)}%`, background: "#E1306C" }} />
+                  <tr key={p.id} className="border-t hover:bg-slate-50 transition-colors" style={{ borderColor: "#F1F5F9" }}>
+                    <td className="px-4 py-3">
+                      {thumbnail ? (
+                        <img src={thumbnail} alt="" className="w-10 h-10 rounded-lg object-cover" />
+                      ) : (
+                        <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: "rgba(225,48,108,0.1)" }}>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#E1306C" strokeWidth="1.5" strokeLinecap="round"><rect x="2" y="2" width="20" height="20" rx="4"/><circle cx="12" cy="12" r="4"/></svg>
                         </div>
-                        <span className="text-xs font-bold" style={{ color: "#E1306C" }}>{engRate}%</span>
-                      </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 max-w-[220px]">
+                      {p.permalink ? (
+                        <a href={p.permalink} target="_blank" rel="noreferrer"
+                          className="text-xs font-medium hover:underline" style={{ color: "#191F28" }}>{caption}</a>
+                      ) : (
+                        <span className="text-xs font-medium" style={{ color: "#191F28" }}>{caption}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-xs px-1.5 py-0.5 rounded font-semibold"
+                        style={{ background: p.media_type === "VIDEO" || p.media_type === "REELS" ? "rgba(99,102,241,0.1)" : "rgba(225,48,108,0.1)",
+                                 color: p.media_type === "VIDEO" || p.media_type === "REELS" ? "#6366F1" : "#E1306C" }}>
+                        {p.media_type === "VIDEO" ? "영상" : p.media_type === "CAROUSEL_ALBUM" ? "카루셀" : p.media_type === "REELS" ? "릴스" : "이미지"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-xs" style={{ color: "#94A3B8" }}>{new Date(p.timestamp).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" })}</td>
+                    <td className="px-4 py-3 text-xs font-bold" style={{ color: "#E1306C" }}>{likes.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-xs" style={{ color: "#475569" }}>{comments.toLocaleString()}</td>
+                    <td className="px-4 py-3">
+                      <span className="text-xs font-bold" style={{ color: i === 0 ? "#E1306C" : "#475569" }}>
+                        {i === 0 && <span className="mr-1 text-xs px-1 py-0.5 rounded" style={{ background: "rgba(225,48,108,0.1)", color: "#E1306C" }}>TOP</span>}
+                        {eng}
+                      </span>
                     </td>
                   </tr>
                 );
@@ -289,6 +508,40 @@ function InstagramTab() {
           </table>
         </div>
       </div>
+
+      {/* 토큰 갱신 모달 */}
+      {showSetup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}>
+          <div className="rounded-2xl p-6 w-full max-w-md mx-4" style={{ background: "#fff", border: "1px solid #E9EBEF" }}>
+            <h3 className="text-base font-bold mb-4" style={{ color: "#191F28" }}>토큰 갱신</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: "#64748B" }}>Instagram 계정 ID</label>
+                <input value={userId} onChange={(e) => setUserId(e.target.value)} placeholder={profile?.id ?? ""}
+                  className="w-full px-3 py-2 text-sm rounded-xl outline-none border focus:border-[#E1306C]"
+                  style={{ background: "#F8FAFC", borderColor: "#E9EBEF", color: "#191F28" }} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: "#64748B" }}>새 액세스 토큰</label>
+                <textarea value={token} onChange={(e) => setToken(e.target.value)} rows={3} placeholder="EAAxxxxxx..."
+                  className="w-full px-3 py-2 text-sm rounded-xl outline-none border resize-none focus:border-[#E1306C]"
+                  style={{ background: "#F8FAFC", borderColor: "#E9EBEF", color: "#191F28" }} />
+              </div>
+              {saveError && <p className="text-xs" style={{ color: "#EF4444" }}>{saveError}</p>}
+            </div>
+            <div className="flex justify-end gap-2 mt-5">
+              <button onClick={() => { setShowSetup(false); setSaveError(""); }}
+                className="px-4 py-2 rounded-xl text-sm font-semibold border"
+                style={{ borderColor: "#E9EBEF", color: "#64748B" }}>취소</button>
+              <button onClick={handleConnect} disabled={saving || !token || !userId}
+                className="px-4 py-2 rounded-xl text-sm font-bold text-white disabled:opacity-50"
+                style={{ background: "linear-gradient(135deg, #E1306C, #833AB4)" }}>
+                {saving ? "저장 중..." : "저장"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
