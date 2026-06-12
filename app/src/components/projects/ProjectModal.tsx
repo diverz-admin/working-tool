@@ -613,7 +613,6 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
       ref={backdropRef}
       className="fixed inset-0 z-50 flex items-start justify-center p-4 overflow-y-auto"
       style={{ background: "rgba(22,31,51,0.5)", backdropFilter: "blur(2px)" }}
-      onClick={(e) => { if (e.target === backdropRef.current) onClose(); }}
     >
       <div
         className="w-full my-4 rounded-2xl"
