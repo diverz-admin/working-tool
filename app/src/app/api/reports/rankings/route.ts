@@ -27,15 +27,17 @@ export async function POST(req: NextRequest) {
 
     const results = await Promise.allSettled(
       trackers.map(async (t) => {
-        const { rank, totalResults } =
+        const result =
           t.platform === "place"
             ? await findPlaceRank(t.keyword, t.targetType, t.targetValue)
             : await findShoppingRank(t.keyword, t.targetType, t.targetValue);
+        const { rank, totalResults } = result;
+        const notFound = "notFound" in result ? result.notFound : false;
         const [ranking] = await db
           .insert(keywordRankings)
           .values({ trackerId: t.id, rank, totalResults })
           .returning();
-        return { trackerId: t.id, rank, totalResults, rankingId: ranking.id };
+        return { trackerId: t.id, rank, totalResults, rankingId: ranking.id, notFound };
       })
     );
 

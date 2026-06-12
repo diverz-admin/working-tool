@@ -152,7 +152,9 @@ function RankCell({
   if (rank === null) {
     return (
       <td className="border px-2 py-1.5 text-center text-xs font-medium"
-        title="순위권 밖 (300위 초과) 또는 상품 ID를 확인해주세요."
+        title={projectType === "플레이스" || projectType == null
+          ? "검색 결과 5위 이내에 없음 — 키워드/업체명 확인 필요"
+          : "순위권 밖 (100위 초과) 또는 상품 ID를 확인해주세요."}
         style={{ ...baseStyle, color: "#CBD5E1" }}>
         —
       </td>
@@ -209,6 +211,7 @@ export default function ProjectReportSection({
   const [editForm,    setEditForm]    = useState<AddFormState>({ platform: "place", keyword: "", targetType: "place_name", targetValue: "", startDate: "", endDate: "" });
   const [editSaving,  setEditSaving]  = useState(false);
   const [editError,   setEditError]   = useState<string | null>(null);
+  const [checkResult, setCheckResult] = useState<{ type: "ok" | "notfound" | "err"; text: string } | null>(null);
 
   const load = useCallback(() => {
     if (!projectId) return;
@@ -269,28 +272,62 @@ export default function ProjectReportSection({
   }, [trackers, projectType, startDate, onGuaranteeEndDate, load]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
+  function showResult(msg: { type: "ok" | "notfound" | "err"; text: string }) {
+    setCheckResult(msg);
+    setTimeout(() => setCheckResult(null), 5000);
+  }
+
   async function checkOne(trackerId: string) {
     setChecking(trackerId);
-    await fetch("/api/reports/rankings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ trackerId }),
-    });
+    try {
+      const res = await fetch("/api/reports/rankings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trackerId }),
+      });
+      const data = await res.json();
+      const r = data.results?.[0];
+      if (r?.error) {
+        showResult({ type: "err", text: `API 오류: ${r.error}` });
+      } else if (r?.notFound) {
+        showResult({ type: "notfound", text: `검색 결과 5개 이내에 없음 — 키워드 또는 업체명을 확인해주세요.` });
+      } else if (r?.rank != null) {
+        showResult({ type: "ok", text: `${r.rank}위 확인` });
+      }
+    } catch {
+      showResult({ type: "err", text: "네트워크 오류" });
+    }
     setChecking(null);
     load();
   }
 
   async function checkAll() {
     setCheckingAll(true);
-    await Promise.all(
-      trackers.map((t) =>
-        fetch("/api/reports/rankings", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ trackerId: t.id }),
-        })
-      )
-    );
+    try {
+      const responses = await Promise.all(
+        trackers.map((t) =>
+          fetch("/api/reports/rankings", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ trackerId: t.id }),
+          }).then((r) => r.json())
+        )
+      );
+      const allResults = responses.flatMap((d) => d.results ?? []);
+      const errors   = allResults.filter((r: { error?: string }) => r.error);
+      const notFounds = allResults.filter((r: { notFound?: boolean; rank?: number | null }) => r.notFound && r.rank === null);
+      const found    = allResults.filter((r: { rank?: number | null; notFound?: boolean }) => r.rank != null);
+      if (errors.length > 0) {
+        showResult({ type: "err", text: `${errors.length}개 오류 발생` });
+      } else if (notFounds.length > 0 && found.length === 0) {
+        showResult({ type: "notfound", text: `전체 키워드가 검색 5위 이내에 없습니다. 키워드/업체명을 확인해주세요.` });
+      } else {
+        const ranks = found.map((r: { rank: number }) => `${r.rank}위`).join(", ");
+        showResult({ type: "ok", text: `조회 완료${ranks ? ` — ${ranks}` : ""}` });
+      }
+    } catch {
+      showResult({ type: "err", text: "네트워크 오류" });
+    }
     setCheckingAll(false);
     load();
   }
@@ -422,6 +459,32 @@ export default function ProjectReportSection({
         </div>
       ) : (
         <>
+          {/* 조회 결과 피드백 */}
+          {checkResult && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium"
+              style={{
+                background: checkResult.type === "ok" ? "rgba(16,185,129,0.07)" : checkResult.type === "notfound" ? "rgba(249,115,22,0.07)" : "rgba(239,68,68,0.07)",
+                color:      checkResult.type === "ok" ? "#059669" : checkResult.type === "notfound" ? "#C2410C" : "#EF4444",
+                border: `1px solid ${checkResult.type === "ok" ? "rgba(16,185,129,0.2)" : checkResult.type === "notfound" ? "rgba(249,115,22,0.2)" : "rgba(239,68,68,0.2)"}`,
+              }}>
+              {checkResult.type === "ok" && "✓ "}
+              {checkResult.type === "notfound" && "⚠ "}
+              {checkResult.type === "err" && "✕ "}
+              {checkResult.text}
+            </div>
+          )}
+
+          {/* 플레이스 API 한계 안내 */}
+          {trackers.some((t) => t.platform === "place") && (
+            <div className="flex items-start gap-2 px-3 py-2 rounded-xl text-xs"
+              style={{ background: "rgba(139,92,246,0.06)", border: "1px solid rgba(139,92,246,0.15)", color: "#6D28D9" }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5">
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+              </svg>
+              <span>네이버 플레이스 API는 키워드당 최대 <b>5개</b> 결과만 반환합니다. 검색 키워드로 업체가 상위 5개 안에 없으면 순위가 표시되지 않습니다.</span>
+            </div>
+          )}
+
           {/* 액션 */}
           <div className="flex items-center justify-between">
             <span className="text-xs" style={{ color: "#94A3B8" }}>
