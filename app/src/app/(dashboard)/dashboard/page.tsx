@@ -121,6 +121,43 @@ export default function DashboardPage() {
         </div>
       ))}
 
+      {/* 종료 임박 알림 */}
+      {!loading && (() => {
+        const d1 = activeProjects.filter(p => { const d = daysLeft(p.endDate); return d !== null && d <= 1; });
+        const d3 = activeProjects.filter(p => { const d = daysLeft(p.endDate); return d !== null && d >= 2 && d <= 3; });
+        const d7 = activeProjects.filter(p => { const d = daysLeft(p.endDate); return d !== null && d >= 4 && d <= 7; });
+        if (d1.length === 0 && d3.length === 0 && d7.length === 0) return null;
+        const alerts = [
+          { items: d1, label: "종료 1일전", color: "#EF4444", bg: "rgba(239,68,68,0.06)", border: "rgba(239,68,68,0.2)" },
+          { items: d3, label: "종료 3일전", color: "#F97316", bg: "rgba(249,115,22,0.06)", border: "rgba(249,115,22,0.2)" },
+          { items: d7, label: "종료 7일전", color: "#EAB308", bg: "rgba(234,179,8,0.06)",  border: "rgba(234,179,8,0.2)" },
+        ].filter(a => a.items.length > 0);
+        return (
+          <div className="space-y-2">
+            {alerts.map(({ items, label, color, bg, border }) => (
+              <div key={label} className="flex items-start gap-3 px-4 py-3 rounded-2xl" style={{ background: bg, border: `1px solid ${border}` }}>
+                <span className="w-2 h-2 rounded-full mt-1.5 shrink-0" style={{ background: color }} />
+                <div className="flex-1 min-w-0">
+                  <span className="text-xs font-bold mr-2" style={{ color }}>{label}</span>
+                  <span className="text-xs" style={{ color: "#475569" }}>
+                    {items.map((p, i) => (
+                      <span key={p.id}>
+                        {i > 0 && <span style={{ color: "#CBD5E1" }}> · </span>}
+                        <Link href={p.projectGroupId ? `/projects?open=${p.id}` : "/projects"} className="font-medium hover:underline" style={{ color: "#475569" }}>
+                          {p.campaignName}
+                        </Link>
+                        {p.endDate && <span className="ml-1 font-semibold" style={{ color }}>{p.endDate}</span>}
+                      </span>
+                    ))}
+                  </span>
+                </div>
+                <span className="text-xs font-bold px-2 py-0.5 rounded-full shrink-0" style={{ background: `${color}18`, color }}>{items.length}건</span>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
+
       {/* KPI 카드 — 계산서날짜(매출) / 승인 매입 기준 */}
       <div className="grid grid-cols-4 gap-4">
         {/* 이번달 매출 */}
