@@ -224,10 +224,7 @@ export default function Header() {
             )}
           </div>
 
-          <button
-            onClick={() => router.push("/mypage")}
-            className="flex items-center gap-2 px-2 py-1 rounded-xl transition-colors hover:bg-slate-50"
-          >
+          <div className="flex items-center gap-2">
             <span className="text-xs font-semibold px-2 py-1 rounded-lg"
               style={{ background: `${ROLE_COLORS[userRole]}12`, border: `1px solid ${ROLE_COLORS[userRole]}40`, color: ROLE_COLORS[userRole] }}>
               {ROLE_LABELS[userRole]}
@@ -237,6 +234,14 @@ export default function Header() {
               {userName.slice(0, 1)}
             </div>
             <span className="text-sm font-medium" style={{ color: "#191F28" }}>{userName}</span>
+          </div>
+
+          <button onClick={() => router.push("/mypage")}
+            className="text-sm border rounded-xl px-3 py-1.5 transition-colors font-medium"
+            style={{ color: "#3182F6", borderColor: "#3182F6" }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(49,130,246,0.07)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}>
+            마이페이지
           </button>
 
           <button onClick={handleLogout}
