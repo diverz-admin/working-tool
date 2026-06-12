@@ -109,9 +109,10 @@ interface SimpleClient {
 const PRODUCT_OPTIONS = [
   "[플레이스] 상위노출 보장형",
   "[플레이스] 상위노출 관리형",
+  "[플레이스] 12개월 패키지",
   "[플레이스] 6개월 패키지",
   "[쇼핑] 상위노출",
-  "IMC마케팅",
+  "IMC 마케팅",
 ];
 
 interface ManagedProduct {
