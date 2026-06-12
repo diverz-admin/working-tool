@@ -152,9 +152,7 @@ function RankCell({
   if (rank === null) {
     return (
       <td className="border px-2 py-1.5 text-center text-xs font-medium"
-        title={projectType === "플레이스" || projectType == null
-          ? "검색 결과 5위 이내에 없음 — 키워드/업체명 확인 필요"
-          : "순위권 밖 (100위 초과) 또는 상품 ID를 확인해주세요."}
+        title="검색 결과에 없음 — 키워드 또는 업체명을 확인해주세요."
         style={{ ...baseStyle, color: "#CBD5E1" }}>
         —
       </td>
@@ -474,14 +472,14 @@ export default function ProjectReportSection({
             </div>
           )}
 
-          {/* 플레이스 API 한계 안내 */}
+          {/* 플레이스 조회 방식 안내 */}
           {trackers.some((t) => t.platform === "place") && (
             <div className="flex items-start gap-2 px-3 py-2 rounded-xl text-xs"
               style={{ background: "rgba(139,92,246,0.06)", border: "1px solid rgba(139,92,246,0.15)", color: "#6D28D9" }}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5">
                 <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
               </svg>
-              <span>네이버 플레이스 API는 키워드당 최대 <b>5개</b> 결과만 반환합니다. 검색 키워드로 업체가 상위 5개 안에 없으면 순위가 표시되지 않습니다.</span>
+              <span>네이버 검색 플레이스 탭 기준으로 전체 순위를 조회합니다. 순위가 표시되지 않으면 키워드 또는 업체명을 확인해주세요.</span>
             </div>
           )}
 

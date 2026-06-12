@@ -1,42 +1,46 @@
-const BASE_URL = "https://openapi.naver.com/v1/search/local.json";
-const DISPLAY = 5; // 네이버 로컬 검색 API 최대값 (페이징 불가, start=1 고정)
+const SEARCH_URL = "https://search.naver.com/search.naver";
 
-interface NaverLocalItem {
-  title: string;       // HTML 태그 포함
-  link: string;        // 업체 페이지 URL (place ID 포함)
-  category: string;
-  address: string;
-  roadAddress: string;
-  telephone: string;
-  mapx: string;
-  mapy: string;
+function decodeNaverName(raw: string): string {
+  // \\uXXXX 이스케이프 디코딩
+  const unescaped = raw.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) =>
+    String.fromCharCode(parseInt(hex, 16))
+  );
+  // HTML 태그 제거 (<mark>, </mark> 등)
+  return unescaped.replace(/<[^>]+>/g, "").trim();
 }
 
-interface NaverLocalResponse {
-  total: number;
-  start: number;
-  display: number;
-  items: NaverLocalItem[];
+function extractPlaceList(html: string): { id: string; name: string }[] {
+  // 가장 큰 <script> 블록에 place 데이터가 포함됨
+  const scriptBlocks = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].map(
+    (m) => m[1]
+  );
+  const bigScript = scriptBlocks
+    .filter((s) => s.length > 10000)
+    .sort((a, b) => b.length - a.length)[0] ?? "";
+
+  const results: { id: string; name: string }[] = [];
+  const pattern = /"id":"(\d{7,})"[^}]{0,400}?"name":"(.*?)"/g;
+  let m: RegExpExecArray | null;
+
+  while ((m = pattern.exec(bigScript)) !== null) {
+    const name = decodeNaverName(m[2]);
+    if (name) results.push({ id: m[1], name });
+  }
+
+  return results;
 }
 
-function stripHtml(str: string) {
-  return str.replace(/<[^>]+>/g, "");
-}
-
-function extractPlaceId(link: string): string | null {
-  const m = link.match(/\/(\d+)(?:[?#]|$)/);
-  return m ? m[1] : null;
-}
-
-function matchesTarget(item: NaverLocalItem, targetType: string, targetValue: string): boolean {
+function matchesTarget(
+  item: { id: string; name: string },
+  targetType: string,
+  targetValue: string
+): boolean {
   const val = targetValue.toLowerCase().trim();
   switch (targetType) {
     case "place_name":
-      return stripHtml(item.title).toLowerCase().includes(val);
-    case "place_id": {
-      const id = extractPlaceId(item.link);
-      return id === targetValue.trim();
-    }
+      return item.name.toLowerCase().includes(val);
+    case "place_id":
+      return item.id === targetValue.trim();
     default:
       return false;
   }
@@ -47,36 +51,31 @@ export async function findPlaceRank(
   targetType: string,
   targetValue: string
 ): Promise<{ rank: number | null; totalResults: number; notFound?: boolean }> {
-  const clientId     = process.env.NAVER_CLIENT_ID;
-  const clientSecret = process.env.NAVER_CLIENT_SECRET;
+  const url = `${SEARCH_URL}?query=${encodeURIComponent(keyword)}&where=place`;
 
-  if (!clientId || !clientSecret) {
-    throw new Error("NAVER_CLIENT_ID / NAVER_CLIENT_SECRET 환경변수가 없습니다.");
-  }
-
-  // 네이버 로컬 검색 API는 start=1 고정, display 최대 5개
-  const url = `${BASE_URL}?query=${encodeURIComponent(keyword)}&display=${DISPLAY}&start=1`;
   const res = await fetch(url, {
     headers: {
-      "X-Naver-Client-Id":     clientId,
-      "X-Naver-Client-Secret": clientSecret,
+      "User-Agent":
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      "Accept": "text/html,application/xhtml+xml",
+      "Accept-Language": "ko-KR,ko;q=0.9",
+      "Referer": "https://search.naver.com/",
     },
   });
 
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Naver Place API 오류 ${res.status}: ${text}`);
+    throw new Error(`네이버 검색 오류 ${res.status}`);
   }
 
-  const data: NaverLocalResponse = await res.json();
-  const totalResults = data.total;
+  const html = await res.text();
+  const places = extractPlaceList(html);
+  const totalResults = places.length;
 
-  for (let i = 0; i < data.items.length; i++) {
-    if (matchesTarget(data.items[i], targetType, targetValue)) {
+  for (let i = 0; i < places.length; i++) {
+    if (matchesTarget(places[i], targetType, targetValue)) {
       return { rank: i + 1, totalResults };
     }
   }
 
-  // 5개 결과 내에 없음 (API 한계상 최대 5개만 조회 가능)
   return { rank: null, totalResults, notFound: true };
 }
