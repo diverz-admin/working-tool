@@ -8,7 +8,7 @@ type Role   = "Admin" | "Manager" | "Staff";
 type Status = "활성" | "비활성";
 
 const ROLES: Role[]   = ["Admin", "Manager", "Staff"];
-const TEAMS           = ["영업 1팀", "영업 2팀", "운영팀", "기타"];
+const TEAMS           = ["경영", "경영관리", "마케팅팀", "운영팀", "영업 1팀", "영업 2팀"];
 const POSITIONS       = ["대표", "팀장", "매니저", "사원", "인턴"];
 
 const ROLE_DESC: Record<Role, string> = {
