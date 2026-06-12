@@ -263,7 +263,6 @@ export default function SalesTargetBanner({ team }: { team: string }) {
         <div
           className="fixed inset-0 z-50 flex items-center justify-center"
           style={{ background: "rgba(0,0,0,0.4)", backdropFilter: "blur(2px)" }}
-          onClick={(e) => { if (e.target === e.currentTarget) setShowCriteriaModal(false); }}
         >
           <div className="rounded-2xl p-6 w-[420px]" style={{ background: "#FFFFFF", boxShadow: "0 20px 60px rgba(0,0,0,0.12)" }}>
             <h3 className="text-base font-bold mb-1" style={{ color: "#191F28" }}>목표 기준 설정</h3>
@@ -315,7 +314,6 @@ export default function SalesTargetBanner({ team }: { team: string }) {
         <div
           className="fixed inset-0 z-50 flex items-center justify-center"
           style={{ background: "rgba(0,0,0,0.4)", backdropFilter: "blur(2px)" }}
-          onClick={(e) => { if (e.target === e.currentTarget) setShowModal(false); }}
         >
           <div className="rounded-2xl p-6 w-96" style={{ background: "#FFFFFF", boxShadow: "0 20px 60px rgba(0,0,0,0.12)" }}>
             <h3 className="text-base font-bold mb-1" style={{ color: "#191F28" }}>

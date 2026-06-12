@@ -230,7 +230,7 @@ function GroupModal({ initial, onClose, onSaved }: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: "rgba(22,31,51,0.5)", backdropFilter: "blur(2px)" }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+>
       <div className="w-full max-w-md rounded-2xl p-6 space-y-4" style={{ background: "#FFFFFF", border: "1px solid #E9EBEF" }}>
         <h2 className="text-base font-bold" style={{ color: "#191F28" }}>{isEdit ? "프로젝트 수정" : "새 프로젝트 추가"}</h2>
         <form onSubmit={handleSubmit} className="space-y-3">
@@ -731,8 +731,7 @@ function RevenueKpiSection({
       {/* KPI 설정 모달 */}
       {editingKpi && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ background: "rgba(22,31,51,0.5)", backdropFilter: "blur(2px)" }}
-          onClick={(e) => { if (e.target === e.currentTarget) setEditingKpi(false); }}>
+          style={{ background: "rgba(22,31,51,0.5)", backdropFilter: "blur(2px)" }}>
           <div className="w-full rounded-2xl overflow-hidden" style={{ maxWidth: 700, background: "#FFFFFF", boxShadow: "0 20px 60px rgba(22,31,51,0.2)" }}>
             <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: "#F1F5F9" }}>
               <h2 className="text-sm font-bold" style={{ color: "#191F28" }}>KPI 목표 설정 — {year}년</h2>

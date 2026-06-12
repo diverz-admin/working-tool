@@ -215,7 +215,6 @@ export default function ClientModal({ initial, onClose, onSaved, onDelete, onVie
       ref={backdropRef}
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: "rgba(22,31,51,0.5)", backdropFilter: "blur(2px)" }}
-      onClick={(e) => { if (e.target === backdropRef.current) onClose(); }}
     >
       <div
         className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl"
