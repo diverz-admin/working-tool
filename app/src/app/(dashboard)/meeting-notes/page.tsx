@@ -332,7 +332,8 @@ function NoteForm({
         <label className="block text-xs font-semibold mb-1.5" style={{ color: "#64748B" }}>내용</label>
         <textarea value={form.content} onChange={(e) => set("content", e.target.value)}
           rows={20} placeholder="회의/미팅 내용, 결정사항, 액션 아이템 등을 기록하세요."
-          className={`${inp} resize-none leading-relaxed`} style={inpS} />
+          className={`${inp} resize-none leading-relaxed`}
+          style={{ ...inpS, minHeight: 480 }} />
       </div>
 
       {/* 제안서 첨부 */}
