@@ -239,10 +239,15 @@ function ApprovalNavSection() {
   useEffect(() => { if (isActive) setOpen(true); }, [isActive]);
 
   useEffect(() => {
-    fetch("/api/approvals/pending-counts")
-      .then((r) => r.json())
-      .then((d) => setCounts({ confirm: d.confirm ?? 0, payment: d.payment ?? 0 }))
-      .catch(() => {});
+    function fetchCounts() {
+      fetch("/api/approvals/pending-counts")
+        .then((r) => r.json())
+        .then((d) => setCounts({ confirm: d.confirm ?? 0, payment: d.payment ?? 0 }))
+        .catch(() => {});
+    }
+    fetchCounts();
+    window.addEventListener("approval-request-added", fetchCounts);
+    return () => window.removeEventListener("approval-request-added", fetchCounts);
   }, [pathname]);
 
   const badgeCounts: Record<string, number> = {

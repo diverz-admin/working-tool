@@ -984,6 +984,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                             });
                             setConfirmStatuses((p) => ({ ...p, [contractKey]: { status: "대기", requestId: newReq.id } }));
                             showToast("계약금액 입금확인 요청이 전송되었습니다.");
+                            window.dispatchEvent(new Event("approval-request-added"));
                           }}
                         >
                           입금확인요청
@@ -1200,6 +1201,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                                       });
                                       setPaymentStatuses((p) => ({ ...p, [rowKey]: { status: "대기", requestId: newReq.id } }));
                                       showToast("입금요청이 전송되었습니다.");
+                                      window.dispatchEvent(new Event("approval-request-added"));
                                     }}
                                     className="text-xs font-semibold px-2 py-1 rounded-lg whitespace-nowrap transition-all"
                                     style={{
