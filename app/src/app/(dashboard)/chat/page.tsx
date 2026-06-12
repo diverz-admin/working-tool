@@ -49,8 +49,6 @@ interface MessageGroup {
   messages: { id: string; content: string; createdAt: string }[];
 }
 
-// ─── 파일 메시지 타입 ─────────────────────────────────────
-
 interface FileAttachment {
   __type: "file";
   url: string;
@@ -76,8 +74,6 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-// ─── 유틸 ────────────────────────────────────────────────
-
 const COLORS = ["#3182F6", "#6366F1", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#06B6D4", "#EC4899"];
 
 function authorColor(name: string) {
@@ -96,7 +92,6 @@ function formatTime(iso: string) {
   const isToday = d.toDateString() === now.toDateString();
   const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
   const isYesterday = d.toDateString() === yesterday.toDateString();
-
   const time = d.toLocaleTimeString("ko-KR", { hour: "numeric", minute: "2-digit" });
   if (isToday) return time;
   if (isYesterday) return `어제 ${time}`;
@@ -143,6 +138,29 @@ function getSessionProfile(): Profile | null {
   } catch { return null; }
 }
 
+function extractMentions(text: string): string[] {
+  const matches = text.match(/@([^\s@#]+)/g) ?? [];
+  return [...new Set(matches.map((m) => m.slice(1)))];
+}
+
+function renderWithMentions(text: string, myName: string) {
+  const parts = text.split(/(@[^\s@#]+)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith("@")) {
+      const name = part.slice(1);
+      const isMe = name === myName;
+      return (
+        <span key={i} className="font-semibold rounded px-0.5"
+          style={{ background: isMe ? "rgba(29,155,209,0.2)" : "rgba(99,102,241,0.12)",
+                   color: isMe ? "#1D9BD1" : "#6366F1" }}>
+          {part}
+        </span>
+      );
+    }
+    return <span key={i}>{part}</span>;
+  });
+}
+
 // ─── 채널 추가 모달 ───────────────────────────────────────
 
 function CreateChannelModal({ onClose, onCreated }: { onClose: () => void; onCreated: (ch: Channel) => void }) {
@@ -165,46 +183,47 @@ function CreateChannelModal({ onClose, onCreated }: { onClose: () => void; onCre
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: "rgba(22,31,51,0.5)", backdropFilter: "blur(2px)" }}
-      onClick={onClose}>
-      <div className="w-full max-w-md rounded-2xl p-6"
-        style={{ background: "#FFFFFF", boxShadow: "0 20px 60px rgba(22,31,51,0.2)" }}
-        onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-5">
-          <h3 className="text-base font-bold" style={{ color: "#191F28" }}>채널 추가</h3>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2.5" strokeLinecap="round">
-              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
+      style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(2px)" }}>
+      <div className="w-full max-w-md rounded-2xl overflow-hidden"
+        style={{ background: "#FFFFFF", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
+        <div className="px-6 py-5 border-b" style={{ borderColor: "#E9EBEF" }}>
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-bold" style={{ color: "#1D1C1D" }}>채널 만들기</h3>
+            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2.5" strokeLinecap="round">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+          <p className="text-sm mt-1" style={{ color: "#616061" }}>채널은 특정 주제를 중심으로 대화가 이루어지는 공간입니다.</p>
         </div>
-        <form onSubmit={submit} className="space-y-4">
+        <form onSubmit={submit} className="px-6 py-5 space-y-4">
           <div>
-            <label className="block text-xs font-semibold mb-1" style={{ color: "#64748B" }}>채널 이름 *</label>
+            <label className="block text-sm font-bold mb-2" style={{ color: "#1D1C1D" }}>채널 이름</label>
             <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold" style={{ color: "#94A3B8" }}>#</span>
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold" style={{ color: "#616061" }}>#</span>
               <input autoFocus type="text" value={name}
                 onChange={(e) => setName(e.target.value.toLowerCase().replace(/\s+/g, "-"))}
                 placeholder="예: 마케팅-전략"
-                className="w-full pl-7 pr-3 py-2.5 text-sm rounded-xl outline-none border focus:border-[#3182F6] transition-colors"
-                style={{ background: "#F8FAFC", borderColor: "#E9EBEF", color: "#191F28" }} />
+                className="w-full pl-8 pr-3 py-2.5 text-sm rounded-lg outline-none border-2 focus:border-[#1D9BD1] transition-colors"
+                style={{ borderColor: "#D6D0D0", color: "#1D1C1D" }} />
             </div>
           </div>
           <div>
-            <label className="block text-xs font-semibold mb-1" style={{ color: "#64748B" }}>채널 설명</label>
+            <label className="block text-sm font-bold mb-2" style={{ color: "#1D1C1D" }}>설명 <span className="font-normal" style={{ color: "#616061" }}>(선택)</span></label>
             <input type="text" value={desc} onChange={(e) => setDesc(e.target.value)}
               placeholder="이 채널의 목적을 설명해주세요."
-              className="w-full px-3 py-2.5 text-sm rounded-xl outline-none border focus:border-[#3182F6] transition-colors"
-              style={{ background: "#F8FAFC", borderColor: "#E9EBEF", color: "#191F28" }} />
+              className="w-full px-3 py-2.5 text-sm rounded-lg outline-none border-2 focus:border-[#1D9BD1] transition-colors"
+              style={{ borderColor: "#D6D0D0", color: "#1D1C1D" }} />
           </div>
           <div className="flex gap-3 pt-1">
             <button type="button" onClick={onClose}
-              className="flex-1 py-2 text-sm font-medium rounded-xl border transition-colors hover:bg-slate-50"
-              style={{ borderColor: "#E9EBEF", color: "#64748B" }}>취소</button>
+              className="flex-1 py-2.5 text-sm font-bold rounded-lg border-2 transition-colors hover:bg-slate-50"
+              style={{ borderColor: "#D6D0D0", color: "#616061" }}>취소</button>
             <button type="submit" disabled={saving || !name.trim()}
-              className="flex-1 py-2 text-sm font-semibold rounded-xl text-white transition-opacity hover:opacity-90 disabled:opacity-40"
-              style={{ background: "linear-gradient(135deg, #3182F6 0%, #2462D8 100%)" }}>
-              {saving ? "생성 중..." : "채널 만들기"}
+              className="flex-1 py-2.5 text-sm font-bold rounded-lg text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+              style={{ background: "#007A5A" }}>
+              {saving ? "생성 중..." : "만들기"}
             </button>
           </div>
         </form>
@@ -220,36 +239,33 @@ function FileMessage({ data }: { data: FileAttachment }) {
   const isPdf   = data.mimeType === "application/pdf";
 
   return (
-    <div className="mt-0.5 space-y-1.5 max-w-xs">
+    <div className="mt-1 space-y-1.5" style={{ maxWidth: 360 }}>
       {isImage ? (
         <a href={data.url} download={data.name} target="_blank" rel="noopener noreferrer">
-          <img
-            src={data.url} alt={data.name}
-            className="rounded-xl border object-cover max-h-64 w-full"
-            style={{ borderColor: "#E9EBEF", cursor: "pointer" }}
-          />
+          <img src={data.url} alt={data.name}
+            className="rounded-lg border object-cover"
+            style={{ borderColor: "#D6D0D0", cursor: "pointer", maxHeight: 300, maxWidth: "100%" }} />
         </a>
       ) : isPdf ? (
-        <div className="rounded-xl border overflow-hidden" style={{ borderColor: "#E9EBEF" }}>
+        <div className="rounded-lg border overflow-hidden" style={{ borderColor: "#D6D0D0" }}>
           <iframe src={data.url} title={data.name} className="w-full" style={{ height: 200 }} />
         </div>
       ) : (
-        <a
-          href={data.url} download={data.name}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors hover:bg-slate-50"
-          style={{ borderColor: "#E9EBEF", background: "#F8FAFC", textDecoration: "none" }}
-        >
-          <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: "rgba(49,130,246,0.1)" }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3182F6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <a href={data.url} download={data.name}
+          className="flex items-center gap-3 px-4 py-3 rounded-lg border-2 transition-colors hover:bg-slate-50"
+          style={{ borderColor: "#D6D0D0", background: "#F8F8F8", textDecoration: "none" }}>
+          <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
+            style={{ background: "rgba(29,155,209,0.12)" }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1D9BD1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
               <polyline points="14 2 14 8 20 8"/>
             </svg>
           </div>
-          <div className="min-w-0">
-            <p className="text-xs font-semibold truncate" style={{ color: "#191F28" }}>{data.name}</p>
-            <p className="text-xs" style={{ color: "#94A3B8" }}>{formatFileSize(data.size)}</p>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold truncate" style={{ color: "#1D1C1D" }}>{data.name}</p>
+            <p className="text-xs mt-0.5" style={{ color: "#616061" }}>{formatFileSize(data.size)}</p>
           </div>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 ml-auto">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#616061" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
             <polyline points="7 10 12 15 17 10"/>
             <line x1="12" y1="15" x2="12" y2="3"/>
@@ -257,7 +273,7 @@ function FileMessage({ data }: { data: FileAttachment }) {
         </a>
       )}
       {data.caption && (
-        <p className="text-sm leading-relaxed whitespace-pre-wrap break-words" style={{ color: "#334155" }}>
+        <p className="text-sm leading-relaxed whitespace-pre-wrap break-words" style={{ color: "#1D1C1D" }}>
           {data.caption}
         </p>
       )}
@@ -265,39 +281,15 @@ function FileMessage({ data }: { data: FileAttachment }) {
   );
 }
 
-// ─── 멘션 파싱 ───────────────────────────────────────────
-
-function extractMentions(text: string): string[] {
-  const matches = text.match(/@([^\s@#]+)/g) ?? [];
-  return [...new Set(matches.map((m) => m.slice(1)))];
-}
-
-function renderWithMentions(text: string, myName: string) {
-  const parts = text.split(/(@[^\s@#]+)/g);
-  return parts.map((part, i) => {
-    if (part.startsWith("@")) {
-      const name = part.slice(1);
-      const isMe = name === myName;
-      return (
-        <span key={i} className="font-semibold rounded px-0.5"
-          style={{ background: isMe ? "rgba(49,130,246,0.15)" : "rgba(99,102,241,0.12)",
-                   color: isMe ? "#3182F6" : "#6366F1" }}>
-          {part}
-        </span>
-      );
-    }
-    return <span key={i}>{part}</span>;
-  });
-}
-
 // ─── 날짜 구분선 ──────────────────────────────────────────
 
 function DateSeparator({ label }: { label: string }) {
   return (
-    <div className="flex items-center gap-3 my-4 px-5">
-      <div className="flex-1 h-px" style={{ background: "#E9EBEF" }} />
-      <span className="text-xs font-semibold px-2" style={{ color: "#94A3B8" }}>{label}</span>
-      <div className="flex-1 h-px" style={{ background: "#E9EBEF" }} />
+    <div className="flex items-center gap-4 my-5 px-6">
+      <div className="flex-1 h-px" style={{ background: "#D6D0D0" }} />
+      <span className="text-xs font-semibold px-3 py-1 rounded-full border"
+        style={{ color: "#616061", borderColor: "#D6D0D0", background: "#FFFFFF" }}>{label}</span>
+      <div className="flex-1 h-px" style={{ background: "#D6D0D0" }} />
     </div>
   );
 }
@@ -325,7 +317,6 @@ function MessageGroupItem({
   actions: MessageActions;
 }) {
   const color = authorColor(group.authorName);
-  const teamColor = group.authorTeam === "영업 1팀" ? "#6366F1" : group.authorTeam === "영업 2팀" ? "#10B981" : null;
   const editAreaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -337,7 +328,11 @@ function MessageGroupItem({
   }, [actions.editingId, group.messages]);
 
   return (
-    <div className="flex gap-3 px-5 py-0.5 group hover:bg-slate-50 transition-colors">
+    <div className="group flex gap-3 px-6 py-1.5 transition-colors"
+      style={{ background: "transparent" }}
+      onMouseEnter={e => (e.currentTarget.style.background = "#F8F8F8")}
+      onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
+
       {/* 아바타 */}
       <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-xs font-bold shrink-0 mt-0.5"
         style={{ background: color }}>
@@ -348,21 +343,21 @@ function MessageGroupItem({
       <div className="flex-1 min-w-0">
         {/* 헤더 */}
         <div className="flex items-baseline gap-2 mb-1">
-          <span className="text-sm font-bold" style={{ color: isMe ? "#3182F6" : "#191F28" }}>
+          <span className="text-sm font-bold hover:underline cursor-pointer" style={{ color: isMe ? "#1264A3" : "#1D1C1D" }}>
             {group.authorName}
-            {isMe && <span className="ml-1 text-xs font-medium" style={{ color: "#94A3B8" }}>(나)</span>}
+            {isMe && <span className="ml-1 text-xs font-normal" style={{ color: "#616061" }}>(나)</span>}
           </span>
-          {teamColor && (
-            <span className="text-xs font-semibold px-1.5 py-0.5 rounded-full"
-              style={{ background: `${teamColor}18`, color: teamColor }}>
+          {group.authorTeam && (
+            <span className="text-xs font-medium px-1.5 py-0.5 rounded"
+              style={{ background: "rgba(29,155,209,0.1)", color: "#1264A3" }}>
               {group.authorTeam}
             </span>
           )}
-          <span className="text-xs" style={{ color: "#B0B8C1" }}>{formatTime(group.firstTime)}</span>
+          <span className="text-xs" style={{ color: "#97979C" }}>{formatTime(group.firstTime)}</span>
         </div>
 
         {/* 메시지들 */}
-        <div className="space-y-1">
+        <div className="space-y-0.5">
           {group.messages.map((m, i) => {
             const parsed = parseContent(m.content);
             const isEditing = actions.editingId === m.id;
@@ -372,7 +367,6 @@ function MessageGroupItem({
               <div key={m.id} className="relative group/msg flex items-start gap-1">
                 <div className="flex-1 min-w-0">
                   {isEditing ? (
-                    /* 인라인 편집 */
                     <div className="space-y-1.5">
                       <textarea
                         ref={editAreaRef}
@@ -387,29 +381,23 @@ function MessageGroupItem({
                           if (e.key === "Escape") actions.onEditCancel();
                         }}
                         rows={1}
-                        className="w-full px-3 py-2 text-sm rounded-xl outline-none resize-none border focus:border-[#3182F6] leading-relaxed"
-                        style={{ background: "#F8FAFC", borderColor: "#E2E8F0", color: "#191F28", maxHeight: 200 }}
+                        className="w-full px-3 py-2 text-sm rounded-lg outline-none resize-none border-2 focus:border-[#1D9BD1] leading-relaxed"
+                        style={{ borderColor: "#D6D0D0", color: "#1D1C1D", maxHeight: 200 }}
                       />
                       <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => actions.onEditSave(m.id)}
-                          className="px-3 py-1 text-xs font-semibold rounded-lg text-white transition-opacity hover:opacity-90"
-                          style={{ background: "linear-gradient(135deg, #3182F6 0%, #2462D8 100%)" }}>
-                          저장
-                        </button>
-                        <button
-                          onClick={actions.onEditCancel}
-                          className="px-3 py-1 text-xs font-semibold rounded-lg transition-colors hover:bg-slate-200"
-                          style={{ color: "#64748B", background: "#F1F5F9" }}>
-                          취소
-                        </button>
-                        <span className="text-xs" style={{ color: "#B0B8C1" }}>Enter 저장 · Esc 취소</span>
+                        <button onClick={() => actions.onEditSave(m.id)}
+                          className="px-3 py-1 text-xs font-bold rounded-lg text-white"
+                          style={{ background: "#007A5A" }}>저장</button>
+                        <button onClick={actions.onEditCancel}
+                          className="px-3 py-1 text-xs font-bold rounded-lg border"
+                          style={{ color: "#616061", borderColor: "#D6D0D0" }}>취소</button>
+                        <span className="text-xs" style={{ color: "#97979C" }}>Enter 저장 · Esc 취소</span>
                       </div>
                     </div>
                   ) : isFile ? (
                     <FileMessage data={(parsed as { kind: "file"; data: FileAttachment }).data} />
                   ) : (
-                    <p className="text-sm leading-relaxed whitespace-pre-wrap break-words" style={{ color: "#334155" }}>
+                    <p className="text-sm leading-relaxed whitespace-pre-wrap break-words" style={{ color: "#1D1C1D" }}>
                       {renderWithMentions(m.content, myName)}
                     </p>
                   )}
@@ -418,28 +406,26 @@ function MessageGroupItem({
                 {/* 시간 (두 번째~ 메시지) */}
                 {i > 0 && !isEditing && (
                   <span className="text-xs opacity-0 group-hover/msg:opacity-100 transition-opacity shrink-0 mt-0.5"
-                    style={{ color: "#B0B8C1" }}>
+                    style={{ color: "#97979C" }}>
                     {new Date(m.createdAt).toLocaleTimeString("ko-KR", { hour: "numeric", minute: "2-digit" })}
                   </span>
                 )}
 
-                {/* 수정/삭제 버튼 — 내 메시지, 편집 중 아닐 때만 */}
+                {/* 수정/삭제 버튼 */}
                 {isMe && !isEditing && !isFile && (
                   <div className="flex items-center gap-0.5 opacity-0 group-hover/msg:opacity-100 transition-opacity shrink-0 mt-0.5">
-                    <button
-                      onClick={() => actions.onEdit(m.id, m.content)}
-                      className="w-6 h-6 flex items-center justify-center rounded-lg transition-colors hover:bg-slate-200"
+                    <button onClick={() => actions.onEdit(m.id, m.content)}
+                      className="w-6 h-6 flex items-center justify-center rounded transition-colors hover:bg-slate-200"
                       title="수정">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#616061" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                         <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                       </svg>
                     </button>
-                    <button
-                      onClick={() => actions.onDelete(m.id)}
-                      className="w-6 h-6 flex items-center justify-center rounded-lg transition-colors hover:bg-red-50"
+                    <button onClick={() => actions.onDelete(m.id)}
+                      className="w-6 h-6 flex items-center justify-center rounded transition-colors hover:bg-red-50"
                       title="삭제">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#E01E5A" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                         <polyline points="3 6 5 6 21 6"/>
                         <path d="M19 6l-1 14H6L5 6"/>
                         <path d="M10 11v6M14 11v6"/>
@@ -459,9 +445,7 @@ function MessageGroupItem({
 
 // ─── 메시지 목록 ──────────────────────────────────────────
 
-function MessageList({
-  messages, profile, actions,
-}: {
+function MessageList({ messages, profile, actions }: {
   messages: Message[];
   profile: Profile;
   actions: MessageActions;
@@ -470,7 +454,7 @@ function MessageList({
   let lastDate = "";
 
   return (
-    <div className="py-4 space-y-1.5">
+    <div className="py-2">
       {groups.map((g) => {
         const dateStr = g.firstTime.slice(0, 10);
         const showSep = dateStr !== lastDate;
@@ -488,21 +472,19 @@ function MessageList({
   );
 }
 
-// ─── 입력창 ──────────────────────────────────────────────
+// ─── 입력창 (Slack 스타일) ─────────────────────────────────
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
 
-function MessageInput({
-  channelName, onSend, disabled, users,
-}: {
+function MessageInput({ channelName, onSend, disabled, users }: {
   channelName: string;
   onSend: (content: string) => void;
   disabled: boolean;
   users: UserOption[];
 }) {
-  const [value, setValue]           = useState("");
-  const [pendingFile, setPendingFile] = useState<Omit<FileAttachment, "__type" | "caption"> | null>(null);
-  const [fileError, setFileError]   = useState<string | null>(null);
+  const [value, setValue]               = useState("");
+  const [pendingFile, setPendingFile]   = useState<Omit<FileAttachment, "__type" | "caption"> | null>(null);
+  const [fileError, setFileError]       = useState<string | null>(null);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionIdx, setMentionIdx]     = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -517,12 +499,8 @@ function MessageInput({
   function detectMention(text: string, cursorPos: number) {
     const before = text.slice(0, cursorPos);
     const match = before.match(/@([^\s@#]*)$/);
-    if (match) {
-      setMentionQuery(match[1]);
-      setMentionIdx(0);
-    } else {
-      setMentionQuery(null);
-    }
+    if (match) { setMentionQuery(match[1]); setMentionIdx(0); }
+    else setMentionQuery(null);
   }
 
   function insertMention(name: string) {
@@ -542,25 +520,10 @@ function MessageInput({
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (mentionQuery !== null && mentionCandidates.length > 0) {
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        setMentionIdx((i) => Math.min(i + 1, mentionCandidates.length - 1));
-        return;
-      }
-      if (e.key === "ArrowUp") {
-        e.preventDefault();
-        setMentionIdx((i) => Math.max(i - 1, 0));
-        return;
-      }
-      if (e.key === "Enter" || e.key === "Tab") {
-        e.preventDefault();
-        insertMention(mentionCandidates[mentionIdx].name);
-        return;
-      }
-      if (e.key === "Escape") {
-        setMentionQuery(null);
-        return;
-      }
+      if (e.key === "ArrowDown") { e.preventDefault(); setMentionIdx((i) => Math.min(i + 1, mentionCandidates.length - 1)); return; }
+      if (e.key === "ArrowUp")   { e.preventDefault(); setMentionIdx((i) => Math.max(i - 1, 0)); return; }
+      if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); insertMention(mentionCandidates[mentionIdx].name); return; }
+      if (e.key === "Escape") { setMentionQuery(null); return; }
     }
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
   }
@@ -569,10 +532,7 @@ function MessageInput({
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    if (file.size > MAX_FILE_SIZE) {
-      setFileError("5MB 이하 파일만 첨부할 수 있습니다.");
-      return;
-    }
+    if (file.size > MAX_FILE_SIZE) { setFileError("5MB 이하 파일만 첨부할 수 있습니다."); return; }
     setFileError(null);
     const reader = new FileReader();
     reader.onload = (ev) => {
@@ -585,12 +545,8 @@ function MessageInput({
     if (disabled) return;
     if (pendingFile) {
       const content = JSON.stringify({
-        __type: "file",
-        url: pendingFile.url,
-        name: pendingFile.name,
-        size: pendingFile.size,
-        mimeType: pendingFile.mimeType,
-        caption: value.trim(),
+        __type: "file", url: pendingFile.url, name: pendingFile.name,
+        size: pendingFile.size, mimeType: pendingFile.mimeType, caption: value.trim(),
       } satisfies FileAttachment);
       onSend(content);
       setPendingFile(null);
@@ -617,32 +573,28 @@ function MessageInput({
   const isImage = pendingFile?.mimeType.startsWith("image/");
 
   return (
-    <div className="px-5 pb-5 pt-2">
+    <div className="px-4 pb-4 pt-1">
       {/* @ 멘션 드롭다운 */}
       {mentionQuery !== null && mentionCandidates.length > 0 && (
-        <div className="mb-2 rounded-xl border overflow-hidden shadow-lg"
-          style={{ background: "#FFFFFF", borderColor: "#E9EBEF" }}>
-          <div className="px-3 py-1.5 border-b" style={{ borderColor: "#F1F5F9", background: "#F8FAFC" }}>
-            <span className="text-xs font-semibold" style={{ color: "#94A3B8" }}>멤버 선택</span>
+        <div className="mb-2 rounded-xl border-2 overflow-hidden shadow-xl"
+          style={{ background: "#FFFFFF", borderColor: "#D6D0D0" }}>
+          <div className="px-3 py-1.5 border-b" style={{ borderColor: "#ECECEC", background: "#F8F8F8" }}>
+            <span className="text-xs font-bold" style={{ color: "#616061" }}>멤버 선택</span>
           </div>
           {mentionCandidates.map((u, i) => (
-            <button
-              key={u.id}
-              type="button"
+            <button key={u.id} type="button"
               onMouseDown={(e) => { e.preventDefault(); insertMention(u.name); }}
               className="w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors"
-              style={{ background: i === mentionIdx ? "rgba(49,130,246,0.07)" : "transparent" }}>
+              style={{ background: i === mentionIdx ? "rgba(29,155,209,0.08)" : "transparent" }}>
               <div className="w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs font-bold shrink-0"
                 style={{ background: authorColor(u.name) }}>
                 {initials(u.name)}
               </div>
               <div className="flex-1 min-w-0">
-                <span className="text-sm font-semibold" style={{ color: "#191F28" }}>{u.name}</span>
-                {u.team && (
-                  <span className="ml-1.5 text-xs" style={{ color: "#94A3B8" }}>{u.team}</span>
-                )}
+                <span className="text-sm font-semibold" style={{ color: "#1D1C1D" }}>{u.name}</span>
+                {u.team && <span className="ml-1.5 text-xs" style={{ color: "#97979C" }}>{u.team}</span>}
               </div>
-              <span className="text-xs font-medium" style={{ color: "#3182F6" }}>@{u.name}</span>
+              <span className="text-xs font-medium" style={{ color: "#1264A3" }}>@{u.name}</span>
             </button>
           ))}
         </div>
@@ -650,79 +602,123 @@ function MessageInput({
 
       {/* 파일 미리보기 */}
       {pendingFile && (
-        <div className="mb-2 flex items-center gap-3 px-3 py-2.5 rounded-xl border"
-          style={{ borderColor: "#E9EBEF", background: "#F8FAFC" }}>
+        <div className="mb-2 flex items-center gap-3 px-3 py-2.5 rounded-xl border-2"
+          style={{ borderColor: "#D6D0D0", background: "#F8F8F8" }}>
           {isImage ? (
             <img src={pendingFile.url} alt={pendingFile.name}
               className="w-10 h-10 rounded-lg object-cover shrink-0" />
           ) : (
             <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
-              style={{ background: "rgba(49,130,246,0.1)" }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3182F6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              style={{ background: "rgba(29,155,209,0.12)" }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1D9BD1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                 <polyline points="14 2 14 8 20 8"/>
               </svg>
             </div>
           )}
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold truncate" style={{ color: "#191F28" }}>{pendingFile.name}</p>
-            <p className="text-xs" style={{ color: "#94A3B8" }}>{formatFileSize(pendingFile.size)}</p>
+            <p className="text-sm font-semibold truncate" style={{ color: "#1D1C1D" }}>{pendingFile.name}</p>
+            <p className="text-xs mt-0.5" style={{ color: "#97979C" }}>{formatFileSize(pendingFile.size)}</p>
           </div>
           <button onClick={() => setPendingFile(null)}
-            className="p-1 rounded-lg hover:bg-red-50 transition-colors shrink-0">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2.5" strokeLinecap="round">
+            className="p-1.5 rounded-lg hover:bg-red-50 transition-colors shrink-0">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#E01E5A" strokeWidth="2.5" strokeLinecap="round">
               <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
             </svg>
           </button>
         </div>
       )}
-      {fileError && (
-        <p className="mb-1.5 text-xs px-1" style={{ color: "#EF4444" }}>{fileError}</p>
-      )}
+      {fileError && <p className="mb-2 text-xs px-1" style={{ color: "#E01E5A" }}>{fileError}</p>}
 
-      <div className="flex items-end gap-2 px-3 py-2.5 rounded-2xl border transition-colors focus-within:border-[#3182F6]"
-        style={{ background: "#F8FAFC", borderColor: "#E9EBEF" }}>
-        {/* 파일 첨부 버튼 */}
-        <button
-          type="button"
-          onClick={() => { setFileError(null); fileInputRef.current?.click(); }}
-          className="w-8 h-8 flex items-center justify-center rounded-xl shrink-0 transition-colors hover:bg-slate-200"
-          title="파일 첨부 (최대 5MB)"
-          disabled={disabled}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
-          </svg>
-        </button>
-        <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileChange}
-          accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.txt,.csv" />
-
+      {/* Slack 스타일 입력 박스 */}
+      <div className="rounded-xl border-2 transition-colors focus-within:border-[#1264A3] overflow-hidden"
+        style={{ borderColor: "#C8C8C8", background: "#FFFFFF" }}>
+        {/* 텍스트 영역 */}
         <textarea
           ref={textareaRef}
           value={value}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
-          placeholder={pendingFile ? "캡션 추가 (선택)" : `#${channelName} 채널에 메시지 보내기`}
+          placeholder={pendingFile ? "캡션을 입력하세요 (선택)" : `#${channelName} 채널에 메시지 보내기`}
           rows={1}
           disabled={disabled}
-          className="flex-1 text-sm outline-none resize-none leading-relaxed"
-          style={{ background: "transparent", color: "#191F28", maxHeight: 160 }}
+          className="w-full px-4 pt-3 pb-1 text-sm outline-none resize-none leading-relaxed"
+          style={{ background: "transparent", color: "#1D1C1D", maxHeight: 160, minHeight: 42 }}
         />
-        <button
-          onClick={send}
-          disabled={!canSend}
-          className="w-8 h-8 flex items-center justify-center rounded-xl transition-all shrink-0 disabled:opacity-30"
-          style={{ background: canSend ? "linear-gradient(135deg, #3182F6 0%, #2462D8 100%)" : "#E9EBEF" }}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-            stroke={canSend ? "#FFFFFF" : "#94A3B8"} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="22" y1="2" x2="11" y2="13"/>
-            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-          </svg>
-        </button>
+
+        {/* 하단 툴바 */}
+        <div className="flex items-center gap-0.5 px-3 pb-2.5 pt-1">
+          {/* 서식 버튼 그룹 */}
+          <button type="button" title="굵게" disabled={disabled}
+            className="w-7 h-7 flex items-center justify-center rounded text-xs font-black transition-colors hover:bg-slate-100 disabled:opacity-30"
+            style={{ color: "#616061" }}>B</button>
+          <button type="button" title="기울임" disabled={disabled}
+            className="w-7 h-7 flex items-center justify-center rounded text-xs italic font-bold transition-colors hover:bg-slate-100 disabled:opacity-30"
+            style={{ color: "#616061", fontFamily: "Georgia, serif" }}>i</button>
+          <button type="button" title="취소선" disabled={disabled}
+            className="w-7 h-7 flex items-center justify-center rounded text-xs font-bold line-through transition-colors hover:bg-slate-100 disabled:opacity-30"
+            style={{ color: "#616061" }}>S</button>
+
+          {/* 구분선 */}
+          <div className="w-px h-4 mx-1" style={{ background: "#D6D0D0" }} />
+
+          {/* @ 멘션 버튼 */}
+          <button type="button" title="멘션" disabled={disabled}
+            onClick={() => {
+              const el = textareaRef.current;
+              if (!el) return;
+              const pos = el.selectionStart;
+              const newVal = value.slice(0, pos) + "@" + value.slice(pos);
+              setValue(newVal);
+              detectMention(newVal, pos + 1);
+              setTimeout(() => { el.focus(); el.setSelectionRange(pos + 1, pos + 1); }, 0);
+            }}
+            className="w-7 h-7 flex items-center justify-center rounded text-sm font-bold transition-colors hover:bg-slate-100 disabled:opacity-30"
+            style={{ color: "#616061" }}>@</button>
+
+          {/* 파일 첨부 버튼 */}
+          <button type="button" title="파일 첨부 (최대 5MB)" disabled={disabled}
+            onClick={() => { setFileError(null); fileInputRef.current?.click(); }}
+            className="w-7 h-7 flex items-center justify-center rounded transition-colors hover:bg-slate-100 disabled:opacity-30"
+            style={{ color: "#616061" }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+            </svg>
+          </button>
+
+          {/* 이모지 (UI only) */}
+          <button type="button" title="이모지" disabled={disabled}
+            className="w-7 h-7 flex items-center justify-center rounded transition-colors hover:bg-slate-100 disabled:opacity-30 text-base"
+            style={{ color: "#616061" }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M8 13s1.5 2 4 2 4-2 4-2"/>
+              <line x1="9" y1="9" x2="9.01" y2="9"/>
+              <line x1="15" y1="9" x2="15.01" y2="9"/>
+            </svg>
+          </button>
+
+          <div className="flex-1" />
+
+          {/* 전송 버튼 */}
+          <button onClick={send} disabled={!canSend}
+            className="w-8 h-8 flex items-center justify-center rounded-lg transition-all disabled:opacity-30"
+            title="전송 (Enter)"
+            style={{ background: canSend ? "#007A5A" : "#E8E8E8" }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+              stroke={canSend ? "#FFFFFF" : "#97979C"} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"/>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            </svg>
+          </button>
+        </div>
       </div>
-      <p className="text-xs mt-1.5 px-1" style={{ color: "#B0B8C1" }}>
-        Enter로 전송 · Shift+Enter로 줄바꿈 · 📎 파일 최대 5MB
+
+      <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileChange}
+        accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.txt,.csv" />
+
+      <p className="text-xs mt-1.5 px-1" style={{ color: "#97979C" }}>
+        <span className="font-semibold">Enter</span> 전송 &nbsp;·&nbsp; <span className="font-semibold">Shift+Enter</span> 줄바꿈 &nbsp;·&nbsp; 파일 최대 5MB
       </p>
     </div>
   );
@@ -731,33 +727,30 @@ function MessageInput({
 // ─── 메인 페이지 ──────────────────────────────────────────
 
 export default function ChatPage() {
-  const [profile, setProfile]         = useState<Profile | null>(null);
-  const [channels, setChannels]       = useState<Channel[]>([]);
+  const [profile, setProfile]             = useState<Profile | null>(null);
+  const [channels, setChannels]           = useState<Channel[]>([]);
   const [activeChannel, setActiveChannel] = useState<Channel | null>(null);
-  const [messages, setMessages]       = useState<Message[]>([]);
-  const [loadingMsgs, setLoadingMsgs] = useState(false);
+  const [messages, setMessages]           = useState<Message[]>([]);
+  const [loadingMsgs, setLoadingMsgs]     = useState(false);
   const [showAddChannel, setShowAddChannel] = useState(false);
-  const [sending, setSending]         = useState(false);
-  const [editingId, setEditingId]     = useState<string | null>(null);
-  const [editValue, setEditValue]     = useState("");
-  const [userList, setUserList]       = useState<UserOption[]>([]);
+  const [sending, setSending]             = useState(false);
+  const [editingId, setEditingId]         = useState<string | null>(null);
+  const [editValue, setEditValue]         = useState("");
+  const [userList, setUserList]           = useState<UserOption[]>([]);
   const [notifications, setNotifications] = useState<MentionNotification[]>([]);
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
   const [mentionToast, setMentionToast]   = useState<MentionNotification | null>(null);
-  const notifRef = useRef<HTMLDivElement>(null);
-
-  const bottomRef   = useRef<HTMLDivElement>(null);
+  const notifRef   = useRef<HTMLDivElement>(null);
+  const bottomRef  = useRef<HTMLDivElement>(null);
   const supabaseRef = useRef(createClient());
   const subRef      = useRef<ReturnType<typeof supabaseRef.current.channel> | null>(null);
 
-  // 로그인 정보로 프로필 자동 설정
   useEffect(() => {
     const p = getSessionProfile();
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (p) setProfile(p);
   }, []);
 
-  // 채널 로드
   useEffect(() => {
     fetch("/api/chat/channels")
       .then((r) => r.json())
@@ -767,14 +760,12 @@ export default function ChatPage() {
       });
   }, []);
 
-  // 사용자 목록 로드
   useEffect(() => {
     fetch("/api/users")
       .then((r) => r.json())
       .then((d) => setUserList((d.users ?? []).map((u: { id: string; name: string; team: string | null }) => ({ id: u.id, name: u.name, team: u.team }))));
   }, []);
 
-  // 내 알림 로드
   const loadNotifications = useCallback((name: string) => {
     fetch(`/api/chat/notifications?name=${encodeURIComponent(name)}`)
       .then((r) => r.json())
@@ -785,7 +776,6 @@ export default function ChatPage() {
     if (profile?.name) loadNotifications(profile.name);
   }, [profile, loadNotifications]);
 
-  // 알림 드롭다운 외부 클릭 시 닫기
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
@@ -796,7 +786,6 @@ export default function ChatPage() {
     return () => document.removeEventListener("mousedown", onClickOutside);
   }, []);
 
-  // 메시지 로드 + Realtime 구독
   const loadMessages = useCallback((channelId: string) => {
     setLoadingMsgs(true);
     fetch(`/api/chat/messages?channelId=${channelId}`)
@@ -807,20 +796,13 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (!activeChannel) return;
-
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadMessages(activeChannel.id);
+    if (subRef.current) supabaseRef.current.removeChannel(subRef.current);
 
-    // 기존 구독 해제
-    if (subRef.current) {
-      supabaseRef.current.removeChannel(subRef.current);
-    }
-
-    // 새 채널 구독
     const ch = supabaseRef.current.channel(`chat:${activeChannel.id}`, {
       config: { broadcast: { self: false } },
     });
-
     ch.on("broadcast", { event: "new_message" }, ({ payload }: { payload: Message }) => {
       setMessages((prev) => {
         if (prev.find((m) => m.id === payload.id)) return prev;
@@ -841,15 +823,10 @@ export default function ChatPage() {
       }
     })
     .subscribe();
-
     subRef.current = ch;
-
-    return () => {
-      supabaseRef.current.removeChannel(ch);
-    };
+    return () => { supabaseRef.current.removeChannel(ch); };
   }, [activeChannel, loadMessages]);
 
-  // 새 메시지 시 하단 스크롤
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -861,26 +838,12 @@ export default function ChatPage() {
       const res = await fetch("/api/chat/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          channelId: activeChannel.id,
-          authorName: profile.name,
-          authorTeam: profile.team || null,
-          content,
-        }),
+        body: JSON.stringify({ channelId: activeChannel.id, authorName: profile.name, authorTeam: profile.team || null, content }),
       });
       const { message } = await res.json();
-
-      // 로컬 state에 즉시 추가
       setMessages((prev) => [...prev, message]);
+      subRef.current?.send({ type: "broadcast", event: "new_message", payload: message });
 
-      // 다른 사용자에게 broadcast
-      subRef.current?.send({
-        type: "broadcast",
-        event: "new_message",
-        payload: message,
-      });
-
-      // @ 멘션 처리
       const isFile = content.startsWith('{"__type":"file"');
       if (!isFile) {
         const mentioned = extractMentions(content).filter((n) => n !== profile.name);
@@ -888,13 +851,7 @@ export default function ChatPage() {
           const notifRes = await fetch("/api/chat/notifications", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              messageId: message.id,
-              channelId: activeChannel.id,
-              mentionedNames: mentioned,
-              fromName: profile.name,
-              preview: content.slice(0, 100),
-            }),
+            body: JSON.stringify({ messageId: message.id, channelId: activeChannel.id, mentionedNames: mentioned, fromName: profile.name, preview: content.slice(0, 100) }),
           });
           const { mentions: savedMentions } = await notifRes.json();
           for (const m of (savedMentions ?? [])) {
@@ -917,11 +874,6 @@ export default function ChatPage() {
     setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
   }
 
-  function handleEditStart(id: string, currentContent: string) {
-    setEditingId(id);
-    setEditValue(currentContent);
-  }
-
   async function handleEditSave(id: string) {
     const trimmed = editValue.trim();
     if (!trimmed) return;
@@ -933,11 +885,6 @@ export default function ChatPage() {
     if (!res.ok) return;
     setMessages((prev) => prev.map((m) => m.id === id ? { ...m, content: trimmed } : m));
     subRef.current?.send({ type: "broadcast", event: "edit_message", payload: { id, content: trimmed } });
-    setEditingId(null);
-    setEditValue("");
-  }
-
-  function handleEditCancel() {
     setEditingId(null);
     setEditValue("");
   }
@@ -965,170 +912,191 @@ export default function ChatPage() {
     }
   }
 
-  return (
-    <div className="flex h-full rounded-2xl overflow-hidden" style={{ background: "#FFFFFF", border: "1px solid #E9EBEF" }}>
+  const unreadCount = notifications.filter((n) => !n.isRead).length;
 
-      {/* ── 채널 사이드바 ── */}
-      <aside className="w-56 flex flex-col shrink-0" style={{ background: "#F8FAFC", borderRight: "1px solid #E9EBEF" }}>
+  return (
+    <div className="flex rounded-2xl overflow-hidden" style={{ height: "calc(100vh - 100px)", background: "#FFFFFF", border: "1px solid #D6D0D0" }}>
+
+      {/* ── 다크 사이드바 (Slack 스타일) ── */}
+      <aside className="w-60 flex flex-col shrink-0" style={{ background: "#3F0E40" }}>
 
         {/* 워크스페이스 헤더 */}
-        <div className="px-4 py-4 border-b" style={{ borderColor: "#E9EBEF" }}>
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs font-black shrink-0"
-              style={{ background: "#3182F6" }}>D</div>
-            <span className="text-sm font-black tracking-wide" style={{ color: "#191F28" }}>DIVERZ</span>
+        <div className="px-4 py-3.5 flex items-center justify-between cursor-pointer"
+          style={{ borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-base font-black tracking-wide truncate" style={{ color: "#FFFFFF" }}>DIVERZ</span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth="2.5" strokeLinecap="round">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
           </div>
+          {/* 새 메시지 작성 아이콘 */}
+          <button className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors"
+            style={{ background: "rgba(255,255,255,0.1)" }}
+            title="새 메시지">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.8)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+          </button>
         </div>
 
         {/* 채널 목록 */}
         <div className="flex-1 overflow-y-auto py-3">
-          <div className="px-3 mb-1">
-            <div className="flex items-center justify-between px-2 mb-1">
-              <span className="text-xs font-bold" style={{ color: "#94A3B8" }}>채널</span>
-              <button onClick={() => setShowAddChannel(true)}
-                className="w-5 h-5 flex items-center justify-center rounded hover:bg-slate-200 transition-colors"
-                title="채널 추가">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2.5" strokeLinecap="round">
-                  <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-                </svg>
-              </button>
-            </div>
-            {channels.map((ch) => {
-              const isActive = activeChannel?.id === ch.id;
-              return (
-                <div key={ch.id} className="group relative">
-                  <button
-                    onClick={() => setActiveChannel(ch)}
-                    className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-left transition-colors"
-                    style={{
-                      background: isActive ? "rgba(49,130,246,0.1)" : "transparent",
-                      color: isActive ? "#3182F6" : "#4E5968",
-                    }}>
-                    <span className="text-sm font-bold" style={{ color: isActive ? "#3182F6" : "#94A3B8" }}>#</span>
-                    <span className="text-sm font-medium truncate flex-1">{ch.name}</span>
-                  </button>
-                  <button
-                    onClick={() => handleDeleteChannel(ch)}
-                    className="absolute right-1 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-100"
-                    title="채널 삭제">
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2.5" strokeLinecap="round">
-                      <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                    </svg>
-                  </button>
-                </div>
-              );
-            })}
+          {/* 채널 섹션 헤더 */}
+          <div className="flex items-center justify-between px-4 py-0.5 mb-0.5">
+            <button className="flex items-center gap-1 group">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2.5" strokeLinecap="round">
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+              <span className="text-sm font-bold" style={{ color: "rgba(255,255,255,0.55)" }}>채널</span>
+            </button>
+            <button onClick={() => setShowAddChannel(true)}
+              className="w-5 h-5 flex items-center justify-center rounded transition-colors hover:bg-white/10"
+              title="채널 추가" style={{ color: "rgba(255,255,255,0.55)" }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+            </button>
           </div>
+
+          {channels.map((ch) => {
+            const isActive = activeChannel?.id === ch.id;
+            return (
+              <div key={ch.id} className="group relative mx-1">
+                <button
+                  onClick={() => setActiveChannel(ch)}
+                  className="w-full flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-left transition-colors"
+                  style={{
+                    background: isActive ? "rgba(255,255,255,0.18)" : "transparent",
+                    color: isActive ? "#FFFFFF" : "rgba(255,255,255,0.62)",
+                  }}>
+                  <span className="font-bold shrink-0" style={{ fontSize: 15 }}>#</span>
+                  <span className="text-sm font-medium truncate flex-1">{ch.name}</span>
+                </button>
+                <button onClick={() => handleDeleteChannel(ch)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white/20"
+                  title="채널 삭제">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="2.5" strokeLinecap="round">
+                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
+              </div>
+            );
+          })}
+
+          {channels.length === 0 && (
+            <button onClick={() => setShowAddChannel(true)}
+              className="w-full flex items-center gap-2 px-4 py-1.5 transition-colors hover:bg-white/10 text-left"
+              style={{ color: "rgba(255,255,255,0.55)" }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              <span className="text-sm">채널 추가</span>
+            </button>
+          )}
         </div>
 
-        {/* 내 프로필 */}
-        {profile && (
-          <div className="p-3 border-t" style={{ borderColor: "#E9EBEF" }}>
-            <div className="flex items-center gap-2.5 px-2 py-2 rounded-xl">
-              <div className="w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs font-bold shrink-0"
-                style={{ background: authorColor(profile.name) }}>
-                {initials(profile.name)}
+        {/* 내 프로필 (사이드바 하단) */}
+        {profile ? (
+          <div className="px-3 py-3" style={{ borderTop: "1px solid rgba(255,255,255,0.1)" }}>
+            <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-white/10 cursor-pointer transition-colors">
+              <div className="relative shrink-0">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold"
+                  style={{ background: authorColor(profile.name) }}>
+                  {initials(profile.name)}
+                </div>
+                <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 flex items-center justify-center"
+                  style={{ background: "#2BAC76", borderColor: "#3F0E40" }} />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-bold truncate" style={{ color: "#191F28" }}>{profile.name}</p>
-                {profile.team && <p className="text-xs truncate" style={{ color: "#94A3B8" }}>{profile.team}</p>}
+                <p className="text-sm font-bold truncate" style={{ color: "#FFFFFF" }}>{profile.name}</p>
+                {profile.team && <p className="text-xs truncate" style={{ color: "rgba(255,255,255,0.55)" }}>{profile.team}</p>}
               </div>
-              <div className="w-2 h-2 rounded-full shrink-0" style={{ background: "#10B981" }} title="온라인" />
             </div>
+          </div>
+        ) : (
+          <div className="px-4 py-3" style={{ borderTop: "1px solid rgba(255,255,255,0.1)" }}>
+            <p className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>로그인 정보 없음</p>
           </div>
         )}
       </aside>
 
       {/* ── 메시지 영역 ── */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0" style={{ background: "#FFFFFF" }}>
         {activeChannel ? (
           <>
             {/* 채널 헤더 */}
-            <div className="px-6 py-4 border-b flex items-center gap-3" style={{ borderColor: "#E9EBEF" }}>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-base font-black" style={{ color: "#94A3B8" }}>#</span>
-                  <h2 className="text-base font-bold" style={{ color: "#191F28" }}>{activeChannel.name}</h2>
-                </div>
+            <div className="flex items-center justify-between px-6 py-3 border-b" style={{ borderColor: "#DDDDDD" }}>
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-lg font-black" style={{ color: "#1D1C1D" }}>#</span>
+                <h2 className="text-base font-bold" style={{ color: "#1D1C1D" }}>{activeChannel.name}</h2>
                 {activeChannel.description && (
-                  <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>{activeChannel.description}</p>
+                  <>
+                    <div className="w-px h-4 mx-1" style={{ background: "#D6D0D0" }} />
+                    <p className="text-sm truncate" style={{ color: "#616061" }}>{activeChannel.description}</p>
+                  </>
                 )}
               </div>
 
-              {/* 알림 배지 */}
+              {/* 알림 버튼 */}
               {profile && (
-                <div className="relative" ref={notifRef}>
+                <div className="relative shrink-0" ref={notifRef}>
                   <button
                     onClick={() => {
                       setShowNotifDropdown((v) => !v);
                       if (!showNotifDropdown) handleMarkAllRead();
                     }}
-                    className="relative w-9 h-9 flex items-center justify-center rounded-xl transition-colors hover:bg-slate-100"
+                    className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors hover:bg-slate-100"
                     title="멘션 알림">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
-                      stroke={notifications.some((n) => !n.isRead) ? "#3182F6" : "#94A3B8"}
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                      stroke={unreadCount > 0 ? "#E01E5A" : "#616061"}
                       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
                       <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
                     </svg>
-                    {notifications.some((n) => !n.isRead) && (
-                      <span className="absolute top-1 right-1 w-2 h-2 rounded-full"
-                        style={{ background: "#EF4444" }} />
+                    {unreadCount > 0 && (
+                      <span className="text-xs font-bold px-1.5 py-0.5 rounded-full text-white"
+                        style={{ background: "#E01E5A", fontSize: 10 }}>{unreadCount}</span>
                     )}
                   </button>
 
-                  {/* 알림 드롭다운 */}
                   {showNotifDropdown && (
-                    <div className="absolute right-0 top-11 w-80 rounded-2xl border shadow-xl z-50 overflow-hidden"
-                      style={{ background: "#FFFFFF", borderColor: "#E9EBEF" }}>
+                    <div className="absolute right-0 top-11 w-80 rounded-xl border shadow-2xl z-50 overflow-hidden"
+                      style={{ background: "#FFFFFF", borderColor: "#D6D0D0" }}>
                       <div className="px-4 py-3 border-b flex items-center justify-between"
-                        style={{ borderColor: "#F1F5F9", background: "#F8FAFC" }}>
-                        <span className="text-sm font-bold" style={{ color: "#191F28" }}>내 멘션</span>
+                        style={{ borderColor: "#ECECEC", background: "#F8F8F8" }}>
+                        <span className="text-sm font-bold" style={{ color: "#1D1C1D" }}>내 멘션</span>
                         {notifications.length > 0 && (
                           <button onClick={handleMarkAllRead}
-                            className="text-xs font-medium transition-colors hover:opacity-70"
-                            style={{ color: "#3182F6" }}>모두 읽음</button>
+                            className="text-xs font-semibold transition-colors hover:opacity-70"
+                            style={{ color: "#1264A3" }}>모두 읽음</button>
                         )}
                       </div>
                       <div className="overflow-y-auto" style={{ maxHeight: 320 }}>
                         {notifications.length === 0 ? (
                           <div className="py-8 text-center">
-                            <p className="text-sm" style={{ color: "#94A3B8" }}>멘션이 없습니다</p>
+                            <p className="text-sm" style={{ color: "#97979C" }}>멘션이 없습니다</p>
                           </div>
                         ) : (
                           notifications.map((n) => (
-                            <button
-                              key={n.id}
-                              onClick={() => {
-                                const ch = channels.find((c) => c.id === n.channelId);
-                                if (ch) setActiveChannel(ch);
-                                setShowNotifDropdown(false);
-                              }}
+                            <button key={n.id}
+                              onClick={() => { const ch = channels.find((c) => c.id === n.channelId); if (ch) setActiveChannel(ch); setShowNotifDropdown(false); }}
                               className="w-full px-4 py-3 text-left border-b transition-colors hover:bg-slate-50 last:border-0"
-                              style={{
-                                borderColor: "#F1F5F9",
-                                background: n.isRead ? "transparent" : "rgba(49,130,246,0.04)",
-                              }}>
+                              style={{ borderColor: "#ECECEC", background: n.isRead ? "transparent" : "rgba(29,155,209,0.05)" }}>
                               <div className="flex items-start gap-2.5">
                                 <div className="w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs font-bold shrink-0 mt-0.5"
                                   style={{ background: authorColor(n.fromName) }}>
                                   {initials(n.fromName)}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-xs font-semibold" style={{ color: "#191F28" }}>
+                                  <p className="text-xs font-semibold" style={{ color: "#1D1C1D" }}>
                                     {n.fromName}
-                                    <span className="ml-1 font-normal" style={{ color: "#94A3B8" }}>이 멘션했습니다</span>
+                                    <span className="ml-1 font-normal" style={{ color: "#97979C" }}>이 멘션했습니다</span>
                                   </p>
-                                  <p className="text-xs mt-0.5 truncate" style={{ color: "#64748B" }}>
-                                    {n.preview}
-                                  </p>
-                                  <p className="text-xs mt-0.5" style={{ color: "#B0B8C1" }}>
-                                    {formatTime(n.createdAt)}
-                                  </p>
+                                  <p className="text-xs mt-0.5 truncate" style={{ color: "#616061" }}>{n.preview}</p>
+                                  <p className="text-xs mt-0.5" style={{ color: "#97979C" }}>{formatTime(n.createdAt)}</p>
                                 </div>
                                 {!n.isRead && (
-                                  <div className="w-2 h-2 rounded-full shrink-0 mt-1.5"
-                                    style={{ background: "#3182F6" }} />
+                                  <div className="w-2 h-2 rounded-full shrink-0 mt-1.5" style={{ background: "#1264A3" }} />
                                 )}
                               </div>
                             </button>
@@ -1145,7 +1113,7 @@ export default function ChatPage() {
             <div className="flex-1 overflow-y-auto">
               {loadingMsgs ? (
                 <div className="h-full flex items-center justify-center">
-                  <div className="flex items-center gap-2" style={{ color: "#94A3B8" }}>
+                  <div className="flex items-center gap-2" style={{ color: "#97979C" }}>
                     <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
                     </svg>
@@ -1153,15 +1121,15 @@ export default function ChatPage() {
                   </div>
                 </div>
               ) : messages.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center gap-3" style={{ color: "#94A3B8" }}>
-                  <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl font-black"
-                    style={{ background: "rgba(49,130,246,0.08)", color: "#3182F6" }}>#</div>
+                <div className="h-full flex flex-col items-center justify-center gap-4">
+                  <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-2xl font-black"
+                    style={{ background: "#3F0E40", color: "#FFFFFF" }}>#</div>
                   <div className="text-center">
-                    <p className="text-base font-bold" style={{ color: "#191F28" }}>#{activeChannel.name} 채널에 오신 것을 환영합니다!</p>
+                    <p className="text-xl font-bold" style={{ color: "#1D1C1D" }}>#{activeChannel.name}</p>
                     {activeChannel.description && (
-                      <p className="text-sm mt-1" style={{ color: "#94A3B8" }}>{activeChannel.description}</p>
+                      <p className="text-sm mt-1" style={{ color: "#616061" }}>{activeChannel.description}</p>
                     )}
-                    <p className="text-sm mt-2" style={{ color: "#B0B8C1" }}>첫 번째 메시지를 보내보세요.</p>
+                    <p className="text-sm mt-2" style={{ color: "#97979C" }}>이 채널의 첫 번째 메시지입니다. 지금 메시지를 보내보세요!</p>
                   </div>
                 </div>
               ) : (
@@ -1172,10 +1140,10 @@ export default function ChatPage() {
                     actions={{
                       editingId,
                       editValue,
-                      onEdit: handleEditStart,
+                      onEdit: (id, content) => { setEditingId(id); setEditValue(content); },
                       onEditChange: setEditValue,
                       onEditSave: handleEditSave,
-                      onEditCancel: handleEditCancel,
+                      onEditCancel: () => { setEditingId(null); setEditValue(""); },
                       onDelete: handleDeleteMessage,
                     }}
                   />
@@ -1185,46 +1153,56 @@ export default function ChatPage() {
             </div>
 
             {/* 입력창 */}
-            {profile && (
+            {profile ? (
               <MessageInput
                 channelName={activeChannel.name}
                 onSend={handleSend}
                 disabled={sending}
                 users={userList}
               />
+            ) : (
+              <div className="px-6 pb-4">
+                <div className="px-4 py-3 rounded-xl text-sm text-center" style={{ background: "#F8F8F8", color: "#616061", border: "1px solid #D6D0D0" }}>
+                  메시지를 보내려면 로그인하세요.
+                </div>
+              </div>
             )}
           </>
         ) : (
-          <div className="flex-1 flex items-center justify-center" style={{ color: "#94A3B8" }}>
-            <p className="text-sm">채널을 선택하거나 만들어보세요.</p>
+          <div className="flex-1 flex flex-col items-center justify-center gap-4" style={{ color: "#97979C" }}>
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-2xl font-black"
+              style={{ background: "#3F0E40", color: "#FFFFFF" }}>#</div>
+            <div className="text-center">
+              <p className="text-base font-bold" style={{ color: "#1D1C1D" }}>채널을 선택하세요</p>
+              <p className="text-sm mt-1" style={{ color: "#97979C" }}>왼쪽에서 채널을 선택하거나 새 채널을 만들어보세요.</p>
+            </div>
           </div>
         )}
       </div>
 
-      {/* 모달 */}
+      {/* 채널 추가 모달 */}
       {showAddChannel && (
         <CreateChannelModal onClose={() => setShowAddChannel(false)} onCreated={handleChannelCreated} />
       )}
 
-      {/* 멘션 토스트 */}
+      {/* 멘션 토스트 알림 */}
       {mentionToast && (
-        <div
-          className="fixed bottom-6 right-6 z-50 flex items-start gap-3 px-4 py-3.5 rounded-2xl shadow-xl"
-          style={{ background: "#FFFFFF", border: "1px solid #E9EBEF", maxWidth: 320 }}>
+        <div className="fixed bottom-6 right-6 z-50 flex items-start gap-3 px-4 py-3.5 rounded-xl shadow-2xl"
+          style={{ background: "#FFFFFF", border: "1px solid #D6D0D0", maxWidth: 340 }}>
           <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold shrink-0"
             style={{ background: authorColor(mentionToast.fromName) }}>
             {initials(mentionToast.fromName)}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-bold" style={{ color: "#191F28" }}>
+            <p className="text-sm font-bold" style={{ color: "#1D1C1D" }}>
               {mentionToast.fromName}
-              <span className="ml-1 font-normal" style={{ color: "#94A3B8" }}>이 나를 멘션했습니다</span>
+              <span className="ml-1 font-normal" style={{ color: "#97979C" }}>이 나를 멘션했습니다</span>
             </p>
-            <p className="text-xs mt-0.5 truncate" style={{ color: "#64748B" }}>{mentionToast.preview}</p>
+            <p className="text-xs mt-0.5 truncate" style={{ color: "#616061" }}>{mentionToast.preview}</p>
           </div>
           <button onClick={() => setMentionToast(null)}
             className="p-1 rounded-lg hover:bg-slate-100 transition-colors shrink-0">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2.5" strokeLinecap="round">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#97979C" strokeWidth="2.5" strokeLinecap="round">
               <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
             </svg>
           </button>
