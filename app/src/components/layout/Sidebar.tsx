@@ -86,6 +86,12 @@ const IC = {
       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
     </svg>
   ),
+  mypage: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+      <circle cx="12" cy="7" r="4"/>
+    </svg>
+  ),
   users: (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
@@ -114,6 +120,7 @@ const navItems = [
   { href: "/meeting-notes",  label: "회의/미팅록",  icon: IC.meeting },
   { href: "/work-journal",   label: "업무일지",    icon: IC.journal },
   { href: "/chat",           label: "채팅",        icon: IC.chat },
+  { href: "/mypage",         label: "마이페이지",  icon: IC.mypage },
 ];
 
 function NavItem({ href, label, icon }: { href: string; label: string; icon: React.ReactNode }) {
@@ -508,6 +515,7 @@ export default function Sidebar() {
           <NavItem {...navItems[3]} />
           <NavItem {...navItems[4]} />
           <NavItem {...navItems[5]} />
+          <NavItem {...navItems[6]} />
           <InternalNavSection />
           <ApprovalNavSection />
           <OperationsNavSection />

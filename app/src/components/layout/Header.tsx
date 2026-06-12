@@ -14,6 +14,7 @@ const pageTitles: Record<string, string> = {
   "/reports": "매출 리포트",
   "/chat": "채팅",
   "/users": "사용자 관리",
+  "/mypage": "마이페이지",
 };
 
 function getTitle(pathname: string): string {

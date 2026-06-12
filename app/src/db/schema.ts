@@ -421,6 +421,18 @@ export const kpiTargets = pgTable("kpi_targets", {
 
 export type KpiTarget = typeof kpiTargets.$inferSelect;
 
+export const userTodos = pgTable("user_todos", {
+  id:        uuid("id").primaryKey().defaultRandom(),
+  userId:    uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  content:   text("content").notNull(),
+  isDone:    boolean("is_done").notNull().default(false),
+  priority:  text("priority").notNull().default("medium"), // low | medium | high
+  dueDate:   date("due_date"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type UserTodo = typeof userTodos.$inferSelect;
+
 export const workDailyLogs = pgTable("work_daily_logs", {
   id:        uuid("id").primaryKey().defaultRandom(),
   revenueId: uuid("revenue_id").notNull().references(() => projectRevenues.id, { onDelete: "cascade" }),
