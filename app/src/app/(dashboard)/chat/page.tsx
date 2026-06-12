@@ -867,6 +867,8 @@ export default function ChatPage() {
           for (const m of (savedMentions ?? [])) {
             subRef.current?.send({ type: "broadcast", event: "mention", payload: m });
           }
+          // 헤더 알림 벨 즉시 갱신
+          window.dispatchEvent(new Event("chat-mention-received"));
         }
       }
     } finally {
