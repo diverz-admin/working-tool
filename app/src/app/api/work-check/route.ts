@@ -31,6 +31,7 @@ export async function GET() {
         workCompleted: projectRevenues.workCompleted,
         workStartDate: projectRevenues.workStartDate,
         workEndDate:   projectRevenues.workEndDate,
+        settingDate:   projectRevenues.settingDate,
         paymentDate:   projectRevenues.paymentDate,
         total:         projectRevenues.total,
         completedAt:   projectRevenues.completedAt,

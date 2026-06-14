@@ -21,6 +21,7 @@ interface WorkCheckRow {
   workCompleted: boolean | null;
   workStartDate: string | null;
   workEndDate: string | null;
+  settingDate: string | null;
   total: number | null;
   campaignName: string | null;
   groupName: string;
@@ -885,7 +886,7 @@ function ProjectsInner() {
       .finally(() => setWorkLoading(false));
   }
 
-  async function updateWorkRow(id: string, patch: { completedQty?: number; workCompleted?: boolean }) {
+  async function updateWorkRow(id: string, patch: { completedQty?: number; workCompleted?: boolean; settingDate?: string }) {
     await fetch(`/api/revenues/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -1273,7 +1274,7 @@ function ProjectsInner() {
             <table className="w-full text-xs">
               <thead>
                 <tr style={{ background: "#F8FAFC" }}>
-                  {["#", "프로젝트", "캠페인", "담당자", "품명", "작업기간", "수량", "완료수량", "남은수량", "완료"].map((h) => (
+                  {["#", "프로젝트", "캠페인", "담당자", "품명", "작업기간", "수량", "셋팅날짜", "작업완료"].map((h) => (
                     <th key={h} className="px-4 py-2.5 text-left font-semibold whitespace-nowrap" style={{ color: "#64748B", borderBottom: "2px solid #E9EBEF" }}>{h}</th>
                   ))}
                 </tr>
@@ -1315,45 +1316,13 @@ function ProjectsInner() {
                         <td className="px-4 py-2.5 whitespace-nowrap" style={{ color: "#94A3B8" }}>{period}</td>
                         <td className="px-4 py-2.5 font-semibold" style={{ color: "#3182F6" }}>{qty}</td>
                         <td className="px-3 py-2">
-                          {(() => {
-                            const localVal  = pendingQty.has(r.id) ? pendingQty.get(r.id)! : String(done);
-                            const isDirty   = pendingQty.has(r.id) && Number(pendingQty.get(r.id)) !== done;
-                            return (
-                              <div className="flex items-center gap-1">
-                                <input
-                                  type="number"
-                                  min={0}
-                                  max={qty}
-                                  value={localVal}
-                                  onChange={(e) => {
-                                    const v = e.target.value;
-                                    setPendingQty((m) => { const n = new Map(m); n.set(r.id, v); return n; });
-                                  }}
-                                  className="w-14 px-2 py-1 rounded-lg text-center text-xs outline-none"
-                                  style={{ background: "#F8FAFC", border: `1px solid ${isDirty ? "#3182F6" : "#E9EBEF"}`, color: "#191F28" }}
-                                />
-                                {isDirty && (
-                                  <button
-                                    onClick={() => {
-                                      const newVal = Math.min(qty, Math.max(0, Number(localVal)));
-                                      updateWorkRow(r.id, { completedQty: newVal });
-                                      setPendingQty((m) => { const n = new Map(m); n.delete(r.id); return n; });
-                                    }}
-                                    className="px-2 py-1 rounded-lg text-xs font-semibold text-white whitespace-nowrap"
-                                    style={{ background: "#3182F6" }}>
-                                    적용
-                                  </button>
-                                )}
-                              </div>
-                            );
-                          })()}
-                        </td>
-                        <td className="px-4 py-2.5">
-                          <span className="font-semibold text-xs px-2 py-0.5 rounded-full"
-                            style={{
-                              background: remaining === 0 ? "rgba(16,185,129,0.1)" : remaining <= 2 ? "rgba(239,68,68,0.1)" : "#F1F5F9",
-                              color: remaining === 0 ? "#059669" : remaining <= 2 ? "#EF4444" : "#64748B",
-                            }}>{remaining}</span>
+                          <input
+                            type="date"
+                            value={r.settingDate ?? ""}
+                            onChange={(e) => updateWorkRow(r.id, { settingDate: e.target.value })}
+                            className="px-2 py-1 rounded-lg text-xs outline-none"
+                            style={{ background: "#F8FAFC", border: "1px solid #E9EBEF", color: "#191F28", width: 130 }}
+                          />
                         </td>
                         <td className="px-4 py-2.5">
                           <input

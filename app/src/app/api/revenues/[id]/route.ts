@@ -16,6 +16,7 @@ export async function PATCH(req: Request, { params }: Params) {
       update.workCompleted = Boolean(body.workCompleted);
       update.completedAt = body.workCompleted ? new Date() : null;
     }
+    if (body.settingDate !== undefined) update.settingDate = body.settingDate || null;
 
     await db.update(projectRevenues).set(update).where(eq(projectRevenues.id, id));
     return NextResponse.json({ ok: true });
