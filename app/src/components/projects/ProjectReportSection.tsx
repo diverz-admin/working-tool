@@ -48,6 +48,19 @@ const PLATFORM_META: Record<string, { label: string; color: string; bg: string }
   place:    { label: "플레이스", color: "#8B5CF6", bg: "rgba(139,92,246,0.1)" },
 };
 
+/* ── URL 자동 파싱 ── */
+function parseNaverUrl(url: string): { platform: "shopping" | "place"; targetType: string; targetValue: string } | null {
+  const smartstore = url.match(/smartstore\.naver\.com\/([^/?]+)\/products\/(\d+)/);
+  if (smartstore) return { platform: "shopping", targetType: "nstore_id", targetValue: smartstore[2] };
+  const mapPlace = url.match(/map\.naver\.com\/[^?]*?\/place\/(\d+)/);
+  if (mapPlace) return { platform: "place", targetType: "place_id", targetValue: mapPlace[1] };
+  const placeNaver = url.match(/place\.naver\.com\/(?:place\/)?(\d+)/);
+  if (placeNaver) return { platform: "place", targetType: "place_id", targetValue: placeNaver[1] };
+  const entryPlace = url.match(/entry\/place\/(\d+)/);
+  if (entryPlace) return { platform: "place", targetType: "place_id", targetValue: entryPlace[1] };
+  return null;
+}
+
 /* ── 날짜 헬퍼 ── */
 function toISO(d: Date) { return d.toISOString().slice(0, 10); }
 
@@ -204,6 +217,8 @@ export default function ProjectReportSection({
   });
   const [saving,    setSaving]   = useState(false);
   const [addError,  setAddError] = useState<string | null>(null);
+  const [urlInput,  setUrlInput]  = useState("");
+  const [urlParsed, setUrlParsed] = useState<{ platform: "shopping" | "place"; targetType: string; targetValue: string } | null>(null);
 
   const [editingId,   setEditingId]   = useState<string | null>(null);
   const [editForm,    setEditForm]    = useState<AddFormState>({ platform: "place", keyword: "", targetType: "place_name", targetValue: "", startDate: "", endDate: "" });
@@ -523,6 +538,41 @@ export default function ProjectReportSection({
           {/* 추가 폼 */}
           {showAdd && (
             <form onSubmit={handleAdd} className="p-4 rounded-xl space-y-3" style={{ background: "#F8FAFC", border: "1px solid #E9EBEF" }}>
+              {/* URL 자동 파싱 */}
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: "#64748B" }}>
+                  URL 자동 인식 <span className="font-normal" style={{ color: "#94A3B8" }}>(선택)</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={urlInput}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setUrlInput(val);
+                      const parsed = parseNaverUrl(val.trim());
+                      setUrlParsed(parsed);
+                      if (parsed) {
+                        setAddForm((prev) => ({
+                          ...prev,
+                          platform: parsed.platform,
+                          targetType: parsed.targetType,
+                          targetValue: parsed.targetValue,
+                        }));
+                      }
+                    }}
+                    placeholder="네이버 플레이스 또는 스마트스토어 상품 URL 붙여넣기"
+                    className="w-full text-xs px-3 py-2 rounded-lg border"
+                    style={{ borderColor: urlParsed ? "#10B981" : "#E9EBEF", outline: "none", color: "#191F28" }}
+                  />
+                  {urlParsed && (
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-semibold px-2 py-0.5 rounded-full"
+                      style={{ background: urlParsed.platform === "place" ? "rgba(139,92,246,0.12)" : "rgba(49,130,246,0.12)", color: urlParsed.platform === "place" ? "#8B5CF6" : "#3182F6" }}>
+                      {urlParsed.platform === "place" ? "플레이스" : "쇼핑"} 자동 인식
+                    </span>
+                  )}
+                </div>
+              </div>
               {/* 플랫폼 */}
               <div>
                 <label className="block text-xs font-semibold mb-1.5" style={{ color: "#64748B" }}>플랫폼</label>
@@ -623,7 +673,7 @@ export default function ProjectReportSection({
 
               {addError && <p className="text-xs" style={{ color: "#EF4444" }}>{addError}</p>}
               <div className="flex gap-2 justify-end">
-                <button type="button" onClick={() => setShowAdd(false)} className="text-xs px-3 py-1.5 rounded-lg border" style={{ borderColor: "#E9EBEF", color: "#64748B" }}>취소</button>
+                <button type="button" onClick={() => { setShowAdd(false); setUrlInput(""); setUrlParsed(null); }} className="text-xs px-3 py-1.5 rounded-lg border" style={{ borderColor: "#E9EBEF", color: "#64748B" }}>취소</button>
                 <button type="submit" disabled={saving} className="text-xs px-3 py-1.5 rounded-lg text-white font-semibold disabled:opacity-50" style={{ background: "#3182F6" }}>
                   {saving ? "추가 중..." : "추가"}
                 </button>
