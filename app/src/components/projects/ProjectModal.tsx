@@ -179,7 +179,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
   const [uploading, setUploading]   = useState<number | null>(null); // localId of uploading row
   const [error, setError]           = useState<string | null>(null);
   const [guaranteeProgress, setGuaranteeProgress] = useState<number>(0);
-  const [activeSection, setActiveSection] = useState<"매출" | "매입">("매출");
+  const [activeSection, setActiveSection] = useState<"매출" | "매입" | "작업요청">("매출");
   const [toast, setToast]           = useState<string | null>(null);
   const [manualTotal, setManualTotal] = useState<string>(() => initial ? "" : "");
   const [confirmStatuses, setConfirmStatuses] = useState<Record<string, { status: ConfirmStatus | "발행완료"; rejectReason?: string; requestId?: string; amount?: string }>>({});
@@ -1044,22 +1044,24 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
 
               {/* 탭 스위처 */}
               <div className="flex items-center gap-1 mb-4 border-b" style={{ borderColor: "#E9EBEF" }}>
-                {(["매출", "매입"] as const).map((tab) => {
-                  const isActive = activeSection === tab;
-                  const count = tab === "매출" ? revenues.length : costs.length;
-                  const tabLabel = tab === "매출" ? "매출(판매)" : "매입(구매)";
+                {([
+                  { key: "매출", label: "매출(판매)", count: revenues.length, activeColor: "#3182F6" },
+                  { key: "매입", label: "매입(구매)", count: costs.length, activeColor: "#3182F6" },
+                  { key: "작업요청", label: "작업요청", count: costs.filter(c => c.isApproved).length, activeColor: "#059669" },
+                ] as const).map(({ key, label, count, activeColor }) => {
+                  const isActive = activeSection === key;
                   return (
-                    <button key={tab} type="button" onClick={() => setActiveSection(tab)}
+                    <button key={key} type="button" onClick={() => setActiveSection(key)}
                       className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold transition-all"
                       style={{
                         color: isActive ? "#191F28" : "#94A3B8",
-                        borderBottom: isActive ? "2px solid #3182F6" : "2px solid transparent",
+                        borderBottom: isActive ? `2px solid ${activeColor}` : "2px solid transparent",
                         marginBottom: -1,
                       }}>
-                      {tabLabel}
+                      {label}
                       <span className="text-xs px-1.5 py-0.5 rounded-full font-bold" style={{
-                        background: isActive ? "rgba(49,130,246,0.1)" : "#F1F5F9",
-                        color: isActive ? "#3182F6" : "#B0B8C1",
+                        background: isActive ? `${activeColor}1A` : "#F1F5F9",
+                        color: isActive ? activeColor : "#B0B8C1",
                       }}>{count}</span>
                     </button>
                   );
@@ -1478,6 +1480,62 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                   </button>
                 </div>
               )}
+
+              {/* 작업요청 섹션 */}
+              {activeSection === "작업요청" && (() => {
+                const approvedCosts = costs.filter(c => c.isApproved);
+                return (
+                <div>
+                  {approvedCosts.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-12 rounded-xl border" style={{ borderColor: "#E9EBEF", color: "#94A3B8" }}>
+                      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" className="mb-2 opacity-40"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="12" y2="16"/></svg>
+                      <p className="text-sm">입금 승인된 매입 항목이 없습니다.</p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto rounded-xl border" style={{ borderColor: "#E9EBEF" }}>
+                      <table className="w-full text-xs" style={{ minWidth: 900 }}>
+                        <thead>
+                          <tr style={{ background: "#F0FDF4" }}>
+                            {["#","담당자","매입처","품명","개수","공급가","세액","합계","작업시작일","작업만료일","잔여일","완료"].map((h, idx) => (
+                              <th key={idx} className="px-2 py-2.5 text-left font-semibold whitespace-nowrap" style={{ color: "#059669", background: "#F0FDF4", borderBottom: "2px solid #BBF7D0" }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {approvedCosts.map((c, i) => {
+                            const remDays = daysLeft(c.workEndDate);
+                            return (
+                              <tr key={c.localId} className="border-t" style={{ borderColor: "#F1F5F9" }}>
+                                <td className="px-2 py-1.5 font-medium" style={{ color: "#94A3B8" }}>{i + 1}</td>
+                                <td className="px-2 py-1.5 text-xs" style={{ color: "#475569" }}>{c.assignee || "—"}</td>
+                                <td className="px-2 py-1.5 text-xs" style={{ color: "#475569" }}>{c.vendor || "—"}</td>
+                                <td className="px-2 py-1.5 text-xs font-medium" style={{ color: "#191F28" }}>{c.productName || "—"}</td>
+                                <td className="px-2 py-1.5 text-xs text-center" style={{ color: "#475569" }}>{c.quantity || "—"}</td>
+                                <td className="px-2 py-1.5 text-xs text-right" style={{ color: "#475569" }}>{c.supplyPrice ? `₩${Number(c.supplyPrice).toLocaleString()}` : "—"}</td>
+                                <td className="px-2 py-1.5 text-xs text-right" style={{ color: "#475569" }}>{c.tax ? `₩${Number(c.tax).toLocaleString()}` : "—"}</td>
+                                <td className="px-2 py-1.5 text-xs text-right font-semibold" style={{ color: "#191F28" }}>{c.total ? `₩${Number(c.total).toLocaleString()}` : "—"}</td>
+                                <td className="px-1 py-1">
+                                  <input type="date" value={c.workStartDate} onChange={(e) => updateCost(c.localId, "workStartDate", e.target.value)} className={inputCls} style={{ ...inputStyle, width: 115 }} />
+                                </td>
+                                <td className="px-1 py-1">
+                                  <input type="date" value={c.workEndDate} onChange={(e) => updateCost(c.localId, "workEndDate", e.target.value)} className={inputCls} style={{ ...inputStyle, width: 115 }} />
+                                </td>
+                                <td className="px-2 py-1.5 font-medium text-center" style={{ color: remDays === null ? "#CBD5E1" : remDays <= 1 ? "#EF4444" : remDays <= 3 ? "#F97316" : remDays <= 7 ? "#EAB308" : "#475569" }}>
+                                  {remDays === null ? "—" : remDays < 0 ? `+${Math.abs(remDays)}` : remDays === 0 ? "D-0" : `D-${remDays}`}
+                                </td>
+                                <td className="px-2 py-1.5 text-center">
+                                  <input type="checkbox" checked={c.workCompleted} onChange={(e) => updateCost(c.localId, "workCompleted", e.target.checked)} className="w-3.5 h-3.5 rounded accent-[#059669]" />
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+                );
+              })()}
             </div>
 
             {/* 메모 */}
