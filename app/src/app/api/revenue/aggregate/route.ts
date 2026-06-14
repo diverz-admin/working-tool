@@ -3,14 +3,30 @@ import { db } from "@/db";
 import { projectRevenues, projects } from "@/db/schema";
 import { isNotNull, and, sql, eq } from "drizzle-orm";
 
-// 캠페인 시작일 기준 + 입금확인 승인(paymentDate IS NOT NULL) 매출 집계
 export async function GET(req: NextRequest) {
   try {
-    const year = parseInt(req.nextUrl.searchParams.get("year") ?? String(new Date().getFullYear()));
+    const year     = parseInt(req.nextUrl.searchParams.get("year") ?? String(new Date().getFullYear()));
+    const criteria = req.nextUrl.searchParams.get("criteria") ?? "캠페인 시작날짜";
+    const useInvoice = criteria === "계산서날짜";
+
+    const monthExpr = useInvoice
+      ? sql<string>`TO_CHAR(${projectRevenues.invoiceDate}, 'YYYY-MM')`
+      : sql<string>`TO_CHAR(${projects.startDate}, 'YYYY-MM')`;
+
+    const whereClause = useInvoice
+      ? and(
+          isNotNull(projectRevenues.paymentDate),
+          isNotNull(projectRevenues.invoiceDate),
+          sql`EXTRACT(YEAR FROM ${projectRevenues.invoiceDate}) = ${year}`,
+        )
+      : and(
+          isNotNull(projectRevenues.paymentDate),
+          sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`,
+        );
 
     const rows = await db
       .select({
-        month:       sql<string>`TO_CHAR(${projects.startDate}, 'YYYY-MM')`,
+        month:       monthExpr,
         total:       sql<number>`COALESCE(SUM(${projectRevenues.total}), 0)`,
         supplyPrice: sql<number>`COALESCE(SUM(${projectRevenues.supplyPrice}), 0)`,
         tax:         sql<number>`COALESCE(SUM(${projectRevenues.tax}), 0)`,
@@ -18,20 +34,11 @@ export async function GET(req: NextRequest) {
       })
       .from(projectRevenues)
       .innerJoin(projects, eq(projects.id, projectRevenues.projectId))
-      .where(
-        and(
-          isNotNull(projectRevenues.paymentDate),
-          sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`
-        )
-      )
-      .groupBy(sql`TO_CHAR(${projects.startDate}, 'YYYY-MM')`);
+      .where(whereClause)
+      .groupBy(monthExpr);
 
     const monthly = Array.from({ length: 12 }, (_, i) => ({
-      month:       i + 1,
-      total:       0,
-      supplyPrice: 0,
-      tax:         0,
-      count:       0,
+      month: i + 1, total: 0, supplyPrice: 0, tax: 0, count: 0,
     }));
 
     for (const row of rows) {

@@ -430,11 +430,13 @@ function AchievementRing({ rate, color, size = 72 }: { rate: number; color: stri
 const MONTHS_KO = ["1월","2월","3월","4월","5월","6월","7월","8월","9월","10월","11월","12월"];
 
 function RevenueKpiSection({
-  stats, teamFilter, onReload,
+  stats, teamFilter, onReload, criteria, onCriteriaChange,
 }: {
   stats: RevenueStats;
   teamFilter: string | null;
   onReload: () => void;
+  criteria: "캠페인 시작날짜" | "계산서날짜";
+  onCriteriaChange: (c: "캠페인 시작날짜" | "계산서날짜") => void;
 }) {
   const year = stats.year;
   const thisMonthNum = new Date().getMonth() + 1;
@@ -520,6 +522,23 @@ function RevenueKpiSection({
             <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: "rgba(49,130,246,0.1)", color: "#3182F6" }}>
               {year}년
             </span>
+            {/* 기준 토글 */}
+            <div className="flex gap-0.5 p-0.5 rounded-xl ml-2" style={{ background: "#F1F5F9" }}>
+              {([
+                { value: "캠페인 시작날짜", label: "캠페인 시작일" },
+                { value: "계산서날짜",     label: "계산서 발행일" },
+              ] as const).map(({ value, label }) => (
+                <button key={value} onClick={() => onCriteriaChange(value)}
+                  className="px-3 py-1 rounded-lg text-xs font-semibold transition-all"
+                  style={{
+                    background: criteria === value ? "#fff" : "transparent",
+                    color:      criteria === value ? "#191F28" : "#94A3B8",
+                    boxShadow:  criteria === value ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+                  }}>
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
           <button
             onClick={openKpiEdit}
@@ -812,7 +831,8 @@ function ProjectsInner() {
   const [editing,      setEditing]      = useState<ProjectGroup | null>(null);
   const [search,       setSearch]       = useState("");
   const [activeTab,    setActiveTab]    = useState<string>("전체");
-  const [revenueStats, setRevenueStats] = useState<RevenueStats | null>(null);
+  const [revenueStats, setRevenueStats]     = useState<RevenueStats | null>(null);
+  const [statsCriteria, setStatsCriteria]   = useState<"캠페인 시작날짜" | "계산서날짜">("캠페인 시작날짜");
 
   // 아코디언: 펼쳐진 그룹 ID 셋
   const [statusFilter, setStatusFilter] = useState<"전체" | "진행중" | "종료" | "D-7" | "D-3" | "D-1" | "WD-7" | "WD-3" | "WD-1">("전체");
@@ -890,14 +910,16 @@ function ProjectsInner() {
   }, []);
 
   const loadStats = useCallback(() => {
-    fetch(`/api/stats/revenue?year=${new Date().getFullYear()}`)
+    fetch(`/api/stats/revenue?year=${new Date().getFullYear()}&criteria=${encodeURIComponent(statsCriteria)}`)
       .then((r) => r.json())
       .then((d) => setRevenueStats(d))
       .catch(() => {});
-  }, []);
+  }, [statsCriteria]);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { load(); loadStats(); }, [load, loadStats]);
+  useEffect(() => { load(); }, [load]);
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { loadStats(); }, [loadStats]);
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { if (teamParam) setActiveTab(teamParam); }, [teamParam]);
 
@@ -1043,7 +1065,8 @@ function ProjectsInner() {
     <div className="space-y-5">
       {/* ── 매출 KPI + 차트 ── */}
       {revenueStats && (
-        <RevenueKpiSection stats={revenueStats} teamFilter={teamParam} onReload={loadStats} />
+        <RevenueKpiSection stats={revenueStats} teamFilter={teamParam} onReload={loadStats}
+          criteria={statsCriteria} onCriteriaChange={setStatsCriteria} />
       )}
 
       {/* 신규 프로젝트+캠페인 동시 생성 모달 */}

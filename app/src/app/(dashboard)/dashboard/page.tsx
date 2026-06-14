@@ -44,6 +44,7 @@ export default function DashboardPage() {
   const prevMonth = thisMonth === 0 ? 11 : thisMonth - 1;
   const year = now.getFullYear();
 
+  const [criteria, setCriteria] = useState<"캠페인 시작날짜" | "계산서날짜">("캠페인 시작날짜");
   const [agg,      setAgg]      = useState<AggregateData | null>(null);
   const [costAgg,  setCostAgg]  = useState<{ monthly: { total: number }[]; yearTotal: number } | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -54,7 +55,7 @@ export default function DashboardPage() {
   const load = useCallback(() => {
     setLoading(true);
     Promise.all([
-      fetch(`/api/revenue/aggregate?year=${year}`).then(r => r.json()),
+      fetch(`/api/revenue/aggregate?year=${year}&criteria=${encodeURIComponent(criteria)}`).then(r => r.json()),
       fetch(`/api/costs/aggregate?year=${year}`).then(r => r.json()),
       fetch("/api/projects").then(r => r.json()),
       fetch("/api/notices?pinned=true").then(r => r.json()),
@@ -64,7 +65,7 @@ export default function DashboardPage() {
       setProjects((projData.projects ?? []).filter((p: Project) => p.status === "진행"));
       setNotices(noticeData.notices ?? []);
     }).finally(() => setLoading(false));
-  }, [year]);
+  }, [year, criteria]);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, [load]);
@@ -158,12 +159,35 @@ export default function DashboardPage() {
         );
       })()}
 
-      {/* KPI 카드 — 계산서날짜(매출) / 승인 매입 기준 */}
+      {/* 기준 토글 */}
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold" style={{ color: "#94A3B8" }}>
+          {criteria === "캠페인 시작날짜" ? "캠페인 시작일 기준 · 입금확인 완료 매출" : "세금계산서 발행일 기준 · 입금확인 완료 매출"}
+        </p>
+        <div className="flex gap-0.5 p-0.5 rounded-xl" style={{ background: "#F1F5F9" }}>
+          {([
+            { value: "캠페인 시작날짜", label: "캠페인 시작일 기준" },
+            { value: "계산서날짜",     label: "세금계산서 발행일 기준" },
+          ] as const).map(({ value, label }) => (
+            <button key={value} onClick={() => setCriteria(value)}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+              style={{
+                background: criteria === value ? "#fff" : "transparent",
+                color:      criteria === value ? "#191F28" : "#94A3B8",
+                boxShadow:  criteria === value ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+              }}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* KPI 카드 */}
       <div className="grid grid-cols-4 gap-4">
         {/* 이번달 매출 */}
         <div className="rounded-2xl p-5 flex flex-col gap-3" style={{ background: "#fff", border: "1px solid #E9EBEF" }}>
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold" style={{ color: "#94A3B8" }}>이번달 매출<br/><span style={{ color: "#CBD5E1", fontWeight: 400 }}>결재완료 + 계산서발급</span></span>
+            <span className="text-xs font-semibold" style={{ color: "#94A3B8" }}>이번달 매출<br/><span style={{ color: "#CBD5E1", fontWeight: 400 }}>{criteria === "캠페인 시작날짜" ? "캠페인 시작일 기준" : "계산서 발행일 기준"}</span></span>
             <span className="p-2 rounded-xl" style={{ background: "rgba(49,130,246,0.1)", color: "#3182F6" }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
             </span>
@@ -222,7 +246,7 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between mb-5">
             <div>
               <h2 className="font-bold text-base" style={{ color: "#191F28" }}>월별 매출 추이</h2>
-              <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>결재완료 + 계산서발급 기준 · {year}년</p>
+              <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>{criteria === "캠페인 시작날짜" ? "캠페인 시작일 기준" : "세금계산서 발행일 기준"} · {year}년</p>
             </div>
             <div className="flex items-center gap-4 text-xs" style={{ color: "#64748B" }}>
               {Object.entries(CHART_COLORS).map(([k, c]) => (
@@ -252,7 +276,7 @@ export default function DashboardPage() {
         <div className="rounded-2xl overflow-hidden" style={{ background: "#fff", border: "1px solid #E9EBEF" }}>
           <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: "1px solid #F1F5F9", background: "#F8FAFC" }}>
             <p className="text-sm font-bold" style={{ color: "#191F28" }}>월별 합계</p>
-            <p className="text-xs" style={{ color: "#94A3B8" }}>결재완료 + 계산서발급 기준</p>
+            <p className="text-xs" style={{ color: "#94A3B8" }}>{criteria === "캠페인 시작날짜" ? "캠페인 시작일 기준" : "계산서 발행일 기준"}</p>
           </div>
           <div className="overflow-y-auto" style={{ maxHeight: 280 }}>
             {loading ? (
