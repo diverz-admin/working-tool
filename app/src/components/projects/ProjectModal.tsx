@@ -1069,6 +1069,24 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
               {/* 매출 섹션 */}
               {activeSection === "매출" && (
               <div>
+                  {(totalSupply > 0 || totalTax > 0 || totalRevenue > 0) && (
+                    <div className="mb-3 flex items-center gap-5 px-4 py-2.5 rounded-xl" style={{ background: "#EFF6FF", border: "1px solid #BFDBFE" }}>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-medium" style={{ color: "#64748B" }}>공급가 합계</span>
+                        <span className="text-sm font-bold" style={{ color: "#3182F6" }}>₩{totalSupply.toLocaleString()}</span>
+                      </div>
+                      <div className="w-px h-4" style={{ background: "#BFDBFE" }} />
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-medium" style={{ color: "#64748B" }}>세액 합계</span>
+                        <span className="text-sm font-bold" style={{ color: "#3182F6" }}>₩{totalTax.toLocaleString()}</span>
+                      </div>
+                      <div className="w-px h-4" style={{ background: "#BFDBFE" }} />
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-medium" style={{ color: "#64748B" }}>총액</span>
+                        <span className="text-sm font-bold" style={{ color: "#3182F6" }}>₩{totalRevenue.toLocaleString()}</span>
+                      </div>
+                    </div>
+                  )}
                   <div className="overflow-x-auto rounded-xl border" style={{ borderColor: "#E9EBEF" }}>
                     <table className="w-full text-xs" style={{ minWidth: 1200 }}>
                       <thead>
