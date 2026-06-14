@@ -889,7 +889,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
             {/* 매출 / 매입 탭 */}
             <div>
               {/* 요약 */}
-              {isEdit && (() => {
+              {(() => {
                 const contractKey = "__contract__";
                 const cs = confirmStatuses[contractKey];
                 const canRequest = Boolean(effectiveTotal && form.assignedPerson);
