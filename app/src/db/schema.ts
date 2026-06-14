@@ -120,6 +120,7 @@ export const projectRevenues = pgTable("project_revenues", {
   completedQty:  integer("completed_qty").default(0),
   workCompleted: boolean("work_completed").default(false),
   completedAt:   timestamp("completed_at", { withTimezone: true }),
+  sectionLabel:  text("section_label"),
   createdAt:     timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

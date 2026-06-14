@@ -28,6 +28,7 @@ interface RevenueRow {
   localId: number;
   revenueRowId: string;    // 안정적 UUID — rowKey 충돌 방지
   linkedCostLocalId: number | null; // 1:1 페어 매입 행 localId
+  sectionLabel: string;
   assignee: string;
   productName: string;
   unitPrice: number;
@@ -68,8 +69,8 @@ interface CostRow {
 let _lid = 0;
 const nid = () => ++_lid;
 
-function emptyRevenue(): RevenueRow {
-  return { localId: nid(), revenueRowId: crypto.randomUUID(), linkedCostLocalId: null, assignee: "", productName: "", unitPrice: 0, quantity: "", supplyPrice: "", tax: "", total: "", paymentDate: "", invoiceDate: "", workStartDate: "", workEndDate: "", completedQty: "", workCompleted: false, depositAccount: "" };
+function emptyRevenue(sectionLabel = "1주"): RevenueRow {
+  return { localId: nid(), revenueRowId: crypto.randomUUID(), linkedCostLocalId: null, sectionLabel, assignee: "", productName: "", unitPrice: 0, quantity: "", supplyPrice: "", tax: "", total: "", paymentDate: "", invoiceDate: "", workStartDate: "", workEndDate: "", completedQty: "", workCompleted: false, depositAccount: "" };
 }
 function emptyCost(): CostRow {
   return { localId: nid(), costRowId: crypto.randomUUID(), assignee: "", vendor: "", productName: "", unitPrice: 0, quantity: "", supplyPrice: "", tax: "", total: "", purchaseDate: "", invoiceDate: "", workStartDate: "", workEndDate: "", workCompleted: false, isApproved: false, invoiceFileUrl: "", invoiceFileName: "" };
@@ -219,6 +220,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
             return {
             localId:        nid(),
             revenueRowId:   r.revenueRowId ? String(r.revenueRowId) : crypto.randomUUID(),
+            sectionLabel:   String(r.sectionLabel ?? "1주"),
             assignee:       String(r.assignee ?? ""),
             productName:    String(r.productName ?? ""),
             linkedCostLocalId: null,
@@ -397,12 +399,51 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
   }
 
   /* 매출+매입 행을 1:1 페어로 추가 */
-  function addLinkedPair() {
-    const newRev  = emptyRevenue();
+  function addLinkedPair(sectionLabel?: string) {
+    const sl = sectionLabel ?? (revenuesRef.current.length > 0
+      ? (revenuesRef.current[revenuesRef.current.length - 1].sectionLabel || "1주")
+      : "1주");
+    const newRev  = emptyRevenue(sl);
     const newCost = emptyCost();
     newRev.linkedCostLocalId = newCost.localId;
     setRevenues((p) => [...p, newRev]);
     setCosts((p) => [...p, newCost]);
+  }
+
+  function nextSectionLabel(existingLabels: string[]): string {
+    const nums = existingLabels
+      .map(s => { const m = s.match(/^(\d+)주$/); return m ? parseInt(m[1]) : 0; })
+      .filter(n => n > 0);
+    return `${nums.length > 0 ? Math.max(...nums) + 1 : 1}주`;
+  }
+
+  function addSection() {
+    const allLabels = [...new Map(revenuesRef.current.map(r => [r.sectionLabel || "1주", true] as [string, boolean])).keys()];
+    const sl = nextSectionLabel(allLabels);
+    const newRev = emptyRevenue(sl);
+    const newCost = emptyCost();
+    newRev.linkedCostLocalId = newCost.localId;
+    setRevenues(p => [...p, newRev]);
+    setCosts(p => [...p, newCost]);
+  }
+
+  function copySection(sectionLabel: string) {
+    const sectionRows = revenuesRef.current.filter(r => (r.sectionLabel || "1주") === sectionLabel);
+    const allLabels = [...new Map(revenuesRef.current.map(r => [r.sectionLabel || "1주", true] as [string, boolean])).keys()];
+    const nextLabel = nextSectionLabel(allLabels);
+    const newRevRows = sectionRows.map(r => ({
+      ...r,
+      localId: nid(),
+      revenueRowId: crypto.randomUUID(),
+      linkedCostLocalId: null,
+      sectionLabel: nextLabel,
+      paymentDate: "",
+      invoiceDate: "",
+      workCompleted: false,
+    }));
+    const newCostRows = newRevRows.map(() => emptyCost());
+    setRevenues(p => [...p, ...newRevRows]);
+    setCosts(p => [...p, ...newCostRows]);
   }
 
   /* 상품관리에서 매출 행 자동 채우기 (판매가 기준) + 연동 매입 행 동기화 */
@@ -1020,7 +1061,27 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                         </tr>
                       </thead>
                       <tbody>
-                        {revenues.map((r, i) => {
+                        {[...new Map(revenues.map(r => [r.sectionLabel || "1주", true] as [string, boolean])).keys()].flatMap(section => {
+                          const sectionRows = revenues.filter(r => (r.sectionLabel || "1주") === section);
+                          return [
+                            <tr key={`sh-${section}`} style={{ background: "#EFF6FF" }}>
+                              <td colSpan={15} className="px-3 py-1">
+                                <div className="flex items-center justify-between">
+                                  <span className="font-bold text-xs" style={{ color: "#3182F6" }}>{section}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => copySection(section)}
+                                    className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg border transition-colors hover:bg-blue-50"
+                                    style={{ borderColor: "#BFDBFE", color: "#3182F6" }}
+                                  >
+                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                                    섹션 복사
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>,
+                            ...sectionRows.map((r) => {
+                          const i = revenues.indexOf(r);
                           const remDays = daysLeft(r.workEndDate);
                           const revConfirmStatus = confirmStatuses[r.revenueRowId];
                           const revDeleteBlocked = Boolean(r.paymentDate) || Boolean(revConfirmStatus && revConfirmStatus.status !== "반려");
@@ -1116,18 +1177,26 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                               </td>
                             </tr>
                           );
+                        })
+                          ];
                         })}
                       </tbody>
                     </table>
                   </div>
-                  <button type="button" onClick={() => {
-                    addLinkedPair();
-                  }}
-                    className="mt-3 flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-xl border transition-colors hover:bg-slate-50"
-                    style={{ borderColor: "#3182F6", color: "#3182F6", borderStyle: "dashed" }}>
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                    매출(판매) 행 추가
-                  </button>
+                  <div className="mt-3 flex items-center gap-2">
+                    <button type="button" onClick={() => { addLinkedPair(); }}
+                      className="flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-xl border transition-colors hover:bg-slate-50"
+                      style={{ borderColor: "#3182F6", color: "#3182F6", borderStyle: "dashed" }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                      행 추가
+                    </button>
+                    <button type="button" onClick={addSection}
+                      className="flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-xl border transition-colors hover:bg-slate-50"
+                      style={{ borderColor: "#64748B", color: "#64748B", borderStyle: "dashed" }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                      섹션 추가
+                    </button>
+                  </div>
                 </div>
               )}
 
