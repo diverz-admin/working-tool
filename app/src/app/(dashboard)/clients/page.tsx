@@ -33,6 +33,8 @@ interface Client {
   assignedPerson?: string;
   notes?: string;
   projectCount?: number;
+  bizRegFileUrl?: string | null;
+  bizRegFileName?: string | null;
 }
 
 const TABS: { key: TabKey; label: string; color: string }[] = [
@@ -114,6 +116,8 @@ function toFormData(c: Client): ClientFormData {
     assignedTeam: c.assignedTeam ?? "",
     assignedPerson: c.assignedPerson ?? "",
     notes: c.notes ?? "",
+    bizRegFileUrl:  c.bizRegFileUrl  ?? null,
+    bizRegFileName: c.bizRegFileName ?? null,
   };
 }
 
@@ -125,6 +129,7 @@ function emptyClientForm(assignedTeam = ""): ClientFormData {
     advertiserContact: "", contactEmail: "", businessNumber: "", category: "",
     products: [], monthlyAvg: "", inboundDate: "", inboundRoute: "",
     endDate: "", endReason: "", assignedTeam, assignedPerson: "", notes: "",
+    bizRegFileUrl: null, bizRegFileName: null,
   };
 }
 

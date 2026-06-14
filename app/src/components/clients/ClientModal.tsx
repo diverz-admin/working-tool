@@ -24,6 +24,8 @@ export interface ClientFormData {
   assignedTeam: string;
   assignedPerson: string;
   notes: string;
+  bizRegFileUrl?: string | null;
+  bizRegFileName?: string | null;
 }
 
 export interface LinkedProject {
@@ -75,6 +77,7 @@ function emptyForm(): ClientFormData {
     advertiserContact: "", contactEmail: "", businessNumber: "", category: "",
     products: [], monthlyAvg: "", inboundDate: "", inboundRoute: "",
     endDate: "", endReason: "", assignedTeam: "", assignedPerson: "", notes: "",
+    bizRegFileUrl: null, bizRegFileName: null,
   };
 }
 
@@ -93,7 +96,8 @@ export default function ClientModal({ initial, onClose, onSaved, onDelete, onVie
   const [saving, setSaving]               = useState(false);
   const [error, setError]                 = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const backdropRef = useRef<HTMLDivElement>(null);
+  const backdropRef    = useRef<HTMLDivElement>(null);
+  const bizRegInputRef = useRef<HTMLInputElement>(null);
 
   const isEdit = Boolean(initial?.id);
 
@@ -120,6 +124,19 @@ export default function ClientModal({ initial, onClose, onSaved, onDelete, onVie
       fetch(`/api/clients/${initial.id}/projects`)
         .then((r) => r.json())
         .then(({ projects }) => setLinkedProjects(projects ?? []))
+        .catch(() => {});
+
+      fetch(`/api/clients/${initial.id}`)
+        .then((r) => r.json())
+        .then(({ client }) => {
+          if (client) {
+            setForm((prev) => ({
+              ...prev,
+              bizRegFileUrl:  client.bizRegFileUrl  ?? null,
+              bizRegFileName: client.bizRegFileName ?? null,
+            }));
+          }
+        })
         .catch(() => {});
     }
     return () => { document.body.style.overflow = ""; };
@@ -150,6 +167,25 @@ export default function ClientModal({ initial, onClose, onSaved, onDelete, onVie
     setAccounts((prev) =>
       prev.map((a) => a.localId === localId ? { ...a, [field]: value } : a)
     );
+  }
+
+  function handleBizRegFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setForm((prev) => ({
+        ...prev,
+        bizRegFileUrl:  reader.result as string,
+        bizRegFileName: file.name,
+      }));
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  }
+
+  function clearBizReg() {
+    setForm((prev) => ({ ...prev, bizRegFileUrl: null, bizRegFileName: null }));
   }
 
   function validateFields(): boolean {
@@ -376,6 +412,41 @@ export default function ClientModal({ initial, onClose, onSaved, onDelete, onVie
           <div>
             <label className={labelCls} style={labelStyle}>메모</label>
             <textarea value={form.notes} onChange={(e) => setField("notes", e.target.value)} placeholder="특이사항, 히스토리 등 자유 메모" rows={3} className={`${inputCls} resize-none`} style={inputStyle} />
+          </div>
+
+          {/* 사업자등록증 */}
+          <div>
+            <label className={labelCls} style={labelStyle}>사업자등록증</label>
+            <input ref={bizRegInputRef} type="file" accept="image/*,.pdf" className="hidden" onChange={handleBizRegFile} />
+            {form.bizRegFileUrl ? (
+              <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl border" style={{ background: "#F8FAFC", borderColor: "#E9EBEF" }}>
+                {form.bizRegFileUrl.startsWith("data:image") && (
+                  <img src={form.bizRegFileUrl} alt="사업자등록증" className="w-14 h-14 object-cover rounded-lg border flex-shrink-0" style={{ borderColor: "#E9EBEF" }} />
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate" style={{ color: "#191F28" }}>{form.bizRegFileName}</p>
+                  <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>첨부됨</p>
+                </div>
+                <div className="flex gap-2 flex-shrink-0">
+                  <button type="button" onClick={() => bizRegInputRef.current?.click()}
+                    className="text-xs font-semibold px-2.5 py-1.5 rounded-lg border transition-colors hover:bg-slate-50"
+                    style={{ borderColor: "#E9EBEF", color: "#64748B" }}>변경</button>
+                  <button type="button" onClick={clearBizReg}
+                    className="text-xs font-semibold px-2.5 py-1.5 rounded-lg border transition-colors"
+                    style={{ borderColor: "rgba(239,68,68,0.3)", color: "#EF4444", background: "rgba(239,68,68,0.05)" }}>삭제</button>
+                </div>
+              </div>
+            ) : (
+              <button type="button" onClick={() => bizRegInputRef.current?.click()}
+                className="w-full flex items-center justify-center gap-2 py-4 rounded-xl border-2 transition-colors hover:bg-slate-50"
+                style={{ borderColor: "#E9EBEF", borderStyle: "dashed", color: "#94A3B8" }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                <span className="text-sm font-medium">사업자등록증 첨부</span>
+              </button>
+            )}
           </div>
 
           {/* ── 거래처 계정정보 ── */}

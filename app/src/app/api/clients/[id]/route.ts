@@ -27,7 +27,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         endReason: c.endReason ?? "",
         assignedTeam: c.assignedTeam ?? "",
         assignedPerson: c.assignedPerson ?? "",
-        notes: c.notes ?? "",
+        notes:          c.notes ?? "",
+        bizRegFileUrl:  c.bizRegFileUrl  ?? null,
+        bizRegFileName: c.bizRegFileName ?? null,
       },
     });
   } catch (err) {
@@ -61,6 +63,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         assignedTeam:   body.assignedTeam || null,
         assignedPerson: body.assignedPerson || null,
         notes:          body.notes || null,
+        bizRegFileUrl:  body.bizRegFileUrl  ?? null,
+        bizRegFileName: body.bizRegFileName ?? null,
       })
       .where(eq(clients.id, id))
       .returning();

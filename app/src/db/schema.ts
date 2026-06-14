@@ -37,7 +37,9 @@ export const clients = pgTable("clients", {
   endReason:      text("end_reason"),
   assignedTeam:   text("assigned_team"),
   assignedPerson: text("assigned_person"),
-  notes:          text("notes"),
+  notes:             text("notes"),
+  bizRegFileUrl:     text("biz_reg_file_url"),
+  bizRegFileName:    text("biz_reg_file_name"),
   createdAt:      timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt:      timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
