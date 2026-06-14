@@ -953,6 +953,31 @@ function ProjectsInner() {
       .catch(() => {});
   }, [openParam]);
 
+  // 프로젝트 ID로 캠페인 모달 열기
+  async function openCampaignById(projectId: string, groupId?: string) {
+    const res = await fetch(`/api/projects/${projectId}`);
+    const { project } = await res.json();
+    if (!project) return;
+    setEditCampaign({
+      id:             project.id,
+      status:         (project.status === "리드" ? "진행" : project.status) ?? "진행",
+      campaignName:   project.campaignName ?? "",
+      clientId:       project.clientId ?? undefined,
+      projectType:    project.projectType ?? "",
+      advertiser:     project.advertiser ?? "",
+      product:        project.product ?? "",
+      assignedTeam:   project.assignedTeam ?? "",
+      assignedPerson: project.assignedPerson ?? "",
+      contractAmount: project.contractAmount != null ? String(project.contractAmount) : "",
+      startDate:      project.startDate ?? "",
+      endDate:        project.endDate ?? "",
+      placeLink:      project.placeLink ?? "",
+      notes:          project.notes ?? "",
+      isExtended:     project.isExtended ?? false,
+    });
+    if (groupId) setActiveCampGroup(groupId);
+  }
+
   // 그룹 캠페인 로드 (펼칠 때)
   async function loadCampaigns(groupId: string, force = false) {
     if (!force && campaignMap.has(groupId)) return;
@@ -1312,7 +1337,12 @@ function ProjectsInner() {
                       <tr key={`gh-${projectId}`} style={{ background: allDone ? "#F0FDF4" : "#F8FAFC", borderTop: "2px solid #E9EBEF" }}>
                         <td colSpan={7} className="px-4 py-2">
                           <div className="flex items-center gap-2">
-                            <span className="font-bold text-xs" style={{ color: "#191F28" }}>{groupName}</span>
+                            <button
+                              type="button"
+                              onClick={() => openCampaignById(projectId, filtered.find(r => r.projectId === projectId)?.groupId)}
+                              className="font-bold text-xs hover:underline transition-colors"
+                              style={{ color: "#3182F6", cursor: "pointer", background: "none", border: "none", padding: 0 }}
+                            >{groupName}</button>
                             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#CBD5E1" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
                             <span className="text-xs" style={{ color: "#475569" }}>{campaignName || "—"}</span>
                             <span className="ml-2 text-xs px-2 py-0.5 rounded-full font-semibold" style={{
