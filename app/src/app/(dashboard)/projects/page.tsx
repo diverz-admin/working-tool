@@ -1274,70 +1274,92 @@ function ProjectsInner() {
             <table className="w-full text-xs">
               <thead>
                 <tr style={{ background: "#F8FAFC" }}>
-                  {["#", "프로젝트", "캠페인", "담당자", "품명", "작업기간", "수량", "셋팅날짜", "작업완료"].map((h) => (
+                  {["#", "담당자", "품명", "작업기간", "수량", "셋팅날짜", "작업완료"].map((h) => (
                     <th key={h} className="px-4 py-2.5 text-left font-semibold whitespace-nowrap" style={{ color: "#64748B", borderBottom: "2px solid #E9EBEF" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {workRows
-                  .filter((r) => (r.workStartDate ?? "").startsWith(workMonth))
-                  .filter((r) => {
-                    if (workFilter === "완료")   return r.workCompleted;
-                    if (workFilter === "미완료") return !r.workCompleted;
-                    return true;
-                  })
-                  .filter((r) => {
-                    if (!workSearch.trim()) return true;
-                    const q = workSearch.toLowerCase();
-                    return (r.campaignName ?? "").toLowerCase().includes(q)
-                      || (r.groupName ?? "").toLowerCase().includes(q)
-                      || (r.productName ?? "").toLowerCase().includes(q)
-                      || (r.assignee ?? "").toLowerCase().includes(q);
-                  })
-                  .map((r, idx) => {
-                    const qty       = r.quantity ?? 0;
-                    const done      = r.completedQty ?? 0;
-                    const remaining = Math.max(0, qty - done);
-                    const period = r.workStartDate && r.workEndDate
-                      ? `${r.workStartDate} ~ ${r.workEndDate}`
-                      : r.workStartDate || r.workEndDate || "—";
-                    return (
-                      <tr key={r.id} className="border-t" style={{ borderColor: "#F1F5F9", background: r.workCompleted ? "rgba(16,185,129,0.02)" : undefined }}>
-                        <td className="px-4 py-2.5 font-medium" style={{ color: "#94A3B8" }}>{idx + 1}</td>
-                        <td className="px-4 py-2.5 font-semibold" style={{ color: "#191F28", maxWidth: 140 }}>
-                          <span className="block truncate">{r.groupName}</span>
+                {(() => {
+                  const filtered = workRows
+                    .filter((r) => (r.workStartDate ?? "").startsWith(workMonth))
+                    .filter((r) => {
+                      if (workFilter === "완료")   return r.workCompleted;
+                      if (workFilter === "미완료") return !r.workCompleted;
+                      return true;
+                    })
+                    .filter((r) => {
+                      if (!workSearch.trim()) return true;
+                      const q = workSearch.toLowerCase();
+                      return (r.campaignName ?? "").toLowerCase().includes(q)
+                        || (r.groupName ?? "").toLowerCase().includes(q)
+                        || (r.productName ?? "").toLowerCase().includes(q)
+                        || (r.assignee ?? "").toLowerCase().includes(q);
+                    });
+
+                  if (filtered.length === 0) {
+                    return <tr><td colSpan={7} className="py-16 text-center text-sm" style={{ color: "#94A3B8" }}>해당 월의 작업 데이터가 없습니다.</td></tr>;
+                  }
+
+                  // 캠페인별 그룹핑 (projectId 기준, 순서 유지)
+                  const groups = [...new Map(filtered.map(r => [r.projectId, { projectId: r.projectId, groupName: r.groupName, campaignName: r.campaignName }])).values()];
+
+                  let rowIdx = 0;
+                  return groups.flatMap(({ projectId, groupName, campaignName }) => {
+                    const groupRows = filtered.filter(r => r.projectId === projectId);
+                    const allDone = groupRows.every(r => r.workCompleted);
+                    return [
+                      <tr key={`gh-${projectId}`} style={{ background: allDone ? "#F0FDF4" : "#F8FAFC", borderTop: "2px solid #E9EBEF" }}>
+                        <td colSpan={7} className="px-4 py-2">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-xs" style={{ color: "#191F28" }}>{groupName}</span>
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#CBD5E1" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+                            <span className="text-xs" style={{ color: "#475569" }}>{campaignName || "—"}</span>
+                            <span className="ml-2 text-xs px-2 py-0.5 rounded-full font-semibold" style={{
+                              background: allDone ? "rgba(16,185,129,0.1)" : "rgba(49,130,246,0.08)",
+                              color: allDone ? "#059669" : "#3182F6",
+                            }}>
+                              {allDone ? "완료" : `${groupRows.filter(r => r.workCompleted).length}/${groupRows.length}`}
+                            </span>
+                          </div>
                         </td>
-                        <td className="px-4 py-2.5" style={{ color: "#475569", maxWidth: 140 }}>
-                          <span className="block truncate">{r.campaignName || "—"}</span>
-                        </td>
-                        <td className="px-4 py-2.5" style={{ color: "#475569" }}>{r.assignee || "—"}</td>
-                        <td className="px-4 py-2.5 font-medium" style={{ color: "#191F28" }}>{r.productName || "—"}</td>
-                        <td className="px-4 py-2.5 whitespace-nowrap" style={{ color: "#94A3B8" }}>{period}</td>
-                        <td className="px-4 py-2.5 font-semibold" style={{ color: "#3182F6" }}>{qty}</td>
-                        <td className="px-3 py-2">
-                          <input
-                            type="date"
-                            value={r.settingDate ?? ""}
-                            onChange={(e) => updateWorkRow(r.id, { settingDate: e.target.value })}
-                            className="px-2 py-1 rounded-lg text-xs outline-none"
-                            style={{ background: "#F8FAFC", border: "1px solid #E9EBEF", color: "#191F28", width: 130 }}
-                          />
-                        </td>
-                        <td className="px-4 py-2.5">
-                          <input
-                            type="checkbox"
-                            checked={!!r.workCompleted}
-                            onChange={(e) => updateWorkRow(r.id, { workCompleted: e.target.checked })}
-                            className="w-4 h-4 rounded accent-emerald-500"
-                          />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                {workRows.filter(r => (r.workStartDate ?? "").startsWith(workMonth)).length === 0 && (
-                  <tr><td colSpan={10} className="py-16 text-center text-sm" style={{ color: "#94A3B8" }}>해당 월의 작업 데이터가 없습니다.</td></tr>
-                )}
+                      </tr>,
+                      ...groupRows.map((r) => {
+                        rowIdx++;
+                        const qty    = r.quantity ?? 0;
+                        const period = r.workStartDate && r.workEndDate
+                          ? `${r.workStartDate} ~ ${r.workEndDate}`
+                          : r.workStartDate || r.workEndDate || "—";
+                        return (
+                          <tr key={r.id} className="border-t" style={{ borderColor: "#F1F5F9", background: r.workCompleted ? "rgba(16,185,129,0.02)" : undefined }}>
+                            <td className="px-4 py-2.5 font-medium" style={{ color: "#94A3B8" }}>{rowIdx}</td>
+                            <td className="px-4 py-2.5" style={{ color: "#475569" }}>{r.assignee || "—"}</td>
+                            <td className="px-4 py-2.5 font-medium" style={{ color: "#191F28" }}>{r.productName || "—"}</td>
+                            <td className="px-4 py-2.5 whitespace-nowrap" style={{ color: "#94A3B8" }}>{period}</td>
+                            <td className="px-4 py-2.5 font-semibold" style={{ color: "#3182F6" }}>{qty}</td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="date"
+                                value={r.settingDate ?? ""}
+                                onChange={(e) => updateWorkRow(r.id, { settingDate: e.target.value })}
+                                className="px-2 py-1 rounded-lg text-xs outline-none"
+                                style={{ background: "#F8FAFC", border: "1px solid #E9EBEF", color: "#191F28", width: 130 }}
+                              />
+                            </td>
+                            <td className="px-4 py-2.5">
+                              <input
+                                type="checkbox"
+                                checked={!!r.workCompleted}
+                                onChange={(e) => updateWorkRow(r.id, { workCompleted: e.target.checked })}
+                                className="w-4 h-4 rounded accent-emerald-500"
+                              />
+                            </td>
+                          </tr>
+                        );
+                      }),
+                    ];
+                  });
+                })()}
               </tbody>
             </table>
           )}
