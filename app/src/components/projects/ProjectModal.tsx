@@ -182,7 +182,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
   const [activeSection, setActiveSection] = useState<"매출" | "매입">("매출");
   const [toast, setToast]           = useState<string | null>(null);
   const [manualTotal, setManualTotal] = useState<string>(() => initial ? "" : "");
-  const [confirmStatuses, setConfirmStatuses] = useState<Record<string, { status: ConfirmStatus | "발행완료"; rejectReason?: string; requestId?: string }>>({});
+  const [confirmStatuses, setConfirmStatuses] = useState<Record<string, { status: ConfirmStatus | "발행완료"; rejectReason?: string; requestId?: string; amount?: string }>>({});
   const [rejectInfo, setRejectInfo]           = useState<{ reason?: string; projectName: string; rowKey: string; requestId: string } | null>(null);
   const [paymentStatuses, setPaymentStatuses] = useState<Record<string, { status: PaymentStatus; rejectReason?: string; requestId?: string }>>({});
   const [payRejectInfo, setPayRejectInfo]     = useState<{ reason?: string; projectName: string; rowKey: string; requestId: string } | null>(null);
@@ -274,10 +274,10 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
   useEffect(() => {
     if (!initial?.id) return;
     getConfirmRequests(initial.id).then((reqs) => {
-      const map: Record<string, { status: ConfirmStatus | "발행완료"; rejectReason?: string; requestId?: string }> = {};
+      const map: Record<string, { status: ConfirmStatus | "발행완료"; rejectReason?: string; requestId?: string; amount?: string }> = {};
       reqs.forEach((r) => {
         if (!r.rowKey) return;
-        map[r.rowKey] = { status: r.taxInvoiceDate ? "발행완료" as const : r.status as ConfirmStatus, rejectReason: r.rejectReason, requestId: r.id };
+        map[r.rowKey] = { status: r.taxInvoiceDate ? "발행완료" as const : r.status as ConfirmStatus, rejectReason: r.rejectReason, requestId: r.id, amount: r.amount };
       });
       setConfirmStatuses(map);
     });
@@ -647,6 +647,8 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
   }
 
   const totalRevenue  = revenues.reduce((s, r) => s + (parseWon(r.total) ?? 0), 0);
+  const totalSupply   = revenues.reduce((s, r) => s + (parseWon(r.supplyPrice) ?? 0), 0);
+  const totalTax      = revenues.reduce((s, r) => s + (parseWon(r.tax) ?? 0), 0);
   const totalCost     = costs.reduce((s, c) => s + (parseWon(c.total) ?? 0), 0);
   // 매출 행이 없으면 직접 입력값 사용
   const effectiveTotal = totalRevenue > 0 ? totalRevenue : (parseWon(manualTotal) || 0);
@@ -901,6 +903,8 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                         <p className="text-xs mb-1.5" style={{ color: "#94A3B8" }}>총 매출(판매)</p>
                         {totalRevenue > 0 ? (
                           <p className="text-sm font-bold" style={{ color: "#3182F6" }}>₩{totalRevenue.toLocaleString()}</p>
+                        ) : cs?.status === "대기" && cs.amount ? (
+                          <p className="text-sm font-bold" style={{ color: "#3182F6" }}>{cs.amount}</p>
                         ) : (
                           <div className="flex items-center gap-1">
                             <span className="text-sm font-bold" style={{ color: "#3182F6" }}>₩</span>
@@ -918,6 +922,20 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                           </div>
                         )}
                       </div>
+                      {totalRevenue > 0 && (
+                        <>
+                          <div className="w-px self-stretch" style={{ background: "#E9EBEF" }} />
+                          <div>
+                            <p className="text-xs mb-1.5" style={{ color: "#94A3B8" }}>공급가 합계</p>
+                            <p className="text-sm font-bold" style={{ color: "#475569" }}>₩{totalSupply.toLocaleString()}</p>
+                          </div>
+                          <div className="w-px self-stretch" style={{ background: "#E9EBEF" }} />
+                          <div>
+                            <p className="text-xs mb-1.5" style={{ color: "#94A3B8" }}>부가세 합계</p>
+                            <p className="text-sm font-bold" style={{ color: "#475569" }}>₩{totalTax.toLocaleString()}</p>
+                          </div>
+                        </>
+                      )}
                       <div className="w-px self-stretch" style={{ background: "#E9EBEF" }} />
                       <div>
                         <p className="text-xs mb-1" style={{ color: "#94A3B8" }}>총 매입(구매)</p>
