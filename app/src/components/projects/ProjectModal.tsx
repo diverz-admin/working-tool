@@ -180,6 +180,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
   const [guaranteeProgress, setGuaranteeProgress] = useState<number>(0);
   const [activeSection, setActiveSection] = useState<"매출" | "매입">("매출");
   const [toast, setToast]           = useState<string | null>(null);
+  const [manualTotal, setManualTotal] = useState<string>(() => initial ? "" : "");
   const [confirmStatuses, setConfirmStatuses] = useState<Record<string, { status: ConfirmStatus | "발행완료"; rejectReason?: string; requestId?: string }>>({});
   const [rejectInfo, setRejectInfo]           = useState<{ reason?: string; projectName: string; rowKey: string; requestId: string } | null>(null);
   const [paymentStatuses, setPaymentStatuses] = useState<Record<string, { status: PaymentStatus; rejectReason?: string; requestId?: string }>>({});
@@ -539,7 +540,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
       return null;
     }
     setSaving(true); setError(null);
-    const contractAmount = revenuesRef.current.reduce((s, r) => s + (parseWon(r.total) ?? 0), 0) || parseWon(form.contractAmount) || null;
+    const contractAmount = revenuesRef.current.reduce((s, r) => s + (parseWon(r.total) ?? 0), 0) || parseWon(manualTotal) || parseWon(form.contractAmount) || null;
     const res = await fetch("/api/projects", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -572,7 +573,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
     const res = await fetch(url, {
       method,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...form, contractAmount: totalRevenue || parseWon(form.contractAmount) || null, projectGroupId: projectGroupId ?? null }),
+      body: JSON.stringify({ ...form, contractAmount: effectiveTotal || parseWon(form.contractAmount) || null, projectGroupId: projectGroupId ?? null }),
     });
     if (!res.ok) { setSaving(false); setError("저장에 실패했습니다."); return; }
 
@@ -604,9 +605,11 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
     onSaved(newGroupId ?? undefined);
   }
 
-  const totalRevenue = revenues.reduce((s, r) => s + (parseWon(r.total) ?? 0), 0);
-  const totalCost    = costs.reduce((s, c) => s + (parseWon(c.total) ?? 0), 0);
-  const profit       = totalRevenue - totalCost;
+  const totalRevenue  = revenues.reduce((s, r) => s + (parseWon(r.total) ?? 0), 0);
+  const totalCost     = costs.reduce((s, c) => s + (parseWon(c.total) ?? 0), 0);
+  // 매출 행이 없으면 직접 입력값 사용
+  const effectiveTotal = totalRevenue > 0 ? totalRevenue : (parseWon(manualTotal) || 0);
+  const profit         = effectiveTotal - totalCost;
 
   return (
     <div
@@ -843,35 +846,142 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
             {/* 매출 / 매입 탭 */}
             <div>
               {/* 요약 */}
-              {isEdit && (
-                <div className="flex gap-5 mb-4 p-4 rounded-2xl" style={{ background: "#F8FAFC", border: "1px solid #E9EBEF" }}>
-                  <div>
-                    <p className="text-xs mb-1" style={{ color: "#94A3B8" }}>총 매출(판매)</p>
-                    <p className="text-sm font-bold" style={{ color: "#3182F6" }}>₩{totalRevenue.toLocaleString()}</p>
-                  </div>
-                  <div className="w-px self-stretch" style={{ background: "#E9EBEF" }} />
-                  <div>
-                    <p className="text-xs mb-1" style={{ color: "#94A3B8" }}>총 매입(구매)</p>
-                    <p className="text-sm font-bold" style={{ color: "#191F28" }}>₩{totalCost.toLocaleString()}</p>
-                  </div>
-                  <div className="w-px self-stretch" style={{ background: "#E9EBEF" }} />
-                  <div>
-                    <p className="text-xs mb-1" style={{ color: "#94A3B8" }}>순이익</p>
-                    <p className="text-sm font-bold" style={{ color: profit >= 0 ? "#10B981" : "#EF4444" }}>₩{profit.toLocaleString()}</p>
-                  </div>
-                  {totalRevenue > 0 && (
-                    <>
+              {isEdit && (() => {
+                const contractKey = "__contract__";
+                const cs = confirmStatuses[contractKey];
+                const canRequest = Boolean(effectiveTotal && form.assignedPerson);
+
+                return (
+                  <div className="mb-4 p-4 rounded-2xl" style={{ background: "#F8FAFC", border: "1px solid #E9EBEF" }}>
+                    {/* 수치 행 */}
+                    <div className="flex gap-5 items-center">
+                      {/* 총 매출 — 직접 입력 가능 */}
+                      <div>
+                        <p className="text-xs mb-1.5" style={{ color: "#94A3B8" }}>총 매출(판매)</p>
+                        {totalRevenue > 0 ? (
+                          <p className="text-sm font-bold" style={{ color: "#3182F6" }}>₩{totalRevenue.toLocaleString()}</p>
+                        ) : (
+                          <div className="flex items-center gap-1">
+                            <span className="text-sm font-bold" style={{ color: "#3182F6" }}>₩</span>
+                            <input
+                              type="text"
+                              value={manualTotal ? Number(manualTotal).toLocaleString() : ""}
+                              onChange={(e) => {
+                                const raw = e.target.value.replace(/[^0-9]/g, "");
+                                setManualTotal(raw);
+                              }}
+                              placeholder="직접 입력"
+                              className="text-sm font-bold outline-none border-b-2 bg-transparent transition-colors focus:border-[#3182F6]"
+                              style={{ color: "#3182F6", borderColor: "#E9EBEF", width: 110 }}
+                            />
+                          </div>
+                        )}
+                      </div>
                       <div className="w-px self-stretch" style={{ background: "#E9EBEF" }} />
                       <div>
-                        <p className="text-xs mb-1" style={{ color: "#94A3B8" }}>마진율</p>
-                        <p className="text-sm font-bold" style={{ color: profit >= 0 ? "#10B981" : "#EF4444" }}>
-                          {Math.round((profit / totalRevenue) * 100)}%
-                        </p>
+                        <p className="text-xs mb-1" style={{ color: "#94A3B8" }}>총 매입(구매)</p>
+                        <p className="text-sm font-bold" style={{ color: "#191F28" }}>₩{totalCost.toLocaleString()}</p>
                       </div>
-                    </>
-                  )}
-                </div>
-              )}
+                      <div className="w-px self-stretch" style={{ background: "#E9EBEF" }} />
+                      <div>
+                        <p className="text-xs mb-1" style={{ color: "#94A3B8" }}>순이익</p>
+                        <p className="text-sm font-bold" style={{ color: profit >= 0 ? "#10B981" : "#EF4444" }}>₩{profit.toLocaleString()}</p>
+                      </div>
+                      {effectiveTotal > 0 && (
+                        <>
+                          <div className="w-px self-stretch" style={{ background: "#E9EBEF" }} />
+                          <div>
+                            <p className="text-xs mb-1" style={{ color: "#94A3B8" }}>마진율</p>
+                            <p className="text-sm font-bold" style={{ color: profit >= 0 ? "#10B981" : "#EF4444" }}>
+                              {Math.round((profit / effectiveTotal) * 100)}%
+                            </p>
+                          </div>
+                        </>
+                      )}
+
+                      {/* 입금확인요청 버튼 — 우측 정렬 */}
+                      <div className="ml-auto flex items-center gap-2">
+                        {cs?.status === "발행완료" && (
+                          <span className="text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ background: "rgba(5,150,105,0.1)", color: "#059669", border: "1px solid rgba(5,150,105,0.2)" }}>계산서 발행완료</span>
+                        )}
+                        {cs?.status === "확인완료" && (
+                          <span className="text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ background: "rgba(16,185,129,0.1)", color: "#059669", border: "1px solid rgba(16,185,129,0.2)" }}>입금 확인완료</span>
+                        )}
+                        {cs?.status === "대기" && (
+                          <span className="text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ background: "rgba(234,179,8,0.1)", color: "#CA8A04", border: "1px solid rgba(234,179,8,0.2)" }}>요청됨 (검토 중)</span>
+                        )}
+                        {cs?.status === "반려" && (
+                          <div className="flex items-center gap-1.5">
+                            <button type="button"
+                              onClick={() => setRejectInfo({ reason: cs.rejectReason, projectName: form.campaignName, rowKey: contractKey, requestId: cs.requestId ?? "" })}
+                              className="text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ background: "rgba(239,68,68,0.1)", color: "#EF4444", border: "1px solid rgba(239,68,68,0.2)" }}>반려</button>
+                            <button type="button"
+                              onClick={() => { if (confirm("재요청하시겠습니까?")) resetConfirmRequest(cs.requestId ?? "", "계약금액 일괄", `₩${effectiveTotal.toLocaleString()}`); }}
+                              className="text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ background: "rgba(49,130,246,0.1)", color: "#3182F6", border: "1px solid rgba(49,130,246,0.2)" }}>재요청</button>
+                          </div>
+                        )}
+                        {(!cs || cs.status === undefined) && (
+                          <button
+                            type="button"
+                            disabled={!canRequest}
+                            title={!canRequest ? (effectiveTotal ? "담당자를 입력해주세요." : "총 매출 금액을 입력해주세요.") : ""}
+                            onClick={async () => {
+                              const pid = await ensureSaved();
+                              if (!pid) return;
+                              let clientBusinessNumber = "", clientEmail = "", clientIndustry = "", clientCategory = "";
+                              if (form.clientId) {
+                                try {
+                                  const res = await fetch(`/api/clients/${form.clientId}`);
+                                  const { client } = await res.json();
+                                  clientBusinessNumber = client?.businessNumber ?? "";
+                                  clientEmail          = client?.contactEmail  ?? "";
+                                  clientIndustry       = client?.industry      ?? "";
+                                  clientCategory       = client?.category      ?? "";
+                                } catch {}
+                              }
+                              const clientInfo = clients.find((c) => c.id === form.clientId);
+                              const newReq = await addConfirmRequest({
+                                projectId:      pid,
+                                rowKey:         contractKey,
+                                clientId:       form.clientId,
+                                assignedTeam:   form.assignedTeam || null,
+                                projectName:    form.campaignName || "미지정",
+                                requester:      form.assignedPerson || "—",
+                                productName:    "계약금액 일괄",
+                                description:    form.campaignName || "",
+                                quantity:       "1",
+                                amount:         `₩${effectiveTotal.toLocaleString()}`,
+                                workStartDate:  form.startDate || "",
+                                workEndDate:    form.endDate || "",
+                                clientName:     clientInfo?.companyName || form.advertiser || "—",
+                                clientBusinessNumber,
+                                clientEmail,
+                                clientIndustry,
+                                clientCategory,
+                                dueDate:        form.startDate || "",
+                                depositAccount: revenuesRef.current.find(r => r.depositAccount)?.depositAccount || "",
+                                depositorName:  clientInfo?.advertiserName || "",
+                              });
+                              setConfirmStatuses((p) => ({ ...p, [contractKey]: { status: "대기", requestId: newReq.id } }));
+                              showToast("입금확인 요청이 전송되었습니다.");
+                              window.dispatchEvent(new Event("approval-request-added"));
+                            }}
+                            className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg whitespace-nowrap transition-all"
+                            style={{
+                              background: canRequest ? "linear-gradient(135deg, #3182F6, #2462D8)" : "#F1F5F9",
+                              color: canRequest ? "#fff" : "#CBD5E1",
+                              cursor: canRequest ? "pointer" : "not-allowed",
+                              boxShadow: canRequest ? "0 1px 4px rgba(49,130,246,0.3)" : "none",
+                            }}>
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="22 2 11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                            입금확인요청
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* 탭 스위처 */}
               <div className="flex items-center gap-1 mb-4 border-b" style={{ borderColor: "#E9EBEF" }}>
@@ -903,7 +1013,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                   {/* ── 계약금액 일괄 입금확인요청 ── */}
                   {(() => {
                     const contractKey = "__contract__";
-                    const contractAmt = totalRevenue || parseWon(form.contractAmount) || 0;
+                    const contractAmt = effectiveTotal;
                     const cs = confirmStatuses[contractKey];
                     const canBulk = Boolean(contractAmt && form.assignedPerson);
 
