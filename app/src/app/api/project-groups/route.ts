@@ -11,9 +11,13 @@ function daysRemaining(dateStr: string | null): number | null {
 
 export async function GET() {
   try {
-    // Round trip 1: 그룹 요약 (projects LEFT JOIN)
-    const rows = await db
-      .select({
+    // 10개 쿼리 모두 병렬 (기존: groups 쿼리 완료 후 9개 시작 — sequential 2 round trip)
+    const [
+      rows,
+      workEndRows, revTotal, revStats, costTotal, costStats,
+      allCampaigns, campCostTotal, campRevStats, campCostStats,
+    ] = await Promise.all([
+      db.select({
         id:             projectGroups.id,
         name:           projectGroups.name,
         clientId:       projectGroups.clientId,
@@ -37,13 +41,7 @@ export async function GET() {
       .orderBy(
         sql`CASE WHEN ${projectGroups.status} = '진행' THEN 0 ELSE 1 END`,
         sql`MAX(${projects.endDate}) FILTER (WHERE ${projects.status} = '진행') ASC NULLS LAST`,
-      );
-
-    // Round trip 2: 그룹 집계 5개 + 캠페인 전체 4개 — 모두 병렬
-    const [
-      workEndRows, revTotal, revStats, costTotal, costStats,
-      allCampaigns, campCostTotal, campRevStats, campCostStats,
-    ] = await Promise.all([
+      ),
       // ── 그룹 레벨 집계 (기존) ──────────────────────────────
       db.select({
           groupId:    projects.projectGroupId,

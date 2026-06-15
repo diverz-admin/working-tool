@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, Suspense } from "react";
+import { useState, useEffect, useCallback, Suspense, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import ProjectModal, { ProjectFormData, preloadModalInit, prefetchProject, invalidateProjectCache } from "@/components/projects/ProjectModal";
 import ClientModal, { ClientFormData } from "@/components/clients/ClientModal";
@@ -906,14 +906,17 @@ function ProjectsInner() {
     }));
   }
 
+  // 최초 로드: project-groups + stats/revenue + KPI를 1번의 fetch로 처리
+  const statsLoadedRef = useRef(false);
+
   const load = useCallback(() => {
     setLoading(true);
-    fetch("/api/project-groups")
+    const year = new Date().getFullYear();
+    fetch(`/api/projects-page?year=${year}&criteria=${encodeURIComponent(statsCriteria)}`)
       .then((r) => r.json())
       .then((d) => {
         const groups = d.groups ?? [];
         setGroups(groups);
-        // 캠페인 데이터 사전 캐시 — 그룹 펼치기가 즉시 표시됨
         setCampaignMap((prev) => {
           const n = new Map(prev);
           for (const g of groups) {
@@ -921,11 +924,17 @@ function ProjectsInner() {
           }
           return n;
         });
+        if (d.stats) {
+          setRevenueStats(d.stats);
+          statsLoadedRef.current = true;
+        }
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // criteria 변경 시에만 stats 재조회 (초기 로딩은 위 load()에서 처리)
   const loadStats = useCallback(() => {
+    if (!statsLoadedRef.current) return;
     fetch(`/api/stats/revenue?year=${new Date().getFullYear()}&criteria=${encodeURIComponent(statsCriteria)}`)
       .then((r) => r.json())
       .then((d) => setRevenueStats(d))
