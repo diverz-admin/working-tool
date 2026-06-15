@@ -910,7 +910,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                           <span className="text-sm font-bold" style={{ color: "#3182F6" }}>₩</span>
                           <input type="text"
                             value={form.kpiSupply ? Number(form.kpiSupply.replace(/,/g,"")).toLocaleString() : ""}
-                            onChange={(e) => { const raw = e.target.value.replace(/[^0-9]/g,""); setForm(p=>({...p, kpiSupply: raw})); }}
+                            onChange={(e) => { const raw = e.target.value.replace(/[^0-9]/g,""); setForm(p=>({ ...p, kpiSupply: raw, contractAmount: String((parseInt(raw)||0) + (parseInt(p.kpiTax)||0)) })); }}
                             placeholder="0"
                             className="text-sm font-bold outline-none border-b-2 bg-transparent transition-colors focus:border-[#3182F6]"
                             style={{ color: "#3182F6", borderColor: "#E9EBEF", width: 90 }} />
@@ -925,7 +925,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                           <span className="text-sm font-bold" style={{ color: "#3182F6" }}>₩</span>
                           <input type="text"
                             value={form.kpiTax ? Number(form.kpiTax.replace(/,/g,"")).toLocaleString() : ""}
-                            onChange={(e) => { const raw = e.target.value.replace(/[^0-9]/g,""); setForm(p=>({...p, kpiTax: raw})); }}
+                            onChange={(e) => { const raw = e.target.value.replace(/[^0-9]/g,""); setForm(p=>({ ...p, kpiTax: raw, contractAmount: String((parseInt(p.kpiSupply)||0) + (parseInt(raw)||0)) })); }}
                             placeholder="0"
                             className="text-sm font-bold outline-none border-b-2 bg-transparent transition-colors focus:border-[#3182F6]"
                             style={{ color: "#3182F6", borderColor: "#E9EBEF", width: 90 }} />
