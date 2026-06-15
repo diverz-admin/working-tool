@@ -51,6 +51,8 @@ function toCampaignFormData(c: Campaign): ProjectFormData {
     assignedTeam:   c.assignedTeam ?? "",
     assignedPerson: c.assignedPerson ?? "",
     contractAmount: c.contractAmount != null ? String(c.contractAmount) : "",
+    kpiSupply:      "",
+    kpiTax:         "",
     startDate:      c.startDate ?? "",
     endDate:        c.endDate ?? "",
     placeLink:      c.placeLink ?? "",

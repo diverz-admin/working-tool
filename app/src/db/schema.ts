@@ -86,6 +86,8 @@ export const projects = pgTable("projects", {
   assignedTeam:   text("assigned_team"),
   assignedPerson: text("assigned_person"),
   contractAmount: integer("contract_amount"),
+  kpiSupply:      integer("kpi_supply"),
+  kpiTax:         integer("kpi_tax"),
   startDate:      date("start_date"),
   endDate:        date("end_date"),
   projectType:      text("project_type"),   // 관리형 | 보장형

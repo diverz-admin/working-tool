@@ -35,6 +35,8 @@ export async function PATCH(req: Request, { params }: Params) {
     if (body.assignedTeam   !== undefined) updates.assignedTeam   = body.assignedTeam || null;
     if (body.assignedPerson !== undefined) updates.assignedPerson = body.assignedPerson || null;
     if (body.contractAmount !== undefined) updates.contractAmount = body.contractAmount != null && body.contractAmount !== "" ? parseInt(body.contractAmount) : null;
+    if (body.kpiSupply      !== undefined) updates.kpiSupply      = body.kpiSupply != null && body.kpiSupply !== "" ? parseInt(body.kpiSupply) : null;
+    if (body.kpiTax         !== undefined) updates.kpiTax         = body.kpiTax    != null && body.kpiTax    !== "" ? parseInt(body.kpiTax)    : null;
     if (body.startDate      !== undefined) updates.startDate      = body.startDate || null;
     if (body.endDate        !== undefined) updates.endDate        = body.endDate || null;
     if (body.clientId       !== undefined) updates.clientId       = body.clientId || null;

@@ -109,6 +109,8 @@ export async function POST(req: Request) {
       assignedTeam:   body.assignedTeam || null,
       assignedPerson: body.assignedPerson || null,
       contractAmount: body.contractAmount != null && body.contractAmount !== "" ? parseInt(body.contractAmount) : null,
+      kpiSupply:      body.kpiSupply != null && body.kpiSupply !== "" ? parseInt(body.kpiSupply) : null,
+      kpiTax:         body.kpiTax    != null && body.kpiTax    !== "" ? parseInt(body.kpiTax)    : null,
       startDate:      body.startDate || null,
       endDate:        body.endDate || null,
       clientId:       body.clientId || null,

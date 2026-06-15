@@ -17,6 +17,8 @@ export interface ProjectFormData {
   assignedTeam: string;
   assignedPerson: string;
   contractAmount: string;
+  kpiSupply: string;
+  kpiTax: string;
   startDate: string;
   endDate: string;
   placeLink: string;
@@ -148,7 +150,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
   const savedIdRef = useRef<string | null>(initial?.id ?? null);
   const [form, setForm] = useState<ProjectFormData>(initial ?? {
     status: "진행", campaignName: "", projectType: "", advertiser: "", product: "",
-    assignedTeam: "", assignedPerson: "", contractAmount: "",
+    assignedTeam: "", assignedPerson: "", contractAmount: "", kpiSupply: "", kpiTax: "",
     startDate: "", endDate: "", placeLink: "", notes: "",
     isExtended: false,
   });
@@ -181,7 +183,6 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
   const [guaranteeProgress, setGuaranteeProgress] = useState<number>(0);
   const [activeSection, setActiveSection] = useState<"매출" | "매입" | "작업요청">("매출");
   const [toast, setToast]           = useState<string | null>(null);
-  const [manualTotal, setManualTotal] = useState<string>(() => initial ? "" : "");
   const [confirmStatuses, setConfirmStatuses] = useState<Record<string, { status: ConfirmStatus | "발행완료"; rejectReason?: string; requestId?: string; amount?: string }>>({});
   const [rejectInfo, setRejectInfo]           = useState<{ reason?: string; projectName: string; rowKey: string; requestId: string } | null>(null);
   const [paymentStatuses, setPaymentStatuses] = useState<Record<string, { status: PaymentStatus; rejectReason?: string; requestId?: string }>>({});
@@ -581,11 +582,10 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
       return null;
     }
     setSaving(true); setError(null);
-    const contractAmount = revenuesRef.current.reduce((s, r) => s + (parseWon(r.total) ?? 0), 0) || parseWon(manualTotal) || parseWon(form.contractAmount) || null;
     const res = await fetch("/api/projects", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...form, contractAmount, projectGroupId: projectGroupId ?? null }),
+      body: JSON.stringify({ ...form, projectGroupId: projectGroupId ?? null }),
     });
     if (!res.ok) { setSaving(false); setError("저장에 실패했습니다."); return null; }
     const { project } = await res.json();
@@ -614,7 +614,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
     const res = await fetch(url, {
       method,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...form, contractAmount: effectiveTotal || parseWon(form.contractAmount) || null, projectGroupId: projectGroupId ?? null }),
+      body: JSON.stringify({ ...form, projectGroupId: projectGroupId ?? null }),
     });
     if (!res.ok) { setSaving(false); setError("저장에 실패했습니다."); return; }
 
@@ -652,8 +652,8 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
   const totalCost         = costs.reduce((s, c) => s + (parseWon(c.total) ?? 0), 0);
   const approvedTotalCost = costs.filter(c => c.isApproved).reduce((s, c) => s + (parseWon(c.total) ?? 0), 0);
   const hasApprovedCosts  = costs.some(c => c.isApproved);
-  // 매출 행이 없으면 직접 입력값 사용
-  const effectiveTotal = totalRevenue > 0 ? totalRevenue : (parseWon(manualTotal) || 0);
+  // KPI 직접 입력값 사용 (없으면 매출 테이블 합계로 대체)
+  const effectiveTotal = parseWon(form.contractAmount) || totalRevenue;
   const profit         = effectiveTotal - totalCost;
   const approvedProfit = effectiveTotal - approvedTotalCost;
 
@@ -900,48 +900,51 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                 return (
                   <div className="mb-4 p-4 rounded-2xl" style={{ background: "#F8FAFC", border: "1px solid #E9EBEF" }}>
                     {/* 수치 행 */}
-                    <div className="flex gap-5 items-center">
-                      {/* 매출 — 공급가/부가세 분리 또는 직접 입력 */}
-                      {totalRevenue > 0 ? (
-                        <>
-                          <div>
-                            <p className="text-xs mb-1.5" style={{ color: "#94A3B8" }}>공급가 합계</p>
-                            <p className="text-sm font-bold" style={{ color: "#3182F6" }}>₩{totalSupply.toLocaleString()}</p>
-                          </div>
-                          <div className="w-px self-stretch" style={{ background: "#E9EBEF" }} />
-                          <div>
-                            <p className="text-xs mb-1.5" style={{ color: "#94A3B8" }}>부가세 합계</p>
-                            <p className="text-sm font-bold" style={{ color: "#3182F6" }}>₩{totalTax.toLocaleString()}</p>
-                          </div>
-                          <div className="w-px self-stretch" style={{ background: "#E9EBEF" }} />
-                          <div>
-                            <p className="text-xs mb-1.5" style={{ color: "#94A3B8" }}>총 매출(판매)</p>
-                            <p className="text-sm font-bold" style={{ color: "#3182F6" }}>₩{totalRevenue.toLocaleString()}</p>
-                          </div>
-                        </>
-                      ) : (
-                        <div>
-                          <p className="text-xs mb-1.5" style={{ color: "#94A3B8" }}>총 매출(판매)</p>
-                          {cs?.status === "대기" && cs.amount ? (
-                            <p className="text-sm font-bold" style={{ color: "#3182F6" }}>{cs.amount}</p>
-                          ) : (
-                            <div className="flex items-center gap-1">
-                              <span className="text-sm font-bold" style={{ color: "#3182F6" }}>₩</span>
-                              <input
-                                type="text"
-                                value={manualTotal ? Number(manualTotal).toLocaleString() : ""}
-                                onChange={(e) => {
-                                  const raw = e.target.value.replace(/[^0-9]/g, "");
-                                  setManualTotal(raw);
-                                }}
-                                placeholder="직접 입력"
-                                className="text-sm font-bold outline-none border-b-2 bg-transparent transition-colors focus:border-[#3182F6]"
-                                style={{ color: "#3182F6", borderColor: "#E9EBEF", width: 110 }}
-                              />
-                            </div>
-                          )}
+                    <div className="flex gap-5 items-center flex-wrap">
+                      {/* 공급가 직접 입력 */}
+                      <div>
+                        <p className="text-xs mb-1.5" style={{ color: "#94A3B8" }}>공급가 합계</p>
+                        <div className="flex items-center gap-0.5">
+                          <span className="text-sm font-bold" style={{ color: "#3182F6" }}>₩</span>
+                          <input type="text"
+                            value={form.kpiSupply ? Number(form.kpiSupply.replace(/,/g,"")).toLocaleString() : ""}
+                            onChange={(e) => { const raw = e.target.value.replace(/[^0-9]/g,""); setForm(p=>({...p, kpiSupply: raw})); }}
+                            placeholder="0"
+                            className="text-sm font-bold outline-none border-b-2 bg-transparent transition-colors focus:border-[#3182F6]"
+                            style={{ color: "#3182F6", borderColor: "#E9EBEF", width: 90 }} />
                         </div>
-                      )}
+                        {totalSupply > 0 && <p className="text-xs mt-0.5" style={{ color: "#CBD5E1" }}>테이블: ₩{totalSupply.toLocaleString()}</p>}
+                      </div>
+                      <div className="w-px self-stretch" style={{ background: "#E9EBEF" }} />
+                      {/* 부가세 직접 입력 */}
+                      <div>
+                        <p className="text-xs mb-1.5" style={{ color: "#94A3B8" }}>부가세 합계</p>
+                        <div className="flex items-center gap-0.5">
+                          <span className="text-sm font-bold" style={{ color: "#3182F6" }}>₩</span>
+                          <input type="text"
+                            value={form.kpiTax ? Number(form.kpiTax.replace(/,/g,"")).toLocaleString() : ""}
+                            onChange={(e) => { const raw = e.target.value.replace(/[^0-9]/g,""); setForm(p=>({...p, kpiTax: raw})); }}
+                            placeholder="0"
+                            className="text-sm font-bold outline-none border-b-2 bg-transparent transition-colors focus:border-[#3182F6]"
+                            style={{ color: "#3182F6", borderColor: "#E9EBEF", width: 90 }} />
+                        </div>
+                        {totalTax > 0 && <p className="text-xs mt-0.5" style={{ color: "#CBD5E1" }}>테이블: ₩{totalTax.toLocaleString()}</p>}
+                      </div>
+                      <div className="w-px self-stretch" style={{ background: "#E9EBEF" }} />
+                      {/* 총 매출 직접 입력 */}
+                      <div>
+                        <p className="text-xs mb-1.5" style={{ color: "#94A3B8" }}>총 매출(판매)</p>
+                        <div className="flex items-center gap-0.5">
+                          <span className="text-sm font-bold" style={{ color: "#3182F6" }}>₩</span>
+                          <input type="text"
+                            value={form.contractAmount ? Number(form.contractAmount.replace(/,/g,"")).toLocaleString() : ""}
+                            onChange={(e) => { const raw = e.target.value.replace(/[^0-9]/g,""); setForm(p=>({...p, contractAmount: raw})); }}
+                            placeholder="직접 입력"
+                            className="text-sm font-bold outline-none border-b-2 bg-transparent transition-colors focus:border-[#3182F6]"
+                            style={{ color: "#3182F6", borderColor: "#E9EBEF", width: 110 }} />
+                        </div>
+                        {totalRevenue > 0 && <p className="text-xs mt-0.5" style={{ color: "#CBD5E1" }}>테이블: ₩{totalRevenue.toLocaleString()}</p>}
+                      </div>
                       <div className="w-px self-stretch" style={{ background: "#E9EBEF" }} />
                       <div>
                         <p className="text-xs mb-1" style={{ color: "#94A3B8" }}>총 매입(구매)</p>

@@ -78,6 +78,8 @@ interface Campaign {
   startDate: string | null;
   endDate: string | null;
   contractAmount: number | null;
+  kpiSupply: number | null;
+  kpiTax: number | null;
   isExtended: boolean | null;
   placeLink: string | null;
   assignedTeam: string | null;
@@ -125,6 +127,8 @@ function toCampaignFormData(c: Campaign): ProjectFormData {
     assignedTeam:   c.assignedTeam ?? "",
     assignedPerson: c.assignedPerson ?? "",
     contractAmount: c.contractAmount != null ? String(c.contractAmount) : "",
+    kpiSupply:      c.kpiSupply != null ? String(c.kpiSupply) : "",
+    kpiTax:         c.kpiTax    != null ? String(c.kpiTax)    : "",
     startDate:      c.startDate ?? "",
     endDate:        c.endDate ?? "",
     placeLink:      c.placeLink ?? "",
@@ -942,6 +946,8 @@ function ProjectsInner() {
           assignedTeam:   project.assignedTeam ?? "",
           assignedPerson: project.assignedPerson ?? "",
           contractAmount: project.contractAmount != null ? String(project.contractAmount) : "",
+          kpiSupply:      project.kpiSupply != null ? String(project.kpiSupply) : "",
+          kpiTax:         project.kpiTax    != null ? String(project.kpiTax)    : "",
           startDate:      project.startDate ?? "",
           endDate:        project.endDate ?? "",
           placeLink:      project.placeLink ?? "",
@@ -969,6 +975,8 @@ function ProjectsInner() {
       assignedTeam:   project.assignedTeam ?? "",
       assignedPerson: project.assignedPerson ?? "",
       contractAmount: project.contractAmount != null ? String(project.contractAmount) : "",
+      kpiSupply:      project.kpiSupply != null ? String(project.kpiSupply) : "",
+      kpiTax:         project.kpiTax    != null ? String(project.kpiTax)    : "",
       startDate:      project.startDate ?? "",
       endDate:        project.endDate ?? "",
       placeLink:      project.placeLink ?? "",

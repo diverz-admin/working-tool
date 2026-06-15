@@ -88,6 +88,8 @@ function linkedProjectToFormData(p: LinkedProject): ProjectFormData {
     assignedTeam: p.assignedTeam ?? "",
     assignedPerson: p.assignedPerson ?? "",
     contractAmount: p.contractAmount != null ? String(p.contractAmount) : "",
+    kpiSupply: "",
+    kpiTax: "",
     startDate: p.startDate ?? "",
     endDate: p.endDate ?? "",
     placeLink: p.placeLink ?? "",
