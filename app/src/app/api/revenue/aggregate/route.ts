@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { projectRevenues, projects } from "@/db/schema";
-import { isNotNull, and, sql, eq } from "drizzle-orm";
+import { isNotNull, and, sql, eq, inArray } from "drizzle-orm";
 
 export async function GET(req: NextRequest) {
   try {
@@ -9,44 +9,68 @@ export async function GET(req: NextRequest) {
     const criteria = req.nextUrl.searchParams.get("criteria") ?? "캠페인 시작날짜";
     const useInvoice = criteria === "계산서날짜";
 
-    const monthExpr = useInvoice
-      ? sql<string>`TO_CHAR(${projectRevenues.invoiceDate}, 'YYYY-MM')`
-      : sql<string>`TO_CHAR(${projects.startDate}, 'YYYY-MM')`;
-
-    const whereClause = useInvoice
-      ? and(
-          isNotNull(projectRevenues.paymentDate),
-          isNotNull(projectRevenues.invoiceDate),
-          sql`EXTRACT(YEAR FROM ${projectRevenues.invoiceDate}) = ${year}`,
-        )
-      : and(
-          isNotNull(projectRevenues.paymentDate),
-          sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`,
-        );
-
-    const rows = await db
+    // 1. 입금 확인된 프로젝트별 매출행 합계 (KPI 없을 때 fallback)
+    const revSums = await db
       .select({
-        month:       monthExpr,
-        total:       sql<number>`COALESCE(SUM(${projectRevenues.total}), 0)`,
-        supplyPrice: sql<number>`COALESCE(SUM(${projectRevenues.supplyPrice}), 0)`,
-        tax:         sql<number>`COALESCE(SUM(${projectRevenues.tax}), 0)`,
-        count:       sql<number>`COUNT(*)`,
+        projectId:  projectRevenues.projectId,
+        totalSum:   sql<number>`COALESCE(SUM(${projectRevenues.total}), 0)`,
+        supplySum:  sql<number>`COALESCE(SUM(${projectRevenues.supplyPrice}), 0)`,
+        taxSum:     sql<number>`COALESCE(SUM(${projectRevenues.tax}), 0)`,
+        refMonth:   sql<string>`TO_CHAR(MAX(${useInvoice ? projectRevenues.invoiceDate : projectRevenues.paymentDate}), 'YYYY-MM')`,
       })
       .from(projectRevenues)
-      .innerJoin(projects, eq(projects.id, projectRevenues.projectId))
-      .where(whereClause)
-      .groupBy(monthExpr);
+      .where(
+        useInvoice
+          ? and(isNotNull(projectRevenues.paymentDate), isNotNull(projectRevenues.invoiceDate))
+          : isNotNull(projectRevenues.paymentDate)
+      )
+      .groupBy(projectRevenues.projectId);
 
+    const confirmedIds = revSums.map(r => r.projectId);
+    if (!confirmedIds.length) {
+      const monthly = Array.from({ length: 12 }, (_, i) => ({ month: i + 1, total: 0, supplyPrice: 0, tax: 0, count: 0 }));
+      return NextResponse.json({ year, monthly, yearTotal: 0, yearSupplyPrice: 0 });
+    }
+
+    // 2. KPI 데이터 포함한 프로젝트 조회
+    const projectData = await db
+      .select({
+        id:             projects.id,
+        startDate:      projects.startDate,
+        contractAmount: projects.contractAmount,
+        kpiSupply:      projects.kpiSupply,
+        kpiTax:         projects.kpiTax,
+      })
+      .from(projects)
+      .where(
+        and(
+          inArray(projects.id, confirmedIds),
+          sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`,
+        )
+      );
+
+    const revMap = new Map(revSums.map(r => [r.projectId, r]));
+
+    // 3. JS에서 월별 집계
     const monthly = Array.from({ length: 12 }, (_, i) => ({
       month: i + 1, total: 0, supplyPrice: 0, tax: 0, count: 0,
     }));
 
-    for (const row of rows) {
-      const m = parseInt(row.month.substring(5, 7)) - 1;
-      monthly[m].total       += Number(row.total);
-      monthly[m].supplyPrice += Number(row.supplyPrice);
-      monthly[m].tax         += Number(row.tax);
-      monthly[m].count       += Number(row.count);
+    for (const p of projectData) {
+      const rev   = revMap.get(p.id);
+      const month = useInvoice
+        ? (rev?.refMonth ? parseInt(rev.refMonth.substring(5, 7)) - 1 : -1)
+        : (p.startDate ? parseInt(p.startDate.substring(5, 7)) - 1 : -1);
+      if (month < 0 || month > 11) continue;
+
+      const total  = p.contractAmount ?? Number(rev?.totalSum ?? 0);
+      const supply = p.kpiSupply      ?? Number(rev?.supplySum ?? 0);
+      const tax    = p.kpiTax         ?? Number(rev?.taxSum    ?? 0);
+
+      monthly[month].total       += total;
+      monthly[month].supplyPrice += supply;
+      monthly[month].tax         += tax;
+      monthly[month].count       += 1;
     }
 
     const yearTotal       = monthly.reduce((s, m) => s + m.total, 0);
