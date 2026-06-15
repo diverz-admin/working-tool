@@ -75,6 +75,32 @@ const nid = () => ++_lid;
 // 정적 데이터 모듈 캐시 — 모달을 여러 번 열어도 한 번만 로드
 let _initCache: { clients: SimpleClient[]; products: ManagedProduct[]; users: { id: string; name: string; team: string | null }[] } | null = null;
 
+// 프로젝트 상세 데이터 prefetch 캐시
+const _projectCache = new Map<string, Promise<Record<string, unknown>>>();
+
+/** 페이지 로드 시 호출 — modal-init 데이터를 백그라운드에서 미리 로드 */
+export function preloadModalInit() {
+  if (_initCache) return;
+  fetch("/api/modal-init")
+    .then((r) => r.json())
+    .then((d) => {
+      _initCache = { clients: d.clients ?? [], products: d.products ?? [], users: d.users ?? [] };
+    })
+    .catch(() => {});
+}
+
+/** 캠페인 행 호버 시 호출 — 클릭 전에 데이터 미리 로드 */
+export function prefetchProject(id: string) {
+  if (!_projectCache.has(id)) {
+    _projectCache.set(id, fetch(`/api/projects/${id}`).then((r) => r.json()));
+  }
+}
+
+/** 저장/삭제 후 캐시 무효화 */
+export function invalidateProjectCache(id: string) {
+  _projectCache.delete(id);
+}
+
 function emptyRevenue(sectionLabel = "1주"): RevenueRow {
   return { localId: nid(), revenueRowId: crypto.randomUUID(), linkedCostLocalId: null, sectionLabel, assignee: "", productName: "", unitPrice: 0, quantity: "", supplyPrice: "", tax: "", total: "", paymentDate: "", invoiceDate: "", workStartDate: "", workEndDate: "", completedQty: "", workCompleted: false, depositAccount: "" };
 }
@@ -224,8 +250,11 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
   useEffect(() => {
     document.body.style.overflow = "hidden";
     if (isEdit && initial?.id) {
-      fetch(`/api/projects/${initial.id}`)
-        .then((r) => r.json())
+      // prefetch 캐시 우선 사용 — 없으면 새로 요청 후 캐시에 저장
+      const cached = _projectCache.get(initial.id);
+      const dataPromise = cached ?? fetch(`/api/projects/${initial.id}`).then((r) => r.json());
+      if (!cached) _projectCache.set(initial.id, dataPromise);
+      dataPromise
         .then(({ revenues: rv, costs: cs, confirmRequests: confirms, paymentRequests: payments }) => {
           // 결재 상태 — 별도 API 호출 없이 여기서 함께 처리
           if (confirms) {

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import ProjectModal, { ProjectFormData } from "@/components/projects/ProjectModal";
+import ProjectModal, { ProjectFormData, preloadModalInit, prefetchProject, invalidateProjectCache } from "@/components/projects/ProjectModal";
 import ClientModal, { ClientFormData } from "@/components/clients/ClientModal";
 import {
   ComposedChart, BarChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid, ReferenceLine,
@@ -299,7 +299,7 @@ function CampaignRow({ c, index, onEdit, onDelete, onCopy, deleting, copying }: 
     <tr
       className="border-t group cursor-pointer"
       style={{ borderColor: "#F1F5F9", background: "rgba(49,130,246,0.015)" }}
-      onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = "rgba(49,130,246,0.05)")}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(49,130,246,0.05)"; prefetchProject(c.id); }}
       onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = "rgba(49,130,246,0.015)")}
       onClick={() => onEdit(c)}
     >
@@ -936,6 +936,8 @@ function ProjectsInner() {
   useEffect(() => { load(); }, [load]);
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadStats(); }, [loadStats]);
+  // 페이지 마운트 시 모달 정적 데이터(clients/products/users) 백그라운드 프리로드
+  useEffect(() => { preloadModalInit(); }, []);
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { if (teamParam) setActiveTab(teamParam); }, [teamParam]);
 
@@ -1025,6 +1027,7 @@ function ProjectsInner() {
     setCopyingCamp(campaignId);
     await fetch(`/api/projects/${campaignId}/copy`, { method: "POST" });
     setCopyingCamp(null);
+    invalidateProjectCache(campaignId);
     setCampaignMap((m) => { const n = new Map(m); n.delete(groupId); return n; });
     loadCampaigns(groupId, true);
     load();
@@ -1035,6 +1038,7 @@ function ProjectsInner() {
     if (!confirm("캠페인을 삭제하시겠습니까? 매출·매입 데이터도 모두 삭제됩니다.")) return;
     setDeletingCamp(campaignId);
     const res = await fetch(`/api/projects/${campaignId}`, { method: "DELETE" });
+    invalidateProjectCache(campaignId);
     setDeletingCamp(null);
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
@@ -1168,6 +1172,7 @@ function ProjectsInner() {
           projectGroupId={activeCampGroup ?? undefined}
           onClose={() => { setEditCampaign(null); setActiveCampGroup(null); }}
           onSaved={() => {
+            if (editCampaign?.id) invalidateProjectCache(editCampaign.id);
             if (activeCampGroup) loadCampaigns(activeCampGroup, true);
             load();
             setEditCampaign(null); setActiveCampGroup(null);
