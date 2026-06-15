@@ -164,6 +164,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
   const [users, setUsers]           = useState<{ id: string; name: string; team: string | null }[]>([]);
   const [managedProducts, setManagedProducts] = useState<ManagedProduct[]>([]);
   const [saving, setSaving]         = useState(false);
+  const [sendingPayment, setSendingPayment] = useState<Set<string>>(new Set());
 
   // 변경 감지용 초기 스냅샷
   const initFormSnap  = useRef(JSON.stringify({ ...form, id: undefined }));
@@ -1308,44 +1309,50 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                                   parseWon(c.total) &&
                                   c.invoiceFileUrl
                                 );
+                                const isSending = sendingPayment.has(rowKey);
                                 return (
                                   <button type="button"
-                                    disabled={!canPayRequest}
+                                    disabled={!canPayRequest || isSending}
                                     title={!canPayRequest ? "담당자·매입처·품명·개수·공급가·합계·세금계산서 파일을 모두 입력해주세요." : ""}
                                     onClick={async () => {
                                       const pid = await ensureSaved();
                                       if (!pid) return;
-                                      const totalNum = parseWon(c.total);
-                                      const matchedProduct = managedProducts.find((p) => p.name === c.productName);
-                                      const newReq = await addPaymentRequest({
-                                        projectId:         pid,
-                                        rowKey,
-                                        assignedTeam:      form.assignedTeam || null,
-                                        projectName:       form.campaignName || "미지정",
-                                        requester:         c.assignee || form.assignedPerson || "—",
-                                        productName:       c.productName || "—",
-                                        vendor:            c.vendor || "—",
-                                        quantity:          c.quantity || "—",
-                                        amount:            totalNum ? `₩${totalNum.toLocaleString()}` : "—",
-                                        payDate:           c.purchaseDate || "",
-                                        workStartDate:     c.workStartDate || "",
-                                        workEndDate:       c.workEndDate || "",
-                                        invoiceFileUrl:    c.invoiceFileUrl || "",
-                                        invoiceFileName:   c.invoiceFileName || "",
-                                        vendorBankAccount: matchedProduct?.vendorBankAccount || c.vendor || "",
-                                      });
-                                      setPaymentStatuses((p) => ({ ...p, [rowKey]: { status: "대기", requestId: newReq.id } }));
-                                      showToast("입금요청이 전송되었습니다.");
-                                      window.dispatchEvent(new Event("approval-request-added"));
+                                      setSendingPayment((p) => new Set(p).add(rowKey));
+                                      try {
+                                        const totalNum = parseWon(c.total);
+                                        const matchedProduct = managedProducts.find((p) => p.name === c.productName);
+                                        const newReq = await addPaymentRequest({
+                                          projectId:         pid,
+                                          rowKey,
+                                          assignedTeam:      form.assignedTeam || null,
+                                          projectName:       form.campaignName || "미지정",
+                                          requester:         c.assignee || form.assignedPerson || "—",
+                                          productName:       c.productName || "—",
+                                          vendor:            c.vendor || "—",
+                                          quantity:          c.quantity || "—",
+                                          amount:            totalNum ? `₩${totalNum.toLocaleString()}` : "—",
+                                          payDate:           c.purchaseDate || "",
+                                          workStartDate:     c.workStartDate || "",
+                                          workEndDate:       c.workEndDate || "",
+                                          invoiceFileUrl:    c.invoiceFileUrl || "",
+                                          invoiceFileName:   c.invoiceFileName || "",
+                                          vendorBankAccount: matchedProduct?.vendorBankAccount || c.vendor || "",
+                                        });
+                                        setPaymentStatuses((p) => ({ ...p, [rowKey]: { status: "대기", requestId: newReq.id } }));
+                                        showToast("입금요청이 전송되었습니다.");
+                                        window.dispatchEvent(new Event("approval-request-added"));
+                                      } finally {
+                                        setSendingPayment((p) => { const n = new Set(p); n.delete(rowKey); return n; });
+                                      }
                                     }}
                                     className="text-xs font-semibold px-2 py-1 rounded-lg whitespace-nowrap transition-all"
                                     style={{
-                                      background: canPayRequest ? "rgba(16,185,129,0.1)" : "#F1F5F9",
-                                      color: canPayRequest ? "#059669" : "#CBD5E1",
-                                      border: `1px solid ${canPayRequest ? "rgba(16,185,129,0.25)" : "#E9EBEF"}`,
-                                      cursor: canPayRequest ? "pointer" : "not-allowed",
+                                      background: (canPayRequest && !isSending) ? "rgba(16,185,129,0.1)" : "#F1F5F9",
+                                      color: (canPayRequest && !isSending) ? "#059669" : "#CBD5E1",
+                                      border: `1px solid ${(canPayRequest && !isSending) ? "rgba(16,185,129,0.25)" : "#E9EBEF"}`,
+                                      cursor: (canPayRequest && !isSending) ? "pointer" : "not-allowed",
                                     }}>
-                                    입금요청
+                                    {isSending ? "처리 중..." : "입금요청"}
                                   </button>
                                 );
                               })()}
