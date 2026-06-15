@@ -8,14 +8,16 @@ type Params = { params: Promise<{ id: string }> };
 export async function GET(_req: Request, { params }: Params) {
   try {
     const { id } = await params;
-    const [[project], revenues, costs] = await Promise.all([
+    const [[project], revenues, costs, confirms, payments] = await Promise.all([
       db.select().from(projects).where(eq(projects.id, id)),
       db.select().from(projectRevenues).where(eq(projectRevenues.projectId, id)).orderBy(asc(projectRevenues.rowNum)),
       db.select().from(projectCosts).where(eq(projectCosts.projectId, id)).orderBy(asc(projectCosts.rowNum)),
+      db.select().from(confirmRequests).where(eq(confirmRequests.projectId, id)),
+      db.select().from(paymentRequests).where(eq(paymentRequests.projectId, id)),
     ]);
     if (!project) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-    return NextResponse.json({ project, revenues, costs });
+    return NextResponse.json({ project, revenues, costs, confirmRequests: confirms, paymentRequests: payments });
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: "Failed to fetch project" }, { status: 500 });

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import ProjectReportSection from "@/components/projects/ProjectReportSection";
-import { addConfirmRequest, addPaymentRequest, getConfirmRequests, getPaymentRequests, updateConfirmRequest, updatePaymentRequest, deleteConfirmRequest, deletePaymentRequest, type ConfirmStatus, type PaymentStatus } from "@/lib/approvals";
+import { addConfirmRequest, addPaymentRequest, updateConfirmRequest, updatePaymentRequest, deleteConfirmRequest, deletePaymentRequest, type ConfirmStatus, type PaymentStatus } from "@/lib/approvals";
 
 type Status = "진행" | "종료";
 
@@ -71,6 +71,9 @@ interface CostRow {
 
 let _lid = 0;
 const nid = () => ++_lid;
+
+// 정적 데이터 모듈 캐시 — 모달을 여러 번 열어도 한 번만 로드
+let _initCache: { clients: SimpleClient[]; products: ManagedProduct[]; users: { id: string; name: string; team: string | null }[] } | null = null;
 
 function emptyRevenue(sectionLabel = "1주"): RevenueRow {
   return { localId: nid(), revenueRowId: crypto.randomUUID(), linkedCostLocalId: null, sectionLabel, assignee: "", productName: "", unitPrice: 0, quantity: "", supplyPrice: "", tax: "", total: "", paymentDate: "", invoiceDate: "", workStartDate: "", workEndDate: "", completedQty: "", workCompleted: false, depositAccount: "" };
@@ -197,18 +200,25 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
   }
 
   useEffect(() => {
-    fetch("/api/clients")
-      .then((r) => r.json())
-      .then(({ clients: rows }) => setClients(rows ?? []))
-      .catch(() => {});
-    fetch("/api/products")
-      .then((r) => r.json())
-      .then(({ products: rows }) => setManagedProducts(rows ?? []))
-      .catch(() => {});
-    fetch("/api/users")
-      .then((r) => r.json())
-      .then(({ users: rows }) => setUsers((rows ?? []).filter((u: { status: string }) => u.status === "활성")))
-      .catch(() => {});
+    if (_initCache) {
+      setClients(_initCache.clients);
+      setManagedProducts(_initCache.products);
+      setUsers(_initCache.users);
+    } else {
+      fetch("/api/modal-init")
+        .then((r) => r.json())
+        .then((d) => {
+          _initCache = {
+            clients:  d.clients  ?? [],
+            products: d.products ?? [],
+            users:    d.users    ?? [],
+          };
+          setClients(_initCache.clients);
+          setManagedProducts(_initCache.products);
+          setUsers(_initCache.users);
+        })
+        .catch(() => {});
+    }
   }, []);
 
   useEffect(() => {
@@ -216,7 +226,33 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
     if (isEdit && initial?.id) {
       fetch(`/api/projects/${initial.id}`)
         .then((r) => r.json())
-        .then(({ revenues: rv, costs: cs }) => {
+        .then(({ revenues: rv, costs: cs, confirmRequests: confirms, paymentRequests: payments }) => {
+          // 결재 상태 — 별도 API 호출 없이 여기서 함께 처리
+          if (confirms) {
+            const m: Record<string, { status: ConfirmStatus | "발행완료"; rejectReason?: string; requestId?: string; amount?: string }> = {};
+            (confirms as Record<string, unknown>[]).forEach((r) => {
+              if (!r.rowKey) return;
+              m[r.rowKey as string] = {
+                status: r.taxInvoiceDate ? "발행완료" as const : r.status as ConfirmStatus,
+                rejectReason: r.rejectReason as string | undefined,
+                requestId: r.id as string,
+                amount: r.amount as string | undefined,
+              };
+            });
+            setConfirmStatuses(m);
+          }
+          if (payments) {
+            const m: Record<string, { status: PaymentStatus; rejectReason?: string; requestId?: string }> = {};
+            (payments as Record<string, unknown>[]).forEach((r) => {
+              if (!r.rowKey || !r.productName || r.productName === "—") return;
+              m[r.rowKey as string] = {
+                status: r.status as PaymentStatus,
+                rejectReason: r.rejectReason as string | undefined,
+                requestId: r.id as string,
+              };
+            });
+            setPaymentStatuses(m);
+          }
           const projectEndDate = initial?.endDate ?? "";
           setRevenues((rv ?? []).map((r: Record<string, unknown>) => {
             const completed = Boolean(r.workCompleted);
@@ -274,31 +310,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
     return () => { document.body.style.overflow = ""; };
   }, [isEdit, initial?.id]);
 
-  // 결재 승인 상태 로드
-  useEffect(() => {
-    if (!initial?.id) return;
-    getConfirmRequests(initial.id).then((reqs) => {
-      const map: Record<string, { status: ConfirmStatus | "발행완료"; rejectReason?: string; requestId?: string; amount?: string }> = {};
-      reqs.forEach((r) => {
-        if (!r.rowKey) return;
-        map[r.rowKey] = { status: r.taxInvoiceDate ? "발행완료" as const : r.status as ConfirmStatus, rejectReason: r.rejectReason, requestId: r.id, amount: r.amount };
-      });
-      setConfirmStatuses(map);
-    });
-  }, [initial?.id]);
-
-  // 매입 입금요청 상태 로드
-  useEffect(() => {
-    if (!initial?.id) return;
-    getPaymentRequests(initial.id).then((reqs) => {
-      const map: Record<string, { status: PaymentStatus; rejectReason?: string; requestId?: string }> = {};
-      reqs.forEach((r) => {
-        if (!r.rowKey || !r.productName || r.productName === "—") return;
-        map[r.rowKey] = { status: r.status as PaymentStatus, rejectReason: r.rejectReason, requestId: r.id };
-      });
-      setPaymentStatuses(map);
-    });
-  }, [initial?.id]);
+  // 결재 상태는 /api/projects/{id} 응답에 포함되어 별도 로드 불필요
 
   function setField(f: keyof ProjectFormData, v: string) {
     setForm((p) => ({ ...p, [f]: v }));
