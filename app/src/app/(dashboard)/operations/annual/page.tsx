@@ -88,17 +88,17 @@ export default function AnnualProfitPage() {
 
   const load = useCallback(() => {
     setLoading(true);
-    Promise.all([
-      fetch(`/api/annual/revenue?year=${year}&criteria=${encodeURIComponent(criteria)}`).then(r=>r.json()),
-      fetch(`/api/annual/costs?year=${year}`).then(r=>r.json()),
-    ]).then(([revData, costData]) => {
-      setRevenue({ teams: revData.teams??[], other: revData.other??new Array(12).fill(0) });
-      const map: CostMap = {};
-      for (const row of (costData.costs??[])) {
-        if (row.item==="합계") map[costKey(row.category,row.month-1)] = row.amount;
-      }
-      setCosts(map);
-    }).finally(()=>setLoading(false));
+    fetch(`/api/operations/annual?year=${year}&criteria=${encodeURIComponent(criteria)}`)
+      .then(r => r.json())
+      .then(({ teams, other, costs: costArr }) => {
+        setRevenue({ teams: teams ?? [], other: other ?? new Array(12).fill(0) });
+        const map: CostMap = {};
+        for (const row of (costArr ?? [])) {
+          if (row.item === "합계") map[costKey(row.category, row.month - 1)] = row.amount;
+        }
+        setCosts(map);
+      })
+      .finally(() => setLoading(false));
   }, [year, criteria]);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect

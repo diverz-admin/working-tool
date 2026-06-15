@@ -446,15 +446,14 @@ export default function MonthlyManagePage() {
   const load = useCallback(() => {
     setLoading(true);
     const q = `year=${year}&month=${month}&criteria=${encodeURIComponent(criteria)}`;
-    Promise.all([
-      fetch(`/api/monthly/revenue?${q}`).then(r => r.json()),
-      fetch(`/api/monthly/costs?${q}`).then(r => r.json()),
-      fetch(`/api/annual/costs?year=${year}`).then(r => r.json()),
-    ]).then(([rev, cost, sga]) => {
-      setRevRows(rev.rows ?? []);
-      setCostRows(cost.rows ?? []);
-      setSgaRows(sga.costs ?? []);
-    }).finally(() => setLoading(false));
+    fetch(`/api/operations/monthly?${q}`)
+      .then(r => r.json())
+      .then(({ revRows: rv, costRows: cs, sgaRows: sg }) => {
+        setRevRows(rv ?? []);
+        setCostRows(cs ?? []);
+        setSgaRows(sg ?? []);
+      })
+      .finally(() => setLoading(false));
   }, [year, month, criteria]);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect

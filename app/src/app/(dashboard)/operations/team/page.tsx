@@ -266,13 +266,13 @@ export default function TeamProfitPage() {
   const load = useCallback(() => {
     setLoading(true);
     const q = `year=${year}&month=${month}&criteria=${encodeURIComponent(criteria)}`;
-    Promise.all([
-      fetch(`/api/monthly/revenue?${q}`).then(r => r.json()),
-      fetch(`/api/monthly/costs?${q}`).then(r => r.json()),
-    ]).then(([rev, cost]) => {
-      setRevRows(rev.rows ?? []);
-      setCostRows(cost.rows ?? []);
-    }).finally(() => setLoading(false));
+    fetch(`/api/operations/monthly?${q}`)
+      .then(r => r.json())
+      .then(({ revRows: rv, costRows: cs }) => {
+        setRevRows(rv ?? []);
+        setCostRows(cs ?? []);
+      })
+      .finally(() => setLoading(false));
   }, [year, month, criteria]);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect

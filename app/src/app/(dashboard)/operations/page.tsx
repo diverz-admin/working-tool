@@ -112,18 +112,16 @@ export default function OperationsDashboard() {
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     setLoading(true);
-    Promise.all([
-      fetch(`/api/annual/revenue?year=${year}&criteria=${encodeURIComponent("캠페인 시작날짜")}`).then(r => r.json()),
-      fetch(`/api/annual/costs?year=${year}`).then(r => r.json()),
-      fetch(`/api/monthly/revenue?year=${year}&month=${curMonth}&criteria=${encodeURIComponent("캠페인 시작날짜")}`).then(r => r.json()),
-      fetch(`/api/monthly/costs?year=${year}&month=${curMonth}&criteria=계산서날짜`).then(r => r.json()),
-    ]).then(([rev, costs, mRev, mCost]) => {
-      setAnnualTeams(rev.teams ?? []);
-      setAnnualOther(rev.other ?? new Array(12).fill(0));
-      setAnnualCosts(costs.costs ?? []);
-      setMonthRevRows(mRev.rows ?? []);
-      setMonthCostRows(mCost.rows ?? []);
-    }).finally(() => setLoading(false));
+    fetch(`/api/operations/dashboard?year=${year}&month=${curMonth}`)
+      .then(r => r.json())
+      .then(({ annualTeams, annualOther, annualCosts: costs, monthRevRows, monthCostRows }) => {
+        setAnnualTeams(annualTeams ?? []);
+        setAnnualOther(annualOther ?? new Array(12).fill(0));
+        setAnnualCosts(costs ?? []);
+        setMonthRevRows(monthRevRows ?? []);
+        setMonthCostRows(monthCostRows ?? []);
+      })
+      .finally(() => setLoading(false));
   }, [year, curMonth]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
