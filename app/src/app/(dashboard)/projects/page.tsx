@@ -910,7 +910,18 @@ function ProjectsInner() {
     setLoading(true);
     fetch("/api/project-groups")
       .then((r) => r.json())
-      .then((d) => setGroups(d.groups ?? []))
+      .then((d) => {
+        const groups = d.groups ?? [];
+        setGroups(groups);
+        // 캠페인 데이터 사전 캐시 — 그룹 펼치기가 즉시 표시됨
+        setCampaignMap((prev) => {
+          const n = new Map(prev);
+          for (const g of groups) {
+            if (Array.isArray(g.campaigns)) n.set(g.id, g.campaigns as Campaign[]);
+          }
+          return n;
+        });
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -998,8 +1009,13 @@ function ProjectsInner() {
   function toggleExpand(groupId: string) {
     setExpanded((s) => {
       const n = new Set(s);
-      if (n.has(groupId)) { n.delete(groupId); }
-      else { n.add(groupId); loadCampaigns(groupId); }
+      if (n.has(groupId)) {
+        n.delete(groupId);
+      } else {
+        n.add(groupId);
+        // 초기 로드 시 사전 캐시되어 있으므로 대부분 즉시 표시
+        if (!campaignMap.has(groupId)) loadCampaigns(groupId);
+      }
       return n;
     });
   }

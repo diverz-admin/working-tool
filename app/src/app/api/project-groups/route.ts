@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { projectGroups, projects, projectRevenues, projectCosts, confirmRequests, paymentRequests } from "@/db/schema";
-import { eq, count, sql } from "drizzle-orm";
+import { eq, count, sql, max, desc } from "drizzle-orm";
 
 function daysRemaining(dateStr: string | null): number | null {
   if (!dateStr) return null;
@@ -11,6 +11,7 @@ function daysRemaining(dateStr: string | null): number | null {
 
 export async function GET() {
   try {
+    // Round trip 1: 그룹 요약 (projects LEFT JOIN)
     const rows = await db
       .select({
         id:             projectGroups.id,
@@ -38,9 +39,12 @@ export async function GET() {
         sql`MAX(${projects.endDate}) FILTER (WHERE ${projects.status} = '진행') ASC NULLS LAST`,
       );
 
-    // 나머지 5개 쿼리 병렬 실행
-    const [workEndRows, revTotal, revStats, costTotal, costStats] = await Promise.all([
-      // 품목(매출행) 최근접 workEndDate (미완료 행 기준)
+    // Round trip 2: 그룹 집계 5개 + 캠페인 전체 4개 — 모두 병렬
+    const [
+      workEndRows, revTotal, revStats, costTotal, costStats,
+      allCampaigns, campCostTotal, campRevStats, campCostStats,
+    ] = await Promise.all([
+      // ── 그룹 레벨 집계 (기존) ──────────────────────────────
       db.select({
           groupId:    projects.projectGroupId,
           minWorkEnd: sql<string | null>`MIN(${projectRevenues.workEndDate}) FILTER (WHERE ${projectRevenues.workCompleted} = false)`,
@@ -50,14 +54,12 @@ export async function GET() {
         .where(eq(projects.status, "진행"))
         .groupBy(projects.projectGroupId),
 
-      // 매출 총 건수
       db.select({ groupId: projects.projectGroupId, total: count(projectRevenues.id) })
         .from(projects)
         .innerJoin(projectRevenues, eq(projectRevenues.projectId, projects.id))
         .where(eq(projects.status, "진행"))
         .groupBy(projects.projectGroupId),
 
-      // 매출 결재 현황
       db.select({
           groupId:   projects.projectGroupId,
           invoiced:  sql<number>`COUNT(*) FILTER (WHERE ${confirmRequests.taxInvoiceDate} IS NOT NULL)`,
@@ -69,14 +71,12 @@ export async function GET() {
         .where(eq(projects.status, "진행"))
         .groupBy(projects.projectGroupId),
 
-      // 매입 총 건수
       db.select({ groupId: projects.projectGroupId, total: count(projectCosts.id) })
         .from(projects)
         .innerJoin(projectCosts, eq(projectCosts.projectId, projects.id))
         .where(eq(projects.status, "진행"))
         .groupBy(projects.projectGroupId),
 
-      // 매입 결재 현황
       db.select({
           groupId:  projects.projectGroupId,
           approved: sql<number>`COUNT(*) FILTER (WHERE ${paymentRequests.status} = '승인')`,
@@ -86,13 +86,91 @@ export async function GET() {
         .innerJoin(paymentRequests, sql`${paymentRequests.projectId} = ${projects.id}::text`)
         .where(eq(projects.status, "진행"))
         .groupBy(projects.projectGroupId),
+
+      // ── 캠페인 전체 (신규) ─────────────────────────────────
+      db.select({
+          id:             projects.id,
+          projectGroupId: projects.projectGroupId,
+          campaignName:   projects.campaignName,
+          projectType:    projects.projectType,
+          product:        projects.product,
+          status:         projects.status,
+          startDate:      projects.startDate,
+          endDate:        projects.endDate,
+          contractAmount: projects.contractAmount,
+          kpiSupply:      projects.kpiSupply,
+          kpiTax:         projects.kpiTax,
+          isExtended:     projects.isExtended,
+          placeLink:      projects.placeLink,
+          notes:          projects.notes,
+          assignedTeam:   projects.assignedTeam,
+          assignedPerson: projects.assignedPerson,
+          clientId:       projects.clientId,
+          advertiser:     projects.advertiser,
+          workEndDate:    max(projectRevenues.workEndDate),
+          revenueTotal:   count(projectRevenues.id),
+        })
+        .from(projects)
+        .leftJoin(projectRevenues, eq(projectRevenues.projectId, projects.id))
+        .groupBy(projects.id)
+        .orderBy(desc(projects.createdAt)),
+
+      db.select({ projectId: projectCosts.projectId, total: count(projectCosts.id) })
+        .from(projectCosts)
+        .groupBy(projectCosts.projectId),
+
+      db.select({
+          projectId: confirmRequests.projectId,
+          invoiced:  sql<number>`COUNT(*) FILTER (WHERE ${confirmRequests.taxInvoiceDate} IS NOT NULL)`,
+          confirmed: sql<number>`COUNT(*) FILTER (WHERE ${confirmRequests.status} = '확인완료' AND ${confirmRequests.taxInvoiceDate} IS NULL)`,
+          pending:   sql<number>`COUNT(*) FILTER (WHERE ${confirmRequests.status} = '대기')`,
+        })
+        .from(confirmRequests)
+        .groupBy(confirmRequests.projectId),
+
+      db.select({
+          projectId: paymentRequests.projectId,
+          approved:  sql<number>`COUNT(*) FILTER (WHERE ${paymentRequests.status} = '승인')`,
+          pending:   sql<number>`COUNT(*) FILTER (WHERE ${paymentRequests.status} = '대기')`,
+        })
+        .from(paymentRequests)
+        .groupBy(paymentRequests.projectId),
     ]);
 
+    // 그룹 레벨 맵
     const workEndMap   = new Map(workEndRows.map((r) => [r.groupId, r.minWorkEnd ?? null]));
     const revTotalMap  = new Map(revTotal.map((r) => [r.groupId, Number(r.total)]));
     const revStatsMap  = new Map(revStats.map((r) => [r.groupId, { invoiced: Number(r.invoiced), confirmed: Number(r.confirmed), pending: Number(r.pending) }]));
     const costTotalMap = new Map(costTotal.map((r) => [r.groupId, Number(r.total)]));
     const costStatsMap = new Map(costStats.map((r) => [r.groupId, { approved: Number(r.approved), pending: Number(r.pending) }]));
+
+    // 캠페인 레벨 맵
+    const campCostMap  = new Map(campCostTotal.map((r) => [r.projectId!, Number(r.total)]));
+    const campRevMap   = new Map(campRevStats.map((r) => [r.projectId!, { invoiced: Number(r.invoiced), confirmed: Number(r.confirmed), pending: Number(r.pending) }]));
+    const campCostStMap = new Map(campCostStats.map((r) => [r.projectId!, { approved: Number(r.approved), pending: Number(r.pending) }]));
+
+    // 그룹 ID → 캠페인 배열 맵
+    const campaignsByGroup = new Map<string, object[]>();
+    for (const c of allCampaigns) {
+      if (!c.projectGroupId) continue;
+      const effectiveEnd = c.workEndDate ?? c.endDate;
+      const rev  = campRevMap.get(c.id)   ?? { invoiced: 0, confirmed: 0, pending: 0 };
+      const cost = campCostStMap.get(c.id) ?? { approved: 0, pending: 0 };
+      const camp = {
+        ...c,
+        workEndDate:      c.workEndDate ?? null,
+        daysRemaining:    daysRemaining(effectiveEnd),
+        revenueTotal:     Number(c.revenueTotal),
+        revenueInvoiced:  rev.invoiced,
+        revenueConfirmed: rev.confirmed,
+        revenuePending:   rev.pending,
+        costTotal:        campCostMap.get(c.id) ?? 0,
+        costApproved:     cost.approved,
+        costPending:      cost.pending,
+      };
+      if (!campaignsByGroup.has(c.projectGroupId)) campaignsByGroup.set(c.projectGroupId, []);
+      campaignsByGroup.get(c.projectGroupId)!.push(camp);
+    }
 
     return NextResponse.json({
       groups: rows.map((r) => {
@@ -112,6 +190,7 @@ export async function GET() {
           costTotal:            costTotalMap.get(r.id) ?? 0,
           costApproved:         cost.approved,
           costPending:          cost.pending,
+          campaigns:            campaignsByGroup.get(r.id) ?? [],
         };
       }),
     });
