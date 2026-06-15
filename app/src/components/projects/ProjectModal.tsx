@@ -646,13 +646,16 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
     onSaved(newGroupId ?? undefined);
   }
 
-  const totalRevenue  = revenues.reduce((s, r) => s + (parseWon(r.total) ?? 0), 0);
-  const totalSupply   = revenues.reduce((s, r) => s + (parseWon(r.supplyPrice) ?? 0), 0);
-  const totalTax      = revenues.reduce((s, r) => s + (parseWon(r.tax) ?? 0), 0);
-  const totalCost     = costs.reduce((s, c) => s + (parseWon(c.total) ?? 0), 0);
+  const totalRevenue      = revenues.reduce((s, r) => s + (parseWon(r.total) ?? 0), 0);
+  const totalSupply       = revenues.reduce((s, r) => s + (parseWon(r.supplyPrice) ?? 0), 0);
+  const totalTax          = revenues.reduce((s, r) => s + (parseWon(r.tax) ?? 0), 0);
+  const totalCost         = costs.reduce((s, c) => s + (parseWon(c.total) ?? 0), 0);
+  const approvedTotalCost = costs.filter(c => c.isApproved).reduce((s, c) => s + (parseWon(c.total) ?? 0), 0);
+  const hasApprovedCosts  = costs.some(c => c.isApproved);
   // 매출 행이 없으면 직접 입력값 사용
   const effectiveTotal = totalRevenue > 0 ? totalRevenue : (parseWon(manualTotal) || 0);
   const profit         = effectiveTotal - totalCost;
+  const approvedProfit = effectiveTotal - approvedTotalCost;
 
   return (
     <div
@@ -898,61 +901,64 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                   <div className="mb-4 p-4 rounded-2xl" style={{ background: "#F8FAFC", border: "1px solid #E9EBEF" }}>
                     {/* 수치 행 */}
                     <div className="flex gap-5 items-center">
-                      {/* 총 매출 — 직접 입력 가능 */}
-                      <div>
-                        <p className="text-xs mb-1.5" style={{ color: "#94A3B8" }}>총 매출(판매)</p>
-                        {totalRevenue > 0 ? (
-                          <p className="text-sm font-bold" style={{ color: "#3182F6" }}>₩{totalRevenue.toLocaleString()}</p>
-                        ) : cs?.status === "대기" && cs.amount ? (
-                          <p className="text-sm font-bold" style={{ color: "#3182F6" }}>{cs.amount}</p>
-                        ) : (
-                          <div className="flex items-center gap-1">
-                            <span className="text-sm font-bold" style={{ color: "#3182F6" }}>₩</span>
-                            <input
-                              type="text"
-                              value={manualTotal ? Number(manualTotal).toLocaleString() : ""}
-                              onChange={(e) => {
-                                const raw = e.target.value.replace(/[^0-9]/g, "");
-                                setManualTotal(raw);
-                              }}
-                              placeholder="직접 입력"
-                              className="text-sm font-bold outline-none border-b-2 bg-transparent transition-colors focus:border-[#3182F6]"
-                              style={{ color: "#3182F6", borderColor: "#E9EBEF", width: 110 }}
-                            />
-                          </div>
-                        )}
-                      </div>
-                      {totalRevenue > 0 && (
+                      {/* 매출 — 공급가/부가세 분리 또는 직접 입력 */}
+                      {totalRevenue > 0 ? (
                         <>
-                          <div className="w-px self-stretch" style={{ background: "#E9EBEF" }} />
                           <div>
                             <p className="text-xs mb-1.5" style={{ color: "#94A3B8" }}>공급가 합계</p>
-                            <p className="text-sm font-bold" style={{ color: "#475569" }}>₩{totalSupply.toLocaleString()}</p>
+                            <p className="text-sm font-bold" style={{ color: "#3182F6" }}>₩{totalSupply.toLocaleString()}</p>
                           </div>
                           <div className="w-px self-stretch" style={{ background: "#E9EBEF" }} />
                           <div>
                             <p className="text-xs mb-1.5" style={{ color: "#94A3B8" }}>부가세 합계</p>
-                            <p className="text-sm font-bold" style={{ color: "#475569" }}>₩{totalTax.toLocaleString()}</p>
+                            <p className="text-sm font-bold" style={{ color: "#3182F6" }}>₩{totalTax.toLocaleString()}</p>
+                          </div>
+                          <div className="w-px self-stretch" style={{ background: "#E9EBEF" }} />
+                          <div>
+                            <p className="text-xs mb-1.5" style={{ color: "#94A3B8" }}>총 매출(판매)</p>
+                            <p className="text-sm font-bold" style={{ color: "#3182F6" }}>₩{totalRevenue.toLocaleString()}</p>
                           </div>
                         </>
+                      ) : (
+                        <div>
+                          <p className="text-xs mb-1.5" style={{ color: "#94A3B8" }}>총 매출(판매)</p>
+                          {cs?.status === "대기" && cs.amount ? (
+                            <p className="text-sm font-bold" style={{ color: "#3182F6" }}>{cs.amount}</p>
+                          ) : (
+                            <div className="flex items-center gap-1">
+                              <span className="text-sm font-bold" style={{ color: "#3182F6" }}>₩</span>
+                              <input
+                                type="text"
+                                value={manualTotal ? Number(manualTotal).toLocaleString() : ""}
+                                onChange={(e) => {
+                                  const raw = e.target.value.replace(/[^0-9]/g, "");
+                                  setManualTotal(raw);
+                                }}
+                                placeholder="직접 입력"
+                                className="text-sm font-bold outline-none border-b-2 bg-transparent transition-colors focus:border-[#3182F6]"
+                                style={{ color: "#3182F6", borderColor: "#E9EBEF", width: 110 }}
+                              />
+                            </div>
+                          )}
+                        </div>
                       )}
                       <div className="w-px self-stretch" style={{ background: "#E9EBEF" }} />
                       <div>
                         <p className="text-xs mb-1" style={{ color: "#94A3B8" }}>총 매입(구매)</p>
                         <p className="text-sm font-bold" style={{ color: "#191F28" }}>₩{totalCost.toLocaleString()}</p>
                       </div>
-                      <div className="w-px self-stretch" style={{ background: "#E9EBEF" }} />
-                      <div>
-                        <p className="text-xs mb-1" style={{ color: "#94A3B8" }}>순이익</p>
-                        <p className="text-sm font-bold" style={{ color: profit >= 0 ? "#10B981" : "#EF4444" }}>₩{profit.toLocaleString()}</p>
-                      </div>
-                      {effectiveTotal > 0 && (
+                      {hasApprovedCosts && effectiveTotal > 0 && (
                         <>
                           <div className="w-px self-stretch" style={{ background: "#E9EBEF" }} />
                           <div>
+                            <p className="text-xs mb-1" style={{ color: "#94A3B8" }}>영업이익</p>
+                            <p className="text-sm font-bold" style={{ color: approvedProfit >= 0 ? "#10B981" : "#EF4444" }}>₩{approvedProfit.toLocaleString()}</p>
+                          </div>
+                          <div className="w-px self-stretch" style={{ background: "#E9EBEF" }} />
+                          <div>
                             <p className="text-xs mb-1" style={{ color: "#94A3B8" }}>마진율</p>
-                            <p className="text-sm font-bold" style={{ color: profit >= 0 ? "#10B981" : "#EF4444" }}>
-                              {Math.round((profit / effectiveTotal) * 100)}%
+                            <p className="text-sm font-bold" style={{ color: approvedProfit >= 0 ? "#10B981" : "#EF4444" }}>
+                              {Math.round((approvedProfit / effectiveTotal) * 100)}%
                             </p>
                           </div>
                         </>
