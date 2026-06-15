@@ -51,6 +51,7 @@ export async function PUT(req: Request, { params }: Params) {
           workEndDate:     c.workEndDate || null,
           workCompleted:   Boolean(c.workCompleted),
           isApproved:      Boolean(c.isApproved),
+          settingDate:     c.settingDate || null,
           invoiceFileUrl:  String(c.invoiceFileUrl || ""),
           invoiceFileName: String(c.invoiceFileName || ""),
         }))

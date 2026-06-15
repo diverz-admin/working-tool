@@ -64,6 +64,7 @@ interface CostRow {
   workEndDate: string;
   workCompleted: boolean;
   isApproved: boolean;
+  settingDate: string;
   invoiceFileUrl: string;
   invoiceFileName: string;
 }
@@ -75,7 +76,7 @@ function emptyRevenue(sectionLabel = "1주"): RevenueRow {
   return { localId: nid(), revenueRowId: crypto.randomUUID(), linkedCostLocalId: null, sectionLabel, assignee: "", productName: "", unitPrice: 0, quantity: "", supplyPrice: "", tax: "", total: "", paymentDate: "", invoiceDate: "", workStartDate: "", workEndDate: "", completedQty: "", workCompleted: false, depositAccount: "" };
 }
 function emptyCost(): CostRow {
-  return { localId: nid(), costRowId: crypto.randomUUID(), assignee: "", vendor: "", productName: "", unitPrice: 0, quantity: "", supplyPrice: "", tax: "", total: "", purchaseDate: "", invoiceDate: "", workStartDate: "", workEndDate: "", workCompleted: false, isApproved: false, invoiceFileUrl: "", invoiceFileName: "" };
+  return { localId: nid(), costRowId: crypto.randomUUID(), assignee: "", vendor: "", productName: "", unitPrice: 0, quantity: "", supplyPrice: "", tax: "", total: "", purchaseDate: "", invoiceDate: "", workStartDate: "", workEndDate: "", workCompleted: false, isApproved: false, settingDate: "", invoiceFileUrl: "", invoiceFileName: "" };
 }
 
 function daysLeft(dateStr: string): number | null {
@@ -255,6 +256,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
             workEndDate:     String(c.workEndDate ?? ""),
             workCompleted:   Boolean(c.workCompleted),
             isApproved:      Boolean(c.isApproved),
+            settingDate:     String(c.settingDate ?? ""),
             invoiceFileUrl:  String(c.invoiceFileUrl ?? ""),
             invoiceFileName: String(c.invoiceFileName ?? ""),
           })));
@@ -1505,7 +1507,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                       <table className="w-full text-xs" style={{ minWidth: 900 }}>
                         <thead>
                           <tr style={{ background: "#F0FDF4" }}>
-                            {["#","담당자","매입처","품명","개수","공급가","세액","합계","작업시작일","작업만료일","잔여일","완료"].map((h, idx) => (
+                            {["#","담당자","매입처","품명","개수","공급가","세액","합계","작업시작일","작업만료일","셋팅날짜","잔여일","완료"].map((h, idx) => (
                               <th key={idx} className="px-2 py-2.5 text-left font-semibold whitespace-nowrap" style={{ color: "#059669", background: "#F0FDF4", borderBottom: "2px solid #BBF7D0" }}>{h}</th>
                             ))}
                           </tr>
@@ -1523,11 +1525,14 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                                 <td className="px-2 py-1.5 text-xs text-right" style={{ color: "#475569" }}>{c.supplyPrice ? `₩${Number(c.supplyPrice).toLocaleString()}` : "—"}</td>
                                 <td className="px-2 py-1.5 text-xs text-right" style={{ color: "#475569" }}>{c.tax ? `₩${Number(c.tax).toLocaleString()}` : "—"}</td>
                                 <td className="px-2 py-1.5 text-xs text-right font-semibold" style={{ color: "#191F28" }}>{c.total ? `₩${Number(c.total).toLocaleString()}` : "—"}</td>
-                                <td className="px-1 py-1">
-                                  <input type="date" value={c.workStartDate} onChange={(e) => updateCost(c.localId, "workStartDate", e.target.value)} className={inputCls} style={{ ...inputStyle, width: 115 }} />
+                                <td className="px-2 py-1.5 text-xs whitespace-nowrap" style={{ color: c.workStartDate ? "#475569" : "#CBD5E1" }}>
+                                  {c.workStartDate ? c.workStartDate.replace(/-/g, ". ") : "—"}
+                                </td>
+                                <td className="px-2 py-1.5 text-xs whitespace-nowrap" style={{ color: c.workEndDate ? "#475569" : "#CBD5E1" }}>
+                                  {c.workEndDate ? c.workEndDate.replace(/-/g, ". ") : "—"}
                                 </td>
                                 <td className="px-1 py-1">
-                                  <input type="date" value={c.workEndDate} onChange={(e) => updateCost(c.localId, "workEndDate", e.target.value)} className={inputCls} style={{ ...inputStyle, width: 115 }} />
+                                  <input type="date" value={c.settingDate} onChange={(e) => updateCost(c.localId, "settingDate", e.target.value)} className={inputCls} style={{ ...inputStyle, width: 115 }} />
                                 </td>
                                 <td className="px-2 py-1.5 font-medium text-center" style={{ color: remDays === null ? "#CBD5E1" : remDays <= 1 ? "#EF4444" : remDays <= 3 ? "#F97316" : remDays <= 7 ? "#EAB308" : "#475569" }}>
                                   {remDays === null ? "—" : remDays < 0 ? `+${Math.abs(remDays)}` : remDays === 0 ? "D-0" : `D-${remDays}`}

@@ -148,6 +148,7 @@ export const projectCosts = pgTable("project_costs", {
   workEndDate:     date("work_end_date"),
   workCompleted:   boolean("work_completed").default(false),
   isApproved:      boolean("is_approved").default(false),
+  settingDate:     date("setting_date"),
   invoiceFileUrl:  text("invoice_file_url"),
   invoiceFileName: text("invoice_file_name"),
   createdAt:       timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
