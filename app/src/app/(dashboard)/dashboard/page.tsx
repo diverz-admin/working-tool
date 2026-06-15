@@ -54,17 +54,15 @@ export default function DashboardPage() {
 
   const load = useCallback(() => {
     setLoading(true);
-    Promise.all([
-      fetch(`/api/revenue/aggregate?year=${year}&criteria=${encodeURIComponent(criteria)}`).then(r => r.json()),
-      fetch(`/api/costs/aggregate?year=${year}`).then(r => r.json()),
-      fetch("/api/projects").then(r => r.json()),
-      fetch("/api/notices?pinned=true").then(r => r.json()),
-    ]).then(([aggData, costData, projData, noticeData]) => {
-      setAgg(aggData);
-      setCostAgg(costData);
-      setProjects((projData.projects ?? []).filter((p: Project) => p.status === "진행"));
-      setNotices(noticeData.notices ?? []);
-    }).finally(() => setLoading(false));
+    fetch(`/api/dashboard?year=${year}&criteria=${encodeURIComponent(criteria)}`)
+      .then(r => r.json())
+      .then(({ agg: aggData, costAgg: costData, projects: projData, notices: noticeData }) => {
+        setAgg(aggData);
+        setCostAgg(costData);
+        setProjects((projData ?? []).filter((p: Project) => p.status === "진행"));
+        setNotices(noticeData ?? []);
+      })
+      .finally(() => setLoading(false));
   }, [year, criteria]);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
