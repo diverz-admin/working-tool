@@ -1,38 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { projectRevenues, projects } from "@/db/schema";
-import { isNotNull, and, sql, eq, inArray } from "drizzle-orm";
+import { isNotNull, and, sql, eq } from "drizzle-orm";
 
 export async function GET(req: NextRequest) {
   try {
-    const year     = parseInt(req.nextUrl.searchParams.get("year") ?? String(new Date().getFullYear()));
-    const criteria = req.nextUrl.searchParams.get("criteria") ?? "캠페인 시작날짜";
+    const year      = parseInt(req.nextUrl.searchParams.get("year") ?? String(new Date().getFullYear()));
+    const criteria  = req.nextUrl.searchParams.get("criteria") ?? "캠페인 시작날짜";
     const useInvoice = criteria === "계산서날짜";
 
-    // 1. 입금 확인된 프로젝트별 매출행 합계 (KPI 없을 때 fallback)
-    const revSums = await db
-      .select({
-        projectId:  projectRevenues.projectId,
-        totalSum:   sql<number>`COALESCE(SUM(${projectRevenues.total}), 0)`,
-        supplySum:  sql<number>`COALESCE(SUM(${projectRevenues.supplyPrice}), 0)`,
-        taxSum:     sql<number>`COALESCE(SUM(${projectRevenues.tax}), 0)`,
-        refMonth:   sql<string>`TO_CHAR(MAX(${useInvoice ? projectRevenues.invoiceDate : projectRevenues.paymentDate}), 'YYYY-MM')`,
-      })
-      .from(projectRevenues)
-      .where(
-        useInvoice
-          ? and(isNotNull(projectRevenues.paymentDate), isNotNull(projectRevenues.invoiceDate))
-          : isNotNull(projectRevenues.paymentDate)
-      )
-      .groupBy(projectRevenues.projectId);
-
-    const confirmedIds = revSums.map(r => r.projectId);
-    if (!confirmedIds.length) {
-      const monthly = Array.from({ length: 12 }, (_, i) => ({ month: i + 1, total: 0, supplyPrice: 0, tax: 0, count: 0 }));
-      return NextResponse.json({ year, monthly, yearTotal: 0, yearSupplyPrice: 0 });
-    }
-
-    // 2. KPI 데이터 포함한 프로젝트 조회
+    // 단일 쿼리: 확인된 프로젝트 + KPI + revenue 합계
     const projectData = await db
       .select({
         id:             projects.id,
@@ -40,36 +17,51 @@ export async function GET(req: NextRequest) {
         contractAmount: projects.contractAmount,
         kpiSupply:      projects.kpiSupply,
         kpiTax:         projects.kpiTax,
+        totalSum:       sql<number>`COALESCE(SUM(${projectRevenues.total}), 0)`,
+        supplySum:      sql<number>`COALESCE(SUM(${projectRevenues.supplyPrice}), 0)`,
+        taxSum:         sql<number>`COALESCE(SUM(${projectRevenues.tax}), 0)`,
+        refMonth:       sql<string>`TO_CHAR(MAX(${projectRevenues.invoiceDate}), 'YYYY-MM')`,
       })
       .from(projects)
+      .innerJoin(projectRevenues, eq(projectRevenues.projectId, projects.id))
       .where(
-        and(
-          inArray(projects.id, confirmedIds),
-          sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`,
-        )
+        useInvoice
+          ? and(
+              isNotNull(projectRevenues.paymentDate),
+              isNotNull(projectRevenues.invoiceDate),
+              sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`,
+            )
+          : and(
+              isNotNull(projectRevenues.paymentDate),
+              sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`,
+            )
+      )
+      .groupBy(
+        projects.id,
+        projects.startDate,
+        projects.contractAmount,
+        projects.kpiSupply,
+        projects.kpiTax,
       );
 
-    const revMap = new Map(revSums.map(r => [r.projectId, r]));
+    if (!projectData.length) {
+      const monthly = Array.from({ length: 12 }, (_, i) => ({ month: i + 1, total: 0, supplyPrice: 0, tax: 0, count: 0 }));
+      return NextResponse.json({ year, monthly, yearTotal: 0, yearSupplyPrice: 0 });
+    }
 
-    // 3. JS에서 월별 집계
     const monthly = Array.from({ length: 12 }, (_, i) => ({
       month: i + 1, total: 0, supplyPrice: 0, tax: 0, count: 0,
     }));
 
     for (const p of projectData) {
-      const rev   = revMap.get(p.id);
       const month = useInvoice
-        ? (rev?.refMonth ? parseInt(rev.refMonth.substring(5, 7)) - 1 : -1)
+        ? (p.refMonth ? parseInt(p.refMonth.substring(5, 7)) - 1 : -1)
         : (p.startDate ? parseInt(p.startDate.substring(5, 7)) - 1 : -1);
       if (month < 0 || month > 11) continue;
 
-      const total  = p.contractAmount ?? Number(rev?.totalSum ?? 0);
-      const supply = p.kpiSupply      ?? Number(rev?.supplySum ?? 0);
-      const tax    = p.kpiTax         ?? Number(rev?.taxSum    ?? 0);
-
-      monthly[month].total       += total;
-      monthly[month].supplyPrice += supply;
-      monthly[month].tax         += tax;
+      monthly[month].total       += p.contractAmount ?? Number(p.totalSum ?? 0);
+      monthly[month].supplyPrice += p.kpiSupply      ?? Number(p.supplySum ?? 0);
+      monthly[month].tax         += p.kpiTax         ?? Number(p.taxSum    ?? 0);
       monthly[month].count       += 1;
     }
 

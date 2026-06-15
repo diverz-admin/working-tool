@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { projects, projectRevenues, clients } from "@/db/schema";
-import { eq, and, gte, lte, isNotNull, inArray, sql } from "drizzle-orm";
+import { eq, and, gte, lte, isNotNull, sql } from "drizzle-orm";
 
 export async function GET(req: NextRequest) {
   try {
@@ -15,17 +15,23 @@ export async function GET(req: NextRequest) {
     const from = `${year}-${String(month).padStart(2, "0")}-01`;
     const to   = new Date(year, month, 0).toISOString().slice(0, 10);
 
-    // 1. 입금 확인된 프로젝트별 매출행 합계 (fallback + 상세 정보용)
-    const revSums = await db
+    // 단일 쿼리: 확인된 프로젝트 + KPI + 클라이언트
+    const rows = await db
       .select({
-        projectId:   projectRevenues.projectId,
-        totalSum:    sql<number>`COALESCE(SUM(${projectRevenues.total}), 0)`,
-        supplySum:   sql<number>`COALESCE(SUM(${projectRevenues.supplyPrice}), 0)`,
-        taxSum:      sql<number>`COALESCE(SUM(${projectRevenues.tax}), 0)`,
-        rowCount:    sql<number>`COUNT(*)`,
+        assignedTeam:   projects.assignedTeam,
+        assignedPerson: projects.assignedPerson,
+        startDate:      projects.startDate,
+        contractAmount: projects.contractAmount,
+        kpiSupply:      projects.kpiSupply,
+        kpiTax:         projects.kpiTax,
+        clientName:     clients.companyName,
+        totalSum:       sql<number>`COALESCE(SUM(${projectRevenues.total}), 0)`,
+        supplySum:      sql<number>`COALESCE(SUM(${projectRevenues.supplyPrice}), 0)`,
+        taxSum:         sql<number>`COALESCE(SUM(${projectRevenues.tax}), 0)`,
       })
       .from(projectRevenues)
       .innerJoin(projects, eq(projectRevenues.projectId, projects.id))
+      .leftJoin(clients, eq(projects.clientId, clients.id))
       .where(
         and(
           isNotNull(projectRevenues.paymentDate),
@@ -34,45 +40,29 @@ export async function GET(req: NextRequest) {
           lte(dateField, to),
         )
       )
-      .groupBy(projectRevenues.projectId);
+      .groupBy(
+        projects.id,
+        projects.assignedTeam,
+        projects.assignedPerson,
+        projects.startDate,
+        projects.contractAmount,
+        projects.kpiSupply,
+        projects.kpiTax,
+        clients.companyName,
+      );
 
-    const confirmedIds = revSums.map(r => r.projectId);
-    if (!confirmedIds.length) return NextResponse.json({ rows: [] });
+    const result = rows.map(p => ({
+      assignedTeam:   p.assignedTeam,
+      assignedPerson: p.assignedPerson,
+      startDate:      p.startDate,
+      invoiceDate:    null,
+      clientName:     p.clientName ?? null,
+      total:       p.contractAmount ?? Number(p.totalSum ?? 0),
+      supplyPrice: p.kpiSupply      ?? Number(p.supplySum ?? 0),
+      tax:         p.kpiTax         ?? Number(p.taxSum    ?? 0),
+    }));
 
-    // 2. 프로젝트 KPI + 클라이언트 조회
-    const projectData = await db
-      .select({
-        id:             projects.id,
-        assignedTeam:   projects.assignedTeam,
-        assignedPerson: projects.assignedPerson,
-        startDate:      projects.startDate,
-        contractAmount: projects.contractAmount,
-        kpiSupply:      projects.kpiSupply,
-        kpiTax:         projects.kpiTax,
-        clientName:     clients.companyName,
-      })
-      .from(projects)
-      .leftJoin(clients, eq(projects.clientId, clients.id))
-      .where(inArray(projects.id, confirmedIds));
-
-    const revMap = new Map(revSums.map(r => [r.projectId, r]));
-
-    // 3. 프로젝트당 1행으로 반환 (KPI 우선, fallback은 행 합계)
-    const rows = projectData.map(p => {
-      const rev = revMap.get(p.id);
-      return {
-        assignedTeam:  p.assignedTeam,
-        assignedPerson: p.assignedPerson,
-        startDate:     p.startDate,
-        invoiceDate:   null,
-        clientName:    p.clientName ?? null,
-        total:       p.contractAmount ?? Number(rev?.totalSum ?? 0),
-        supplyPrice: p.kpiSupply      ?? Number(rev?.supplySum ?? 0),
-        tax:         p.kpiTax         ?? Number(rev?.taxSum    ?? 0),
-      };
-    });
-
-    return NextResponse.json({ rows });
+    return NextResponse.json({ rows: result });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }

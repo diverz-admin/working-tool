@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { projectGroups, projects, projectRevenues, projectCosts, confirmRequests, paymentRequests } from "@/db/schema";
-import { eq, desc, max, count, sql } from "drizzle-orm";
+import { eq, desc, max, count, sql, inArray } from "drizzle-orm";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -45,44 +45,37 @@ export async function GET(_req: Request, { params }: Params) {
       .orderBy(desc(projects.createdAt));
 
     const campaignIds = campaigns.map((c) => c.id);
-    const idList = campaignIds.length > 0
-      ? sql.raw(`ARRAY[${campaignIds.map((cid) => `'${cid}'`).join(",")}]`)
-      : null;
 
-    // 매입 총 건수
-    const costTotalRows = idList
-      ? await db
-          .select({ projectId: projectCosts.projectId, total: count(projectCosts.id) })
-          .from(projectCosts)
-          .groupBy(projectCosts.projectId)
-      : [];
+    if (!campaignIds.length) {
+      return NextResponse.json({ group, campaigns: [] });
+    }
 
-    // 매출 결재 현황 단계별
-    const revStats = idList
-      ? await db
-          .select({
-            projectId: confirmRequests.projectId,
-            invoiced:  sql<number>`COUNT(*) FILTER (WHERE ${confirmRequests.taxInvoiceDate} IS NOT NULL)`,
-            confirmed: sql<number>`COUNT(*) FILTER (WHERE ${confirmRequests.status} = '확인완료' AND ${confirmRequests.taxInvoiceDate} IS NULL)`,
-            pending:   sql<number>`COUNT(*) FILTER (WHERE ${confirmRequests.status} = '대기')`,
-          })
-          .from(confirmRequests)
-          .where(sql`${confirmRequests.projectId} = ANY(${idList}::text[])`)
-          .groupBy(confirmRequests.projectId)
-      : [];
+    // 3개 집계 쿼리 병렬 실행
+    const [costTotalRows, revStats, costStats] = await Promise.all([
+      db.select({ projectId: projectCosts.projectId, total: count(projectCosts.id) })
+        .from(projectCosts)
+        .where(inArray(projectCosts.projectId, campaignIds))
+        .groupBy(projectCosts.projectId),
 
-    // 매입 결재 현황 단계별
-    const costStats = idList
-      ? await db
-          .select({
-            projectId: paymentRequests.projectId,
-            approved:  sql<number>`COUNT(*) FILTER (WHERE ${paymentRequests.status} = '승인')`,
-            pending:   sql<number>`COUNT(*) FILTER (WHERE ${paymentRequests.status} = '대기')`,
-          })
-          .from(paymentRequests)
-          .where(sql`${paymentRequests.projectId} = ANY(${idList}::text[])`)
-          .groupBy(paymentRequests.projectId)
-      : [];
+      db.select({
+          projectId: confirmRequests.projectId,
+          invoiced:  sql<number>`COUNT(*) FILTER (WHERE ${confirmRequests.taxInvoiceDate} IS NOT NULL)`,
+          confirmed: sql<number>`COUNT(*) FILTER (WHERE ${confirmRequests.status} = '확인완료' AND ${confirmRequests.taxInvoiceDate} IS NULL)`,
+          pending:   sql<number>`COUNT(*) FILTER (WHERE ${confirmRequests.status} = '대기')`,
+        })
+        .from(confirmRequests)
+        .where(inArray(confirmRequests.projectId, campaignIds))
+        .groupBy(confirmRequests.projectId),
+
+      db.select({
+          projectId: paymentRequests.projectId,
+          approved:  sql<number>`COUNT(*) FILTER (WHERE ${paymentRequests.status} = '승인')`,
+          pending:   sql<number>`COUNT(*) FILTER (WHERE ${paymentRequests.status} = '대기')`,
+        })
+        .from(paymentRequests)
+        .where(inArray(paymentRequests.projectId, campaignIds))
+        .groupBy(paymentRequests.projectId),
+    ]);
 
     const costTotalMap = new Map(costTotalRows.map((r) => [r.projectId!, Number(r.total)]));
     const revStatsMap  = new Map(revStats.map((r) => [r.projectId!, { invoiced: Number(r.invoiced), confirmed: Number(r.confirmed), pending: Number(r.pending) }]));

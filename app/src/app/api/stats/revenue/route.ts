@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { projects, projectRevenues, projectCosts, kpiTargets } from "@/db/schema";
-import { eq, sql, isNotNull, and, inArray } from "drizzle-orm";
+import { eq, sql, isNotNull, and } from "drizzle-orm";
 
 export async function GET(req: Request) {
   try {
@@ -10,25 +10,33 @@ export async function GET(req: Request) {
     const criteria = searchParams.get("criteria") ?? "캠페인 시작날짜";
     const useInvoice = criteria === "계산서날짜";
 
-    // 1. 입금 확인된 프로젝트별 매출행 합계 (fallback + refMonth 확보)
-    const revSums = await db
-      .select({
-        projectId: projectRevenues.projectId,
-        totalSum:  sql<number>`COALESCE(SUM(${projectRevenues.total}), 0)`,
-        refMonth:  sql<string>`TO_CHAR(MAX(${useInvoice ? projectRevenues.invoiceDate : projectRevenues.paymentDate}), 'YYYY-MM')`,
-      })
-      .from(projectRevenues)
-      .where(
-        useInvoice
-          ? and(isNotNull(projectRevenues.paymentDate), isNotNull(projectRevenues.invoiceDate))
-          : isNotNull(projectRevenues.paymentDate)
-      )
-      .groupBy(projectRevenues.projectId);
+    // 3개 쿼리 완전 병렬 실행
+    const [projectData, kpiRows, costRows] = await Promise.all([
+      // 확인된 프로젝트 + revenue 합계 단일 쿼리
+      db.select({
+          id:             projects.id,
+          startDate:      projects.startDate,
+          assignedTeam:   projects.assignedTeam,
+          contractAmount: projects.contractAmount,
+          totalSum:       sql<number>`COALESCE(SUM(${projectRevenues.total}), 0)`,
+          refMonth:       sql<string>`TO_CHAR(MAX(${useInvoice ? projectRevenues.invoiceDate : projectRevenues.paymentDate}), 'YYYY-MM')`,
+        })
+        .from(projects)
+        .innerJoin(projectRevenues, eq(projectRevenues.projectId, projects.id))
+        .where(
+          useInvoice
+            ? and(
+                isNotNull(projectRevenues.paymentDate),
+                isNotNull(projectRevenues.invoiceDate),
+                sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`,
+              )
+            : and(
+                isNotNull(projectRevenues.paymentDate),
+                sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`,
+              )
+        )
+        .groupBy(projects.id, projects.startDate, projects.assignedTeam, projects.contractAmount),
 
-    const confirmedIds = revSums.map(r => r.projectId);
-
-    // KPI 목표 + costs는 병렬 조회
-    const [kpiRows, costRows, projectData] = await Promise.all([
       db.select().from(kpiTargets).where(eq(kpiTargets.year, year)),
 
       db.select({
@@ -39,47 +47,29 @@ export async function GET(req: Request) {
         .innerJoin(projects, eq(projects.id, projectCosts.projectId))
         .where(and(
           eq(projectCosts.isApproved, true),
-          confirmedIds.length ? inArray(projectCosts.projectId, confirmedIds) : sql`false`,
           sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`,
         ))
         .groupBy(sql`TO_CHAR(${projects.startDate}, 'YYYY-MM')`),
-
-      confirmedIds.length
-        ? db.select({
-            id:             projects.id,
-            startDate:      projects.startDate,
-            assignedTeam:   projects.assignedTeam,
-            contractAmount: projects.contractAmount,
-          })
-          .from(projects)
-          .where(and(
-            inArray(projects.id, confirmedIds),
-            sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`,
-          ))
-        : Promise.resolve([]),
     ]);
 
-    const revMap = new Map(revSums.map(r => [r.projectId, r]));
     const monthlyCosts = Array.from({ length: 12 }, (_, i) => {
       const m = `${year}-${String(i + 1).padStart(2, "0")}`;
       const row = costRows.find((r) => r.month === m);
       return row ? Number(row.total) : 0;
     });
 
-    // 2. 프로젝트별 KPI 금액으로 팀/월 집계
     type MonthEntry = { [team: string]: number };
     const teamMonthMap = new Map<string, MonthEntry[]>();
 
     for (const p of projectData) {
-      const rev    = revMap.get(p.id);
       const monthStr = useInvoice
-        ? (rev?.refMonth ?? "")
+        ? (p.refMonth ?? "")
         : (p.startDate ? `${year}-${p.startDate.substring(5, 7)}` : "");
       if (!monthStr || !monthStr.startsWith(`${year}`)) continue;
 
       const monthIdx = parseInt(monthStr.substring(5, 7)) - 1;
       const team  = p.assignedTeam ?? "";
-      const total = p.contractAmount ?? Number(rev?.totalSum ?? 0);
+      const total = p.contractAmount ?? Number(p.totalSum ?? 0);
 
       if (!teamMonthMap.has(team)) {
         teamMonthMap.set(team, Array.from({ length: 12 }, () => ({ total: 0 })));
@@ -87,7 +77,6 @@ export async function GET(req: Request) {
       teamMonthMap.get(team)![monthIdx].total += total;
     }
 
-    // rows 형식으로 변환 (하위 호환)
     const rows: { month: string; team: string | null; total: number }[] = [];
     for (const [team, months] of teamMonthMap.entries()) {
       months.forEach((m, i) => {

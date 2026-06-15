@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { projects, projectRevenues } from "@/db/schema";
-import { eq, and, gte, lte, isNotNull, inArray, sql } from "drizzle-orm";
+import { eq, and, isNotNull, sql } from "drizzle-orm";
 
 export async function GET(req: NextRequest) {
   try {
@@ -10,58 +10,58 @@ export async function GET(req: NextRequest) {
 
     const useInvoice = criteria === "계산서날짜";
     const useSupply  = criteria === "공급가";
-    const dateField  = useInvoice ? projectRevenues.invoiceDate : projects.startDate;
 
-    // 1. 입금 확인된 프로젝트별 fallback 합계 + refDate
-    const revSums = await db
-      .select({
-        projectId:   projectRevenues.projectId,
-        totalSum:    sql<number>`COALESCE(SUM(${projectRevenues.total}), 0)`,
-        supplySum:   sql<number>`COALESCE(SUM(${projectRevenues.supplyPrice}), 0)`,
-        refDate:     sql<string>`MAX(${dateField})`,
-      })
-      .from(projectRevenues)
-      .innerJoin(projects, eq(projectRevenues.projectId, projects.id))
-      .where(
-        and(
-          isNotNull(projectRevenues.paymentDate),
-          isNotNull(dateField),
-          gte(dateField, `${year}-01-01`),
-          lte(dateField, `${year}-12-31`),
-        )
-      )
-      .groupBy(projectRevenues.projectId);
-
-    const confirmedIds = revSums.map(r => r.projectId);
-    if (!confirmedIds.length) {
-      return NextResponse.json({ teams: [], other: new Array(12).fill(0) });
-    }
-
-    // 2. 프로젝트 KPI 조회
+    // 단일 쿼리: 확인된 프로젝트 + KPI + revenue 합계
     const projectData = await db
       .select({
         id:             projects.id,
         assignedTeam:   projects.assignedTeam,
         assignedPerson: projects.assignedPerson,
+        startDate:      projects.startDate,
         contractAmount: projects.contractAmount,
         kpiSupply:      projects.kpiSupply,
+        totalSum:       sql<number>`COALESCE(SUM(${projectRevenues.total}), 0)`,
+        supplySum:      sql<number>`COALESCE(SUM(${projectRevenues.supplyPrice}), 0)`,
+        maxInvoiceDate: sql<string>`MAX(${projectRevenues.invoiceDate})`,
       })
       .from(projects)
-      .where(inArray(projects.id, confirmedIds));
+      .innerJoin(projectRevenues, eq(projectRevenues.projectId, projects.id))
+      .where(
+        useInvoice
+          ? and(
+              isNotNull(projectRevenues.paymentDate),
+              isNotNull(projectRevenues.invoiceDate),
+              sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`,
+            )
+          : and(
+              isNotNull(projectRevenues.paymentDate),
+              sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`,
+            )
+      )
+      .groupBy(
+        projects.id,
+        projects.assignedTeam,
+        projects.assignedPerson,
+        projects.startDate,
+        projects.contractAmount,
+        projects.kpiSupply,
+      );
 
-    const revMap = new Map(revSums.map(r => [r.projectId, r]));
+    if (!projectData.length) {
+      return NextResponse.json({ teams: [], other: new Array(12).fill(0) });
+    }
 
-    // 3. 팀/담당자별 월 집계
+    // 팀/담당자별 월 집계
     const teamMap = new Map<string, Map<string, number[]>>();
     const other   = new Array(12).fill(0);
 
     for (const p of projectData) {
-      const rev  = revMap.get(p.id);
-      if (!rev?.refDate) continue;
-      const month  = parseInt(rev.refDate.substring(5, 7)) - 1;
+      const refDate = useInvoice ? p.maxInvoiceDate : p.startDate;
+      if (!refDate) continue;
+      const month  = parseInt(refDate.substring(5, 7)) - 1;
       const amount = useSupply
-        ? (p.kpiSupply ?? Number(rev.supplySum))
-        : (p.contractAmount ?? Number(rev.totalSum));
+        ? (p.kpiSupply ?? Number(p.supplySum))
+        : (p.contractAmount ?? Number(p.totalSum));
 
       const team   = p.assignedTeam   ?? "";
       const person = p.assignedPerson ?? "";
