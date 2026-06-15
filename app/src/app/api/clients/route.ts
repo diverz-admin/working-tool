@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { clients, projects } from "@/db/schema";
-import { desc, eq, sql } from "drizzle-orm";
+import { desc, eq, sql, count } from "drizzle-orm";
 
 export async function POST(req: Request) {
   try {
@@ -43,9 +43,11 @@ export async function GET() {
     const rows = await db
       .select({
         client: clients,
-        projectCount: sql<number>`(SELECT COUNT(*)::int FROM projects WHERE projects.client_id = ${clients.id})`,
+        projectCount: sql<number>`COUNT(${projects.id})::int`,
       })
       .from(clients)
+      .leftJoin(projects, eq(projects.clientId, clients.id))
+      .groupBy(clients.id)
       .orderBy(desc(clients.createdAt));
 
     const result = rows.map(({ client: c, projectCount }) => ({

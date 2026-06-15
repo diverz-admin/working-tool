@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { kpiTargets } from "@/db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 export async function GET(req: Request) {
   try {
@@ -26,30 +26,13 @@ export async function PUT(req: Request) {
     // body: { year, month, team, target }[]
     const entries: { year: number; month: number; team: string; target: number }[] = body.entries;
 
-    for (const e of entries) {
-      const existing = await db
-        .select({ id: kpiTargets.id })
-        .from(kpiTargets)
-        .where(and(
-          eq(kpiTargets.year,  e.year),
-          eq(kpiTargets.month, e.month),
-          eq(kpiTargets.team,  e.team),
-        ));
-
-      if (existing.length > 0) {
-        await db.update(kpiTargets)
-          .set({ target: e.target, updatedAt: new Date() })
-          .where(and(
-            eq(kpiTargets.year,  e.year),
-            eq(kpiTargets.month, e.month),
-            eq(kpiTargets.team,  e.team),
-          ));
-      } else {
-        await db.insert(kpiTargets).values({
-          year: e.year, month: e.month, team: e.team, target: e.target,
-        });
-      }
-    }
+    // 단일 배치 upsert (N×2 쿼리 → 1 쿼리)
+    await db.insert(kpiTargets)
+      .values(entries.map(e => ({ year: e.year, month: e.month, team: e.team, target: e.target })))
+      .onConflictDoUpdate({
+        target: [kpiTargets.year, kpiTargets.month, kpiTargets.team],
+        set: { target: sql`excluded.target`, updatedAt: new Date() },
+      });
 
     const updated = await db
       .select()

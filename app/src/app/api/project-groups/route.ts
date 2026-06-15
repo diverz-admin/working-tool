@@ -38,60 +38,57 @@ export async function GET() {
         sql`MAX(${projects.endDate}) FILTER (WHERE ${projects.status} = '진행') ASC NULLS LAST`,
       );
 
-    // 품목(매출행) 최근접 workEndDate (미완료 행 기준)
-    const workEndRows = await db
-      .select({
-        groupId:      projects.projectGroupId,
-        minWorkEnd:   sql<string | null>`MIN(${projectRevenues.workEndDate}) FILTER (WHERE ${projectRevenues.workCompleted} = false)`,
-      })
-      .from(projects)
-      .innerJoin(projectRevenues, eq(projectRevenues.projectId, projects.id))
-      .where(eq(projects.status, "진행"))
-      .groupBy(projects.projectGroupId);
+    // 나머지 5개 쿼리 병렬 실행
+    const [workEndRows, revTotal, revStats, costTotal, costStats] = await Promise.all([
+      // 품목(매출행) 최근접 workEndDate (미완료 행 기준)
+      db.select({
+          groupId:    projects.projectGroupId,
+          minWorkEnd: sql<string | null>`MIN(${projectRevenues.workEndDate}) FILTER (WHERE ${projectRevenues.workCompleted} = false)`,
+        })
+        .from(projects)
+        .innerJoin(projectRevenues, eq(projectRevenues.projectId, projects.id))
+        .where(eq(projects.status, "진행"))
+        .groupBy(projects.projectGroupId),
 
-    const workEndMap = new Map(workEndRows.map((r) => [r.groupId, r.minWorkEnd ?? null]));
+      // 매출 총 건수
+      db.select({ groupId: projects.projectGroupId, total: count(projectRevenues.id) })
+        .from(projects)
+        .innerJoin(projectRevenues, eq(projectRevenues.projectId, projects.id))
+        .where(eq(projects.status, "진행"))
+        .groupBy(projects.projectGroupId),
 
-    // 매출 총 건수 (진행중 캠페인)
-    const revTotal = await db
-      .select({ groupId: projects.projectGroupId, total: count(projectRevenues.id) })
-      .from(projects)
-      .innerJoin(projectRevenues, eq(projectRevenues.projectId, projects.id))
-      .where(eq(projects.status, "진행"))
-      .groupBy(projects.projectGroupId);
+      // 매출 결재 현황
+      db.select({
+          groupId:   projects.projectGroupId,
+          invoiced:  sql<number>`COUNT(*) FILTER (WHERE ${confirmRequests.taxInvoiceDate} IS NOT NULL)`,
+          confirmed: sql<number>`COUNT(*) FILTER (WHERE ${confirmRequests.status} = '확인완료' AND ${confirmRequests.taxInvoiceDate} IS NULL)`,
+          pending:   sql<number>`COUNT(*) FILTER (WHERE ${confirmRequests.status} = '대기')`,
+        })
+        .from(projects)
+        .innerJoin(confirmRequests, sql`${confirmRequests.projectId} = ${projects.id}::text`)
+        .where(eq(projects.status, "진행"))
+        .groupBy(projects.projectGroupId),
 
-    // 매출 결재 현황 단계별 (진행중 캠페인)
-    const revStats = await db
-      .select({
-        groupId:   projects.projectGroupId,
-        invoiced:  sql<number>`COUNT(*) FILTER (WHERE ${confirmRequests.taxInvoiceDate} IS NOT NULL)`,
-        confirmed: sql<number>`COUNT(*) FILTER (WHERE ${confirmRequests.status} = '확인완료' AND ${confirmRequests.taxInvoiceDate} IS NULL)`,
-        pending:   sql<number>`COUNT(*) FILTER (WHERE ${confirmRequests.status} = '대기')`,
-      })
-      .from(projects)
-      .innerJoin(confirmRequests, sql`${confirmRequests.projectId} = ${projects.id}::text`)
-      .where(eq(projects.status, "진행"))
-      .groupBy(projects.projectGroupId);
+      // 매입 총 건수
+      db.select({ groupId: projects.projectGroupId, total: count(projectCosts.id) })
+        .from(projects)
+        .innerJoin(projectCosts, eq(projectCosts.projectId, projects.id))
+        .where(eq(projects.status, "진행"))
+        .groupBy(projects.projectGroupId),
 
-    // 매입 총 건수 (진행중 캠페인)
-    const costTotal = await db
-      .select({ groupId: projects.projectGroupId, total: count(projectCosts.id) })
-      .from(projects)
-      .innerJoin(projectCosts, eq(projectCosts.projectId, projects.id))
-      .where(eq(projects.status, "진행"))
-      .groupBy(projects.projectGroupId);
+      // 매입 결재 현황
+      db.select({
+          groupId:  projects.projectGroupId,
+          approved: sql<number>`COUNT(*) FILTER (WHERE ${paymentRequests.status} = '승인')`,
+          pending:  sql<number>`COUNT(*) FILTER (WHERE ${paymentRequests.status} = '대기')`,
+        })
+        .from(projects)
+        .innerJoin(paymentRequests, sql`${paymentRequests.projectId} = ${projects.id}::text`)
+        .where(eq(projects.status, "진행"))
+        .groupBy(projects.projectGroupId),
+    ]);
 
-    // 매입 결재 현황 단계별 (진행중 캠페인)
-    const costStats = await db
-      .select({
-        groupId:  projects.projectGroupId,
-        approved: sql<number>`COUNT(*) FILTER (WHERE ${paymentRequests.status} = '승인')`,
-        pending:  sql<number>`COUNT(*) FILTER (WHERE ${paymentRequests.status} = '대기')`,
-      })
-      .from(projects)
-      .innerJoin(paymentRequests, sql`${paymentRequests.projectId} = ${projects.id}::text`)
-      .where(eq(projects.status, "진행"))
-      .groupBy(projects.projectGroupId);
-
+    const workEndMap   = new Map(workEndRows.map((r) => [r.groupId, r.minWorkEnd ?? null]));
     const revTotalMap  = new Map(revTotal.map((r) => [r.groupId, Number(r.total)]));
     const revStatsMap  = new Map(revStats.map((r) => [r.groupId, { invoiced: Number(r.invoiced), confirmed: Number(r.confirmed), pending: Number(r.pending) }]));
     const costTotalMap = new Map(costTotal.map((r) => [r.groupId, Number(r.total)]));
