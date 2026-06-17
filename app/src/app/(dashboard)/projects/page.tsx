@@ -855,7 +855,12 @@ const STATS_TTL = 60_000;
 /* ── 그룹별 캠페인 모듈 레벨 캐시 ── */
 const _campaignCacheMap = new Map<string, { data: Campaign[]; ts: number }>();
 const _campaignPendingMap = new Map<string, Promise<Campaign[]>>();
+// 실패한 그룹 재시도 방지: groupId → 마지막 실패 시각
+const _campaignErrorMap = new Map<string, number>();
+// 빈 캐시 강제 재시도 방지: 무한루프 차단
+const _campaignForceRetried = new Set<string>();
 const CAMPAIGN_TTL = 30_000;
+const CAMPAIGN_ERROR_TTL = 10_000; // 실패 후 10초 뒤 재시도
 
 function fetchGroupCampaigns(groupId: string): Promise<Campaign[]> {
   const hit = _campaignCacheMap.get(groupId);
@@ -863,14 +868,23 @@ function fetchGroupCampaigns(groupId: string): Promise<Campaign[]> {
   const existing = _campaignPendingMap.get(groupId);
   if (existing) return existing;
   const p = fetch(`/api/project-groups/${groupId}`)
-    .then(r => r.json())
+    .then(r => {
+      // HTTP 에러(4xx/5xx)를 빈 배열로 캐싱하지 않도록 명시적으로 throw
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    })
     .then((d: { campaigns?: Campaign[] }) => {
       const campaigns = (d.campaigns ?? []) as Campaign[];
       _campaignCacheMap.set(groupId, { data: campaigns, ts: Date.now() });
+      _campaignErrorMap.delete(groupId);
       _campaignPendingMap.delete(groupId);
       return campaigns;
     })
-    .catch(err => { _campaignPendingMap.delete(groupId); throw err; });
+    .catch(err => {
+      _campaignErrorMap.set(groupId, Date.now());
+      _campaignPendingMap.delete(groupId);
+      throw err;
+    });
   _campaignPendingMap.set(groupId, p);
   return p;
 }
@@ -994,10 +1008,26 @@ function ProjectsInner() {
   useEffect(() => { preloadModalInit(); }, []);
   // 펼쳐진 행 중 campaignMap·loadingGroups에 없는 그룹 자동 로드
   // deps 없음 — 렌더마다 체크해서 HMR/상태 desync 대응. 데이터 로드 완료 시 조건이 false가 되어 무한루프 없음
+  // _campaignErrorMap TTL 만료 시 재시도, 빈 캐시지만 campaignCount>0이면 1회 강제 재시도
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     for (const id of expanded) {
-      if (!campaignMap.has(id) && !loadingGroups.has(id)) loadCampaigns(id);
+      if (loadingGroups.has(id)) continue;
+      const cached = campaignMap.get(id);
+      if (cached === undefined) {
+        // 이전 요청이 실패한 경우 TTL 지난 후 재시도
+        const errTs = _campaignErrorMap.get(id);
+        if (!errTs || Date.now() - errTs > CAMPAIGN_ERROR_TTL) {
+          loadCampaigns(id);
+        }
+      } else if (cached.length === 0) {
+        // 빈 배열이 캐싱됐지만 그룹에 캠페인이 있어야 하는 경우 1회 강제 재시도
+        const grp = groups.find(g => g.id === id);
+        if (grp && (grp.campaignCount > 0 || grp.activeCampaignCount > 0) && !_campaignForceRetried.has(id)) {
+          _campaignForceRetried.add(id);
+          loadCampaigns(id, true);
+        }
+      }
     }
   });
   // eslint-disable-next-line react-hooks/set-state-in-effect
