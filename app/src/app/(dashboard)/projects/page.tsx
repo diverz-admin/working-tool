@@ -67,6 +67,7 @@ interface ProjectGroup {
   costTotal: number;
   costApproved: number;
   costPending: number;
+  campaigns?: Campaign[];
 }
 
 interface Campaign {
@@ -825,13 +826,37 @@ function RevenueKpiSection({
 
 const TEAM_ORDER = ["영업 1팀", "영업 2팀"];
 
+/* ── 모듈 레벨 캐시 ── */
+type GroupsData = { groups: ProjectGroup[]; workIncompleteCount: number };
+let _groupsCache: { data: GroupsData; ts: number } | null = null;
+let _groupsPending: Promise<GroupsData> | null = null;
+const GROUPS_TTL = 30_000;
+
+function fetchGroups(): Promise<GroupsData> {
+  if (_groupsPending) return _groupsPending;
+  _groupsPending = fetch("/api/projects-page")
+    .then((r) => r.json())
+    .then((d) => {
+      const data: GroupsData = { groups: d.groups ?? [], workIncompleteCount: d.workIncompleteCount ?? 0 };
+      _groupsCache = { data, ts: Date.now() };
+      _groupsPending = null;
+      return data;
+    })
+    .catch(() => { _groupsPending = null; return { groups: [], workIncompleteCount: 0 }; });
+  return _groupsPending;
+}
+fetchGroups(); // 모듈 로드 즉시 선행 fetch (Next.js Link hover prefetch와 맞물려 진입 전 데이터 준비)
+
+const _statsCacheMap = new Map<string, { data: RevenueStats; ts: number }>();
+const STATS_TTL = 60_000;
+
 function ProjectsInner() {
   const searchParams   = useSearchParams();
   const teamParam      = searchParams.get("team");
   const openParam      = searchParams.get("open");
 
-  const [groups,       setGroups]       = useState<ProjectGroup[]>([]);
-  const [loading,      setLoading]      = useState(true);
+  const [groups,       setGroups]       = useState<ProjectGroup[]>(_groupsCache?.data.groups ?? []);
+  const [loading,      setLoading]      = useState(!_groupsCache);
   const [modal,        setModal]        = useState<"create" | null>(null);
   const [editing,      setEditing]      = useState<ProjectGroup | null>(null);
   const [search,       setSearch]       = useState("");
@@ -896,31 +921,42 @@ function ProjectsInner() {
     }));
   }
 
-  // 그룹 목록 로드 (stats와 병렬 fetch — 더 빠르게 화면에 표시)
-  const load = useCallback(() => {
+  // 그룹 목록 로드
+  const load = useCallback((invalidate = false) => {
+    if (!invalidate && _groupsCache && Date.now() - _groupsCache.ts < GROUPS_TTL) {
+      const { groups, workIncompleteCount } = _groupsCache.data;
+      setGroups(groups);
+      setCampaignMap((prev) => {
+        const n = new Map(prev);
+        for (const g of groups) if (Array.isArray(g.campaigns)) n.set(g.id, g.campaigns as Campaign[]);
+        return n;
+      });
+      setWorkIncomplete(workIncompleteCount);
+      setLoading(false);
+      return;
+    }
+    if (invalidate) _groupsCache = null;
     setLoading(true);
-    fetch("/api/projects-page")
-      .then((r) => r.json())
-      .then((d) => {
-        const groups = d.groups ?? [];
+    fetchGroups()
+      .then(({ groups, workIncompleteCount }) => {
         setGroups(groups);
         setCampaignMap((prev) => {
           const n = new Map(prev);
-          for (const g of groups) {
-            if (Array.isArray(g.campaigns)) n.set(g.id, g.campaigns as Campaign[]);
-          }
+          for (const g of groups) if (Array.isArray(g.campaigns)) n.set(g.id, g.campaigns as Campaign[]);
           return n;
         });
-        if (d.workIncompleteCount != null) setWorkIncomplete(d.workIncompleteCount);
+        setWorkIncomplete(workIncompleteCount);
       })
       .finally(() => setLoading(false));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // stats/revenue 로드 — 마운트 시 + criteria 변경 시 모두 실행
+  // stats/revenue 로드 — 마운트 시 + criteria 변경 시 실행, 60초 캐시
   const loadStats = useCallback(() => {
+    const cached = _statsCacheMap.get(statsCriteria);
+    if (cached && Date.now() - cached.ts < STATS_TTL) { setRevenueStats(cached.data); return; }
     fetch(`/api/stats/revenue?year=${new Date().getFullYear()}&criteria=${encodeURIComponent(statsCriteria)}`)
       .then((r) => r.json())
-      .then((d) => setRevenueStats(d))
+      .then((d) => { _statsCacheMap.set(statsCriteria, { data: d, ts: Date.now() }); setRevenueStats(d); })
       .catch(() => {});
   }, [statsCriteria]);
 
@@ -1039,7 +1075,7 @@ function ProjectsInner() {
     }
     setCampaignMap((m) => { const n = new Map(m); n.delete(groupId); return n; });
     loadCampaigns(groupId, true);
-    load();
+    load(true);
   }
 
   // 광고주 상세 보기
@@ -1122,7 +1158,7 @@ function ProjectsInner() {
           onClose={() => setNewProjectModal(false)}
           onSaved={async (newGroupId?: string) => {
             setNewProjectModal(false);
-            await load();
+            await load(true);
             // API 응답의 projectGroupId로 자동 펼침
             if (newGroupId) {
               setExpanded((s) => new Set(s).add(newGroupId));
@@ -1138,7 +1174,7 @@ function ProjectsInner() {
         <GroupModal
           initial={editing}
           onClose={() => setEditing(null)}
-          onSaved={() => { setEditing(null); load(); }}
+          onSaved={() => { setEditing(null); load(true); }}
         />
       )}
 
@@ -1150,7 +1186,7 @@ function ProjectsInner() {
           onClose={() => setAddCampGroup(null)}
           onSaved={() => {
             loadCampaigns(addCampGroup, true);
-            load();
+            load(true);
             setAddCampGroup(null);
           }}
           onViewClient={handleViewClient}
@@ -1166,7 +1202,7 @@ function ProjectsInner() {
           onSaved={() => {
             if (editCampaign?.id) invalidateProjectCache(editCampaign.id);
             if (activeCampGroup) loadCampaigns(activeCampGroup, true);
-            load();
+            load(true);
             setEditCampaign(null); setActiveCampGroup(null);
           }}
           onDelete={async (cid) => {
@@ -1182,8 +1218,8 @@ function ProjectsInner() {
         <ClientModal
           initial={viewClient}
           onClose={() => setViewClient(null)}
-          onSaved={() => { setViewClient(null); load(); }}
-          onDelete={async (cid) => { await fetch(`/api/clients/${cid}`, { method: "DELETE" }); setViewClient(null); load(); }}
+          onSaved={() => { setViewClient(null); load(true); }}
+          onDelete={async (cid) => { await fetch(`/api/clients/${cid}`, { method: "DELETE" }); setViewClient(null); load(true); }}
         />
       )}
 
