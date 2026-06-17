@@ -5,7 +5,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useState, useEffect, Suspense } from "react";
 import { useUser } from "@/lib/UserContext";
 
-const TEAMS = ["영업 1팀", "영업 2팀"];
+const TEAMS = ["경영", "영업 1팀", "영업 2팀"];
 
 let _pendingCache: { confirm: number; payment: number; ts: number } | null = null;
 const PENDING_TTL = 60_000;

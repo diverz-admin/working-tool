@@ -399,6 +399,7 @@ function CampaignRow({ c, index, onEdit, onDelete, onCopy, deleting, copying }: 
 // ── 팀별 색상 ────────────────────────────────────────────────────────────────
 
 const TEAM_COLORS: Record<string, string> = {
+  "경영":    "#F59E0B",
   "영업 1팀": "#3182F6",
   "영업 2팀": "#10B981",
 };
@@ -824,7 +825,7 @@ function RevenueKpiSection({
 
 // ── 메인 ──────────────────────────────────────────────────────────────────────
 
-const TEAM_ORDER = ["영업 1팀", "영업 2팀"];
+const TEAM_ORDER = ["경영", "영업 1팀", "영업 2팀"];
 
 /* ── 모듈 레벨 캐시 ── */
 type GroupsData = { groups: ProjectGroup[]; workIncompleteCount: number };
