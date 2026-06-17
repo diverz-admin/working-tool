@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
       ? new Date(year, month, 0).toISOString().slice(0, 10)
       : `${year}-12-31`;
 
-    // 프로젝트 목록
+    // 프로젝트 목록 — 캠페인 시작일 기준 필터링
     const projectRows = await db
       .select({
         id:             projects.id,
@@ -31,7 +31,14 @@ export async function GET(req: NextRequest) {
         endDate:        projects.endDate,
       })
       .from(projects)
-      .where(team ? eq(projects.assignedTeam, team) : undefined);
+      .where(
+        and(
+          team ? eq(projects.assignedTeam, team) : undefined,
+          isNotNull(projects.startDate),
+          gte(projects.startDate, from),
+          lte(projects.startDate, to),
+        )
+      );
 
     const empty = {
       year, month,
@@ -45,8 +52,10 @@ export async function GET(req: NextRequest) {
     if (projectRows.length === 0) return NextResponse.json(empty);
 
     const projectIds = projectRows.map(p => p.id);
+    // 캠페인 시작일 맵 (월별 집계에 사용)
+    const projectStartMap = new Map(projectRows.map(p => [p.id, p.startDate]));
 
-    // 확정 매출 (계산서발급 완료)
+    // 확정 매출 (계산서발급 완료) — 날짜 필터 없이 해당 프로젝트 전체 포함
     const revRows = await db
       .select({
         projectId:   projectRevenues.projectId,
@@ -63,8 +72,6 @@ export async function GET(req: NextRequest) {
           inArray(projectRevenues.projectId, projectIds),
           isNotNull(confirmRequests.taxInvoiceDate),
           isNotNull(projectRevenues.invoiceDate),
-          gte(projectRevenues.invoiceDate, from),
-          lte(projectRevenues.invoiceDate, to),
         )
       );
 
@@ -108,10 +115,12 @@ export async function GET(req: NextRequest) {
       };
     }).filter(p => p.revenue > 0 || p.cost > 0 || p.contractAmount);
 
-    // 월별 집계 (12개월)
+    // 월별 집계 (12개월) — 확정 매출은 캠페인 시작월 기준
     const monthly = Array.from({ length: 12 }, (_, i) => emptyMonth(i + 1));
     for (const r of revRows) {
-      const m = parseInt(r.invoiceDate!.substring(5, 7)) - 1;
+      const startDate = r.projectId ? projectStartMap.get(r.projectId) : null;
+      if (!startDate) continue;
+      const m = parseInt(startDate.substring(5, 7)) - 1;
       monthly[m].revenue    += r.total ?? 0;
       monthly[m].supplyPrice += r.supplyPrice ?? 0;
       monthly[m].count      += 1;
@@ -137,17 +146,20 @@ export async function GET(req: NextRequest) {
       const cost    = sum(ps, p => p.cost);
       const margin  = revenue - cost;
 
-      // 팀별 월별
+      // 팀별 월별 — 확정 매출은 캠페인 시작월 기준
       const teamMonthly = Array.from({ length: 12 }, (_, i) => emptyMonth(i + 1));
       for (const p of ps) {
-        for (const r of p.revenueRows) {
-          const m = parseInt(r.invoiceDate!.substring(5, 7)) - 1;
-          teamMonthly[m].revenue += r.total ?? 0;
-          teamMonthly[m].count   += 1;
+        const startDate = p.startDate;
+        const rm = startDate ? parseInt(startDate.substring(5, 7)) - 1 : -1;
+        if (rm >= 0) {
+          for (const r of p.revenueRows) {
+            teamMonthly[rm].revenue += r.total ?? 0;
+            teamMonthly[rm].count   += 1;
+          }
         }
         for (const c of p.costRows) {
-          const m = parseInt(c.purchaseDate!.substring(5, 7)) - 1;
-          teamMonthly[m].cost += c.total ?? 0;
+          const cm = parseInt(c.purchaseDate!.substring(5, 7)) - 1;
+          teamMonthly[cm].cost += c.total ?? 0;
         }
       }
       for (const m of teamMonthly) {
