@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { clients, products, users } from "@/db/schema";
+import { clients, products, users, clientUrls } from "@/db/schema";
 import { asc, desc, eq } from "drizzle-orm";
 
 export async function GET() {
   try {
-    const [clientRows, productRows, userRows] = await Promise.all([
+    const [clientRows, productRows, userRows, urlRows] = await Promise.all([
       db.select({
         id:             clients.id,
         status:         clients.status,
@@ -28,12 +28,25 @@ export async function GET() {
         team:   users.team,
         status: users.status,
       }).from(users).where(eq(users.status, "활성")),
+
+      db.select({
+        clientId: clientUrls.clientId,
+        label:    clientUrls.label,
+        url:      clientUrls.url,
+      }).from(clientUrls),
     ]);
+
+    const urlsByClient = new Map<string, { label: string; url: string }[]>();
+    for (const u of urlRows) {
+      if (!urlsByClient.has(u.clientId)) urlsByClient.set(u.clientId, []);
+      urlsByClient.get(u.clientId)!.push({ label: u.label, url: u.url });
+    }
 
     return NextResponse.json({
       clients: clientRows.map(c => ({
         ...c,
         advertiserName: c.contactName ?? "",
+        urls: urlsByClient.get(c.id) ?? [],
       })),
       products: productRows,
       users: userRows,
