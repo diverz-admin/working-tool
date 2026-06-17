@@ -21,6 +21,9 @@ export async function PUT(req: Request, { params }: Params) {
       .from(paymentRequests)
       .where(and(sql`${paymentRequests.projectId}::text = ${id}`, eq(paymentRequests.status, "승인")));
 
+    // 승인된 costRowId 집합 — 모달 저장 시 isApproved가 false로 덮여씌워지는 것을 방지
+    const approvedRowKeys = new Set(approvedRequests.map((r) => r.rowKey).filter(Boolean));
+
     if (approvedRequests.length > 0) {
       const incomingRowIds = new Set((costs ?? []).map((c: Record<string, unknown>) => c.costRowId).filter(Boolean));
       const removed = approvedRequests.filter((r) => r.rowKey && !incomingRowIds.has(r.rowKey));
@@ -50,7 +53,8 @@ export async function PUT(req: Request, { params }: Params) {
           workStartDate:   c.workStartDate || null,
           workEndDate:     c.workEndDate || null,
           workCompleted:   Boolean(c.workCompleted),
-          isApproved:      Boolean(c.isApproved),
+          // 승인된 항목은 payment_requests 기준으로 강제 true — 모달 저장으로 덮어씌워지지 않도록
+          isApproved:      approvedRowKeys.has(String(c.costRowId)) || Boolean(c.isApproved),
           settingDate:     c.settingDate || null,
           invoiceFileUrl:  String(c.invoiceFileUrl || ""),
           invoiceFileName: String(c.invoiceFileName || ""),
