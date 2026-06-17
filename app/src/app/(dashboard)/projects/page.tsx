@@ -1016,15 +1016,18 @@ function ProjectsInner() {
       .finally(() => setLoading(false));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // stats/revenue 로드 — 마운트 시 + criteria 변경 시 실행, 60초 캐시
+  // stats/revenue 로드 — 마운트 시 + criteria/team 변경 시 실행, 60초 캐시
+  // 캐시 키에 teamParam 포함 — 팀별 뷰에서 서로 다른 teams 목록이 필요
   const loadStats = useCallback(() => {
-    const cached = _statsCacheMap.get(statsCriteria);
+    const cacheKey = `${statsCriteria}|${teamParam ?? ""}`;
+    const cached = _statsCacheMap.get(cacheKey);
     if (cached && Date.now() - cached.ts < STATS_TTL) { setRevenueStats(cached.data); return; }
-    fetch(`/api/stats/revenue?year=${new Date().getFullYear()}&criteria=${encodeURIComponent(statsCriteria)}`)
+    const url = `/api/stats/revenue?year=${new Date().getFullYear()}&criteria=${encodeURIComponent(statsCriteria)}${teamParam ? `&team=${encodeURIComponent(teamParam)}` : ""}`;
+    fetch(url)
       .then((r) => r.json())
-      .then((d) => { _statsCacheMap.set(statsCriteria, { data: d, ts: Date.now() }); setRevenueStats(d); })
+      .then((d) => { _statsCacheMap.set(cacheKey, { data: d, ts: Date.now() }); setRevenueStats(d); })
       .catch(() => {});
-  }, [statsCriteria]);
+  }, [statsCriteria, teamParam]);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, [load]);
@@ -1058,9 +1061,9 @@ function ProjectsInner() {
   });
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { if (teamParam) setActiveTab(teamParam); }, [teamParam]);
-  // 팀 이동 시 작업확인 뷰 초기화 — 이전 팀 데이터가 그대로 보이는 버그 방지
+  // 팀 이동 시 작업확인 뷰·배지 초기화 — 이전 팀 데이터가 그대로 보이는 버그 방지
   // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { setViewMode("목록"); setWorkRows([]); }, [teamParam]);
+  useEffect(() => { setViewMode("목록"); setWorkRows([]); setWorkIncomplete(0); }, [teamParam]);
 
   // ?open=projectId → 해당 캠페인 모달 자동 오픈
   useEffect(() => {

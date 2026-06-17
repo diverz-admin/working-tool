@@ -9,6 +9,7 @@ export async function GET(req: Request) {
     const year = parseInt(searchParams.get("year") ?? String(new Date().getFullYear()));
     const criteria = searchParams.get("criteria") ?? "캠페인 시작날짜";
     const useInvoice = criteria === "계산서날짜";
+    const teamParam = searchParams.get("team") ?? "";
 
     // 3개 쿼리 완전 병렬 실행
     const [projectData, kpiRows, costRows] = await Promise.all([
@@ -77,11 +78,15 @@ export async function GET(req: Request) {
       teamMonthMap.get(team)![monthIdx].total += total;
     }
 
-    // KPI 설정된 팀도 revenue 없이 포함 (revenue 0 팀이 빠져 전체 합산 데이터가 표시되는 버그 방지)
+    // KPI 설정된 팀도 revenue 없이 포함
     for (const k of kpiRows) {
       if (k.team && k.team !== "전체" && !teamMonthMap.has(k.team)) {
         teamMonthMap.set(k.team, Array.from({ length: 12 }, () => ({ total: 0 })));
       }
+    }
+    // 프론트에서 팀 파라미터 전달 시 해당 팀을 반드시 포함 (revenue·KPI 모두 없어도)
+    if (teamParam && !teamMonthMap.has(teamParam)) {
+      teamMonthMap.set(teamParam, Array.from({ length: 12 }, () => ({ total: 0 })));
     }
 
     const rows: { month: string; team: string | null; total: number }[] = [];
