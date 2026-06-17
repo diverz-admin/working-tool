@@ -15,6 +15,7 @@ interface DailyLog {
 interface WorkRow {
   id: string;
   projectId: string;
+  rowType: "revenue" | "cost";
   revenueRowId: string | null;
   assignee: string | null;
   productName: string | null;
@@ -134,7 +135,8 @@ export default function WorkCheckPage() {
   async function toggleComplete(row: WorkRow) {
     const next = !row.workCompleted;
     setRows(prev => prev.map(r => r.id === row.id ? { ...r, workCompleted: next, completedAt: next ? new Date().toISOString() : null } : r));
-    const res = await fetch(`/api/project-revenues/${row.id}`, {
+    const endpoint = row.rowType === "cost" ? `/api/costs/${row.id}` : `/api/project-revenues/${row.id}`;
+    const res = await fetch(endpoint, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ workCompleted: next }),
@@ -366,19 +368,25 @@ export default function WorkCheckPage() {
                             const completedQty = row.completedQty ?? 0;
                             const totalQty = row.quantity ?? 0;
                             const pct = totalQty > 0 ? Math.min(100, Math.round(completedQty / totalQty * 100)) : 0;
+                            const isCost = row.rowType === "cost";
 
                             return (
                               <React.Fragment key={row.id}>
                                 <tr
                                   className="border-t cursor-pointer hover:bg-slate-50/50"
                                   style={{ borderColor: "#F1F5F9", opacity: isDone ? 0.65 : 1 }}
-                                  onClick={() => setExpandedId(isExpanded ? null : row.id)}
+                                  onClick={() => !isCost && setExpandedId(isExpanded ? null : row.id)}
                                 >
                                   {/* 담당자 */}
                                   <td className="px-4 py-3 text-xs font-medium" style={{ color: "#475569" }}>{row.assignee || "—"}</td>
-                                  {/* 품명 */}
+                                  {/* 품명 + 매출/매입 배지 */}
                                   <td className="px-4 py-3 text-xs font-semibold" style={{ color: isDone ? "#94A3B8" : "#191F28", textDecoration: isDone ? "line-through" : "none" }}>
-                                    {row.productName || "—"}
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-xs font-bold px-1.5 py-0.5 rounded-md shrink-0" style={isCost ? { background: "rgba(249,115,22,0.1)", color: "#F97316" } : { background: "rgba(49,130,246,0.1)", color: "#3182F6" }}>
+                                        {isCost ? "매입" : "매출"}
+                                      </span>
+                                      {row.productName || "—"}
+                                    </div>
                                   </td>
                                   {/* 완료/전체 + 진행률 */}
                                   <td className="px-4 py-3">
@@ -429,17 +437,19 @@ export default function WorkCheckPage() {
                                       </span>
                                     </label>
                                   </td>
-                                  {/* 펼치기 아이콘 */}
+                                  {/* 펼치기 아이콘 — 매출만 */}
                                   <td className="px-4 py-3">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2.5" strokeLinecap="round"
-                                      style={{ transition: "transform 0.2s", transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)" }}>
-                                      <polyline points="6 9 12 15 18 9"/>
-                                    </svg>
+                                    {!isCost && (
+                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2.5" strokeLinecap="round"
+                                        style={{ transition: "transform 0.2s", transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)" }}>
+                                        <polyline points="6 9 12 15 18 9"/>
+                                      </svg>
+                                    )}
                                   </td>
                                 </tr>
 
-                                {/* 데일리 로그 패널 */}
-                                {isExpanded && (
+                                {/* 데일리 로그 패널 — 매출만 */}
+                                {isExpanded && !isCost && (
                                   <tr style={{ borderColor: "#F1F5F9" }}>
                                     <td colSpan={8} className="px-0 pb-0">
                                       <div style={{ background: "#F8FAFC", borderTop: "1px solid #E9EBEF", borderBottom: "1px solid #E9EBEF" }}>

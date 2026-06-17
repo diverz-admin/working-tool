@@ -233,7 +233,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
   const [uploading, setUploading]   = useState<number | null>(null); // localId of uploading row
   const [error, setError]           = useState<string | null>(null);
   const [guaranteeProgress, setGuaranteeProgress] = useState<number>(0);
-  const [activeSection, setActiveSection] = useState<"매출" | "매입" | "작업요청">("매출");
+  const [activeSection, setActiveSection] = useState<"매출" | "매입" | "작업확인">("매출");
   const [toast, setToast]           = useState<string | null>(null);
   const [confirmStatuses, setConfirmStatuses] = useState<Record<string, { status: ConfirmStatus | "발행완료"; rejectReason?: string; requestId?: string; amount?: string }>>({});
   const [rejectInfo, setRejectInfo]           = useState<{ reason?: string; projectName: string; rowKey: string; requestId: string } | null>(null);
@@ -1158,7 +1158,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                 {([
                   { key: "매출", label: "매출(판매)", count: revenues.length, activeColor: "#3182F6" },
                   { key: "매입", label: "매입(구매)", count: costs.length, activeColor: "#3182F6" },
-                  { key: "작업요청", label: "작업요청", count: revenues.length, activeColor: "#059669" },
+                  { key: "작업확인", label: "작업확인", count: revenues.length + costs.length, activeColor: "#059669" },
                 ] as const).map(({ key, label, count, activeColor }) => {
                   const isActive = activeSection === key;
                   return (
@@ -1594,57 +1594,111 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                 </div>
               )}
 
-              {/* 작업요청 섹션 — 매출(판매) 데이터 기반 */}
-              {activeSection === "작업요청" && (
-                <div>
-                  {revenues.length === 0 ? (
+              {/* 작업확인 섹션 — 매출(판매) + 매입(구매) 데이터 기반 */}
+              {activeSection === "작업확인" && (
+                <div className="space-y-4">
+                  {revenues.length === 0 && costs.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-12 rounded-xl border" style={{ borderColor: "#E9EBEF", color: "#94A3B8" }}>
                       <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" className="mb-2 opacity-40"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="12" y2="16"/></svg>
-                      <p className="text-sm">매출(판매) 데이터가 없습니다.</p>
+                      <p className="text-sm">매출(판매) 또는 매입(구매) 데이터가 없습니다.</p>
                     </div>
                   ) : (
-                    <div className="overflow-x-auto rounded-xl border" style={{ borderColor: "#E9EBEF" }}>
-                      <table className="w-full text-xs" style={{ minWidth: 860 }}>
-                        <thead>
-                          <tr style={{ background: "#F0FDF4" }}>
-                            {["#","담당자","품명","개수","공급가","세액","합계","작업시작일","작업만료일","셋팅날짜","잔여일","완료"].map((h, idx) => (
-                              <th key={idx} className="px-2 py-2.5 text-left font-semibold whitespace-nowrap" style={{ color: "#059669", background: "#F0FDF4", borderBottom: "2px solid #BBF7D0" }}>{h}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {revenues.map((r, i) => {
-                            const remDays = daysLeft(r.workEndDate);
-                            return (
-                              <tr key={r.localId} className="border-t" style={{ borderColor: "#F1F5F9" }}>
-                                <td className="px-2 py-1.5 font-medium" style={{ color: "#94A3B8" }}>{i + 1}</td>
-                                <td className="px-2 py-1.5 text-xs" style={{ color: "#475569" }}>{r.assignee || "—"}</td>
-                                <td className="px-2 py-1.5 text-xs font-medium" style={{ color: "#191F28" }}>{r.productName || "—"}</td>
-                                <td className="px-2 py-1.5 text-xs text-center" style={{ color: "#475569" }}>{r.quantity || "—"}</td>
-                                <td className="px-2 py-1.5 text-xs text-right" style={{ color: "#475569" }}>{r.supplyPrice ? `₩${Number(r.supplyPrice).toLocaleString()}` : "—"}</td>
-                                <td className="px-2 py-1.5 text-xs text-right" style={{ color: "#475569" }}>{r.tax ? `₩${Number(r.tax).toLocaleString()}` : "—"}</td>
-                                <td className="px-2 py-1.5 text-xs text-right font-semibold" style={{ color: "#191F28" }}>{r.total ? `₩${Number(r.total).toLocaleString()}` : "—"}</td>
-                                <td className="px-2 py-1.5 text-xs whitespace-nowrap" style={{ color: r.workStartDate ? "#475569" : "#CBD5E1" }}>
-                                  {r.workStartDate ? r.workStartDate.replace(/-/g, ". ") : "—"}
-                                </td>
-                                <td className="px-2 py-1.5 text-xs whitespace-nowrap" style={{ color: r.workEndDate ? "#475569" : "#CBD5E1" }}>
-                                  {r.workEndDate ? r.workEndDate.replace(/-/g, ". ") : "—"}
-                                </td>
-                                <td className="px-1 py-1">
-                                  <input type="date" value={r.settingDate ?? ""} onChange={(e) => updateRev(r.localId, "settingDate", e.target.value)} className={inputCls} style={{ ...inputStyle, width: 115 }} />
-                                </td>
-                                <td className="px-2 py-1.5 font-medium text-center" style={{ color: remDays === null ? "#CBD5E1" : remDays <= 1 ? "#EF4444" : remDays <= 3 ? "#F97316" : remDays <= 7 ? "#EAB308" : "#475569" }}>
-                                  {remDays === null ? "—" : remDays < 0 ? `+${Math.abs(remDays)}` : remDays === 0 ? "D-0" : `D-${remDays}`}
-                                </td>
-                                <td className="px-2 py-1.5 text-center">
-                                  <input type="checkbox" checked={r.workCompleted} onChange={(e) => updateRev(r.localId, "workCompleted", e.target.checked)} className="w-3.5 h-3.5 rounded accent-[#059669]" />
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
+                    <>
+                      {revenues.length > 0 && (
+                        <div>
+                          <p className="text-xs font-bold mb-2" style={{ color: "#3182F6" }}>매출(판매)</p>
+                          <div className="overflow-x-auto rounded-xl border" style={{ borderColor: "#E9EBEF" }}>
+                            <table className="w-full text-xs" style={{ minWidth: 860 }}>
+                              <thead>
+                                <tr style={{ background: "#F0FDF4" }}>
+                                  {["#","담당자","품명","개수","공급가","세액","합계","작업시작일","작업만료일","셋팅날짜","잔여일","완료"].map((h, idx) => (
+                                    <th key={idx} className="px-2 py-2.5 text-left font-semibold whitespace-nowrap" style={{ color: "#059669", background: "#F0FDF4", borderBottom: "2px solid #BBF7D0" }}>{h}</th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {revenues.map((r, i) => {
+                                  const remDays = daysLeft(r.workEndDate);
+                                  return (
+                                    <tr key={r.localId} className="border-t" style={{ borderColor: "#F1F5F9" }}>
+                                      <td className="px-2 py-1.5 font-medium" style={{ color: "#94A3B8" }}>{i + 1}</td>
+                                      <td className="px-2 py-1.5 text-xs" style={{ color: "#475569" }}>{r.assignee || "—"}</td>
+                                      <td className="px-2 py-1.5 text-xs font-medium" style={{ color: "#191F28" }}>{r.productName || "—"}</td>
+                                      <td className="px-2 py-1.5 text-xs text-center" style={{ color: "#475569" }}>{r.quantity || "—"}</td>
+                                      <td className="px-2 py-1.5 text-xs text-right" style={{ color: "#475569" }}>{r.supplyPrice ? `₩${Number(r.supplyPrice).toLocaleString()}` : "—"}</td>
+                                      <td className="px-2 py-1.5 text-xs text-right" style={{ color: "#475569" }}>{r.tax ? `₩${Number(r.tax).toLocaleString()}` : "—"}</td>
+                                      <td className="px-2 py-1.5 text-xs text-right font-semibold" style={{ color: "#191F28" }}>{r.total ? `₩${Number(r.total).toLocaleString()}` : "—"}</td>
+                                      <td className="px-2 py-1.5 text-xs whitespace-nowrap" style={{ color: r.workStartDate ? "#475569" : "#CBD5E1" }}>
+                                        {r.workStartDate ? r.workStartDate.replace(/-/g, ". ") : "—"}
+                                      </td>
+                                      <td className="px-2 py-1.5 text-xs whitespace-nowrap" style={{ color: r.workEndDate ? "#475569" : "#CBD5E1" }}>
+                                        {r.workEndDate ? r.workEndDate.replace(/-/g, ". ") : "—"}
+                                      </td>
+                                      <td className="px-1 py-1">
+                                        <input type="date" value={r.settingDate ?? ""} onChange={(e) => updateRev(r.localId, "settingDate", e.target.value)} className={inputCls} style={{ ...inputStyle, width: 115 }} />
+                                      </td>
+                                      <td className="px-2 py-1.5 font-medium text-center" style={{ color: remDays === null ? "#CBD5E1" : remDays <= 1 ? "#EF4444" : remDays <= 3 ? "#F97316" : remDays <= 7 ? "#EAB308" : "#475569" }}>
+                                        {remDays === null ? "—" : remDays < 0 ? `+${Math.abs(remDays)}` : remDays === 0 ? "D-0" : `D-${remDays}`}
+                                      </td>
+                                      <td className="px-2 py-1.5 text-center">
+                                        <input type="checkbox" checked={r.workCompleted} onChange={(e) => updateRev(r.localId, "workCompleted", e.target.checked)} className="w-3.5 h-3.5 rounded accent-[#059669]" />
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+                      {costs.length > 0 && (
+                        <div>
+                          <p className="text-xs font-bold mb-2" style={{ color: "#F97316" }}>매입(구매)</p>
+                          <div className="overflow-x-auto rounded-xl border" style={{ borderColor: "#E9EBEF" }}>
+                            <table className="w-full text-xs" style={{ minWidth: 860 }}>
+                              <thead>
+                                <tr style={{ background: "#FFF7ED" }}>
+                                  {["#","담당자","품명","개수","공급가","세액","합계","작업시작일","작업만료일","셋팅날짜","잔여일","완료"].map((h, idx) => (
+                                    <th key={idx} className="px-2 py-2.5 text-left font-semibold whitespace-nowrap" style={{ color: "#F97316", background: "#FFF7ED", borderBottom: "2px solid #FED7AA" }}>{h}</th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {costs.map((c, i) => {
+                                  const remDays = daysLeft(c.workEndDate);
+                                  return (
+                                    <tr key={c.localId} className="border-t" style={{ borderColor: "#F1F5F9" }}>
+                                      <td className="px-2 py-1.5 font-medium" style={{ color: "#94A3B8" }}>{i + 1}</td>
+                                      <td className="px-2 py-1.5 text-xs" style={{ color: "#475569" }}>{c.assignee || "—"}</td>
+                                      <td className="px-2 py-1.5 text-xs font-medium" style={{ color: "#191F28" }}>{c.productName || "—"}</td>
+                                      <td className="px-2 py-1.5 text-xs text-center" style={{ color: "#475569" }}>{c.quantity || "—"}</td>
+                                      <td className="px-2 py-1.5 text-xs text-right" style={{ color: "#475569" }}>{c.supplyPrice ? `₩${Number(c.supplyPrice).toLocaleString()}` : "—"}</td>
+                                      <td className="px-2 py-1.5 text-xs text-right" style={{ color: "#475569" }}>{c.tax ? `₩${Number(c.tax).toLocaleString()}` : "—"}</td>
+                                      <td className="px-2 py-1.5 text-xs text-right font-semibold" style={{ color: "#191F28" }}>{c.total ? `₩${Number(c.total).toLocaleString()}` : "—"}</td>
+                                      <td className="px-2 py-1.5 text-xs whitespace-nowrap" style={{ color: c.workStartDate ? "#475569" : "#CBD5E1" }}>
+                                        {c.workStartDate ? c.workStartDate.replace(/-/g, ". ") : "—"}
+                                      </td>
+                                      <td className="px-2 py-1.5 text-xs whitespace-nowrap" style={{ color: c.workEndDate ? "#475569" : "#CBD5E1" }}>
+                                        {c.workEndDate ? c.workEndDate.replace(/-/g, ". ") : "—"}
+                                      </td>
+                                      <td className="px-1 py-1">
+                                        <input type="date" value={c.settingDate ?? ""} onChange={(e) => updateCost(c.localId, "settingDate", e.target.value)} className={inputCls} style={{ ...inputStyle, width: 115 }} />
+                                      </td>
+                                      <td className="px-2 py-1.5 font-medium text-center" style={{ color: remDays === null ? "#CBD5E1" : remDays <= 1 ? "#EF4444" : remDays <= 3 ? "#F97316" : remDays <= 7 ? "#EAB308" : "#475569" }}>
+                                        {remDays === null ? "—" : remDays < 0 ? `+${Math.abs(remDays)}` : remDays === 0 ? "D-0" : `D-${remDays}`}
+                                      </td>
+                                      <td className="px-2 py-1.5 text-center">
+                                        <input type="checkbox" checked={c.workCompleted ?? false} onChange={(e) => updateCost(c.localId, "workCompleted", e.target.checked)} className="w-3.5 h-3.5 rounded accent-[#F97316]" />
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               )}
