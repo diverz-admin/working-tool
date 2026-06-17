@@ -701,6 +701,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
       return;
     }
 
+    invalidateProjectCache(pid);
     setSaving(false);
     onSaved(newGroupId ?? undefined);
   }
