@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { projects } from "@/db/schema";
+import { projects, projectRevenues, projectCosts } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
 type Params = { params: Promise<{ id: string }> };
@@ -11,6 +11,11 @@ export async function POST(_req: Request, { params }: Params) {
 
     const [original] = await db.select().from(projects).where(eq(projects.id, id));
     if (!original) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+    const [revenues, costs] = await Promise.all([
+      db.select().from(projectRevenues).where(eq(projectRevenues.projectId, id)),
+      db.select().from(projectCosts).where(eq(projectCosts.projectId, id)),
+    ]);
 
     const [copied] = await db.insert(projects).values({
       projectGroupId: original.projectGroupId,
@@ -30,6 +35,31 @@ export async function POST(_req: Request, { params }: Params) {
       isExtended:     false,
       extensionCount: 0,
     }).returning();
+
+    if (revenues.length > 0) {
+      await db.insert(projectRevenues).values(
+        revenues.map(({ id: _id, createdAt: _c, workCompleted: _wc, completedAt: _ca, completedQty: _cq, ...r }) => ({
+          ...r,
+          projectId:    copied.id,
+          workCompleted: false,
+          completedAt:  null,
+          completedQty: 0,
+        }))
+      );
+    }
+
+    if (costs.length > 0) {
+      await db.insert(projectCosts).values(
+        costs.map(({ id: _id, createdAt: _c, workCompleted: _wc, isApproved: _ia, invoiceFileUrl: _fu, invoiceFileName: _fn, ...r }) => ({
+          ...r,
+          projectId:      copied.id,
+          workCompleted:  false,
+          isApproved:     false,
+          invoiceFileUrl:  null,
+          invoiceFileName: null,
+        }))
+      );
+    }
 
     return NextResponse.json({ project: copied });
   } catch (err) {
