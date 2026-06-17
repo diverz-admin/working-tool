@@ -25,6 +25,31 @@ interface Project {
   status: string; contractAmount: number | null; projectGroupId: string | null;
 }
 interface Notice { id: string; title: string; content: string; isPinned: boolean; }
+interface DashboardData {
+  agg: AggregateData;
+  costAgg: { monthly: { total: number }[]; yearTotal: number };
+  projects: Project[];
+  notices: Notice[];
+}
+
+const _dashCache = new Map<string, { data: DashboardData; ts: number }>();
+const _dashPending = new Map<string, Promise<DashboardData>>();
+const DASH_TTL = 60_000;
+
+function fetchDashboard(year: number, criteria: string): Promise<DashboardData> {
+  const key = `${year}-${criteria}`;
+  const hit = _dashCache.get(key);
+  if (hit && Date.now() - hit.ts < DASH_TTL) return Promise.resolve(hit.data);
+  const existing = _dashPending.get(key);
+  if (existing) return existing;
+  const p = fetch(`/api/dashboard?year=${year}&criteria=${encodeURIComponent(criteria)}`)
+    .then(r => r.json())
+    .then((d: DashboardData) => { _dashCache.set(key, { data: d, ts: Date.now() }); _dashPending.delete(key); return d; })
+    .catch(err => { _dashPending.delete(key); throw err; });
+  _dashPending.set(key, p);
+  return p;
+}
+fetchDashboard(new Date().getFullYear(), "캠페인 시작날짜");
 
 function daysLeft(dateStr: string | null): number | null {
   if (!dateStr) return null;
@@ -45,20 +70,30 @@ export default function DashboardPage() {
   const year = now.getFullYear();
 
   const [criteria, setCriteria] = useState<"캠페인 시작날짜" | "계산서날짜">("캠페인 시작날짜");
-  const [agg,      setAgg]      = useState<AggregateData | null>(null);
-  const [costAgg,  setCostAgg]  = useState<{ monthly: { total: number }[]; yearTotal: number } | null>(null);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [notices,  setNotices]  = useState<Notice[]>([]);
-  const [loading,  setLoading]  = useState(true);
+
+  const _initHit = _dashCache.get(`${year}-캠페인 시작날짜`);
+  const [agg,      setAgg]      = useState<AggregateData | null>(_initHit?.data.agg ?? null);
+  const [costAgg,  setCostAgg]  = useState<{ monthly: { total: number }[]; yearTotal: number } | null>(_initHit?.data.costAgg ?? null);
+  const [projects, setProjects] = useState<Project[]>((_initHit?.data.projects ?? []).filter((p: Project) => p.status === "진행"));
+  const [notices,  setNotices]  = useState<Notice[]>(_initHit?.data.notices ?? []);
+  const [loading,  setLoading]  = useState(!_initHit);
   const [openNotice, setOpenNotice] = useState<Notice | null>(null);
 
-  const load = useCallback(() => {
+  const load = useCallback((invalidate = false) => {
+    const key = `${year}-${criteria}`;
+    if (!invalidate) {
+      const hit = _dashCache.get(key);
+      if (hit && Date.now() - hit.ts < DASH_TTL) {
+        setAgg(hit.data.agg); setCostAgg(hit.data.costAgg);
+        setProjects((hit.data.projects ?? []).filter((p: Project) => p.status === "진행"));
+        setNotices(hit.data.notices ?? []); setLoading(false);
+        return;
+      }
+    }
     setLoading(true);
-    fetch(`/api/dashboard?year=${year}&criteria=${encodeURIComponent(criteria)}`)
-      .then(r => r.json())
+    fetchDashboard(year, criteria)
       .then(({ agg: aggData, costAgg: costData, projects: projData, notices: noticeData }) => {
-        setAgg(aggData);
-        setCostAgg(costData);
+        setAgg(aggData); setCostAgg(costData);
         setProjects((projData ?? []).filter((p: Project) => p.status === "진행"));
         setNotices(noticeData ?? []);
       })
