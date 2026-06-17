@@ -1238,6 +1238,7 @@ function ProjectsInner() {
       inboundDate: client.inboundDate ?? "", inboundRoute: client.inboundRoute ?? "",
       endDate: client.endDate ?? "", endReason: client.endReason ?? "",
       assignedTeam: client.assignedTeam ?? "", assignedPerson: client.assignedPerson ?? "",
+      storeName: client.storeName ?? "",
       notes: client.notes ?? "",
     });
   }
