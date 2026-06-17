@@ -1134,6 +1134,21 @@ function ProjectsInner() {
   }
 
   // 캠페인 삭제
+  async function handleDeleteGroup(groupId: string) {
+    if (!confirm("프로젝트를 삭제하시겠습니까? 모든 캠페인·매출·매입 데이터도 함께 삭제됩니다.")) return;
+    const res = await fetch(`/api/project-groups/${groupId}`, { method: "DELETE" });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      alert(body.error ?? "삭제에 실패했습니다.");
+      return;
+    }
+    setGroups((prev) => prev.filter((g) => g.id !== groupId));
+    _campaignCacheMap.delete(groupId);
+    _campaignPendingMap.delete(groupId);
+    setCampaignMap((m) => { const n = new Map(m); n.delete(groupId); return n; });
+    setExpanded((s) => { const n = new Set(s); n.delete(groupId); return n; });
+  }
+
   async function handleDeleteCampaign(campaignId: string, groupId: string) {
     if (!confirm("캠페인을 삭제하시겠습니까? 매출·매입 데이터도 모두 삭제됩니다.")) return;
     setDeletingCamp(campaignId);
@@ -1729,6 +1744,16 @@ function ProjectsInner() {
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2" strokeLinecap="round">
                               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                               <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                            </svg>
+                          </button>
+                          {/* 프로젝트 삭제 */}
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleDeleteGroup(g.id); }}
+                            className="p-1.5 rounded-lg hover:bg-red-50 transition-colors" title="프로젝트 삭제"
+                          >
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2" strokeLinecap="round">
+                              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                              <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
                             </svg>
                           </button>
                         </div>
