@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { projects, projectRevenues, projectCosts, confirmRequests } from "@/db/schema";
+import { projects, projectRevenues, projectCosts } from "@/db/schema";
 import { eq, and, gte, lte, isNotNull, inArray } from "drizzle-orm";
 
 export async function GET(req: NextRequest) {
@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
     // 캠페인 시작일 맵 (월별 집계에 사용)
     const projectStartMap = new Map(projectRows.map(p => [p.id, p.startDate]));
 
-    // 확정 매출 (계산서발급 완료) — 날짜 필터 없이 해당 프로젝트 전체 포함
+    // 확정 매출 (계산서발급 완료 = invoiceDate 있는 행)
     const revRows = await db
       .select({
         projectId:   projectRevenues.projectId,
@@ -66,11 +66,9 @@ export async function GET(req: NextRequest) {
         paymentDate: projectRevenues.paymentDate,
       })
       .from(projectRevenues)
-      .innerJoin(confirmRequests, eq(confirmRequests.rowKey, projectRevenues.revenueRowId))
       .where(
         and(
           inArray(projectRevenues.projectId, projectIds),
-          isNotNull(confirmRequests.taxInvoiceDate),
           isNotNull(projectRevenues.invoiceDate),
         )
       );
