@@ -133,7 +133,7 @@ async function updateRevenueField(
 export default function ConfirmPage() {
   const router = useRouter();
   const [items, setItems]               = useState<ConfirmRequest[]>([]);
-  const [filterStatus, setFilterStatus] = useState<ConfirmStatus | "전체">("전체");
+  const [filterStatus, setFilterStatus] = useState<ConfirmStatus | "전체">("대기");
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selected, setSelected]         = useState<ConfirmRequest | null>(null);
