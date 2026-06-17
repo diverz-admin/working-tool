@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import ProjectReportSection from "@/components/projects/ProjectReportSection";
 import { addConfirmRequest, addPaymentRequest, updateConfirmRequest, updatePaymentRequest, deleteConfirmRequest, deletePaymentRequest, type ConfirmStatus, type PaymentStatus } from "@/lib/approvals";
 
@@ -192,6 +193,7 @@ const labelCls  = "block text-xs font-semibold mb-1";
 const labelStyle = { color: "#64748B" };
 
 export default function ProjectModal({ initial, onClose, onSaved, onDelete, onViewClient, projectGroupId }: Props) {
+  const router = useRouter();
   const isEdit = Boolean(initial?.id);
   // 신규 프로젝트를 자동 저장한 경우 여기에 ID 기록
   const [savedId, setSavedId] = useState<string | null>(initial?.id ?? null);
@@ -978,9 +980,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                 const canRequest = Boolean(
                   (isEdit || isFormValid) &&
                   form.campaignName &&
-                  form.assignedPerson &&
-                  parseWon(form.contractAmount) &&
-                  totalRevenue > 0
+                  effectiveTotal > 0
                 );
 
                 return (
@@ -1078,10 +1078,8 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                               disabled={isPending || isApproved || !canRequest}
                               title={(!isPending && !isApproved && !canRequest) ? (
                                 !form.campaignName ? "캠페인명을 입력해주세요." :
-                                !form.assignedPerson ? "담당자를 입력해주세요." :
-                                !isFormValid && !isEdit ? `기본 정보를 모두 입력해주세요: ${missingFields.filter(f => f.key !== "campaignName" && f.key !== "assignedPerson").map(f => f.label).join(", ")}` :
-                                !parseWon(form.contractAmount) ? "매출 KPI(공급가 합계)를 입력해주세요." :
-                                "매출(판매) 데이터를 입력해주세요."
+                                !isFormValid && !isEdit ? `기본 정보를 모두 입력해주세요: ${missingFields.filter(f => f.key !== "campaignName").map(f => f.label).join(", ")}` :
+                                "매출(판매) 데이터 또는 계약금액을 입력해주세요."
                               ) : ""}
                               onClick={async () => {
                                 const pid = await ensureSaved();
@@ -1122,8 +1120,9 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                                 });
                                 setConfirmStatuses((p) => ({ ...p, [contractKey]: { status: "대기", requestId: newReq.id } }));
                                 invalidateProjectCache(pid);
-                                showToast("입금확인 요청이 전송되었습니다.");
                                 window.dispatchEvent(new Event("approval-request-added"));
+                                onClose();
+                                router.push("/approval/confirm");
                               }}
                               className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg whitespace-nowrap transition-all"
                               style={{
