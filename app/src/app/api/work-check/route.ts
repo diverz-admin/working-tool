@@ -3,8 +3,11 @@ import { db } from "@/db";
 import { projectRevenues, projects, projectGroups, workDailyLogs } from "@/db/schema";
 import { and, eq, or, isNull, gt, sql, inArray, asc } from "drizzle-orm";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    const { searchParams } = new URL(req.url);
+    const teamParam = searchParams.get("team") ?? "";
+
     const oneMonthAgo = new Date();
     oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
 
@@ -46,6 +49,7 @@ export async function GET() {
       .where(
         and(
           confirmedExpr,
+          teamParam ? eq(projects.assignedTeam, teamParam) : undefined,
           // 미완료이거나 완료된 지 1개월 이내
           or(
             eq(projectRevenues.workCompleted, false),

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, Suspense } from "react";
+import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import ProjectModal, { ProjectFormData, preloadModalInit, prefetchProject, invalidateProjectCache } from "@/components/projects/ProjectModal";
 import ClientModal, { ClientFormData } from "@/components/clients/ClientModal";
@@ -916,6 +916,9 @@ function ProjectsInner() {
   const teamParam      = searchParams.get("team");
   const openParam      = searchParams.get("open");
 
+  const teamParamRef = useRef(teamParam);
+  teamParamRef.current = teamParam;
+
   const [groups,       setGroups]       = useState<ProjectGroup[]>(_groupsCache?.data.groups ?? []);
   const [loading,      setLoading]      = useState(!_groupsCache);
   const [modal,        setModal]        = useState<"create" | null>(null);
@@ -957,14 +960,13 @@ function ProjectsInner() {
 
   function loadWorkCheck() {
     setWorkLoading(true);
-    fetch("/api/work-check")
+    const url = teamParam ? `/api/work-check?team=${encodeURIComponent(teamParam)}` : "/api/work-check";
+    fetch(url)
       .then((r) => r.json())
       .then((d) => {
         const rows: WorkCheckRow[] = d.rows ?? [];
-        const filtered = teamParam ? rows.filter((r) => r.assignedTeam === teamParam) : rows;
-        setWorkRows(filtered);
-        // 팀별 미완료 건수로 배지 업데이트
-        if (teamParam) setWorkIncomplete(filtered.filter((r) => !r.workCompleted).length);
+        setWorkRows(rows);
+        setWorkIncomplete(rows.filter((r) => !r.workCompleted).length);
       })
       .finally(() => setWorkLoading(false));
   }
@@ -996,7 +998,8 @@ function ProjectsInner() {
         for (const g of groups) if (Array.isArray(g.campaigns) && g.campaigns.length > 0) n.set(g.id, g.campaigns as Campaign[]);
         return n;
       });
-      setWorkIncomplete(workIncompleteCount);
+      // 글로벌 카운트는 팀별 페이지에서 사용하지 않음 — 팀별 정확한 값은 useEffect에서 별도 로드
+      if (!teamParamRef.current) setWorkIncomplete(workIncompleteCount);
       setLoading(false);
       return;
     }
@@ -1012,7 +1015,7 @@ function ProjectsInner() {
           for (const g of groups) if (Array.isArray(g.campaigns) && g.campaigns.length > 0) n.set(g.id, g.campaigns as Campaign[]);
           return n;
         });
-        setWorkIncomplete(workIncompleteCount);
+        if (!teamParamRef.current) setWorkIncomplete(workIncompleteCount);
       })
       .finally(() => setLoading(false));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1072,7 +1075,22 @@ function ProjectsInner() {
   useEffect(() => { if (teamParam) setActiveTab(teamParam); }, [teamParam]);
   // 팀 이동 시 작업확인 뷰·배지 초기화 — 이전 팀 데이터가 그대로 보이는 버그 방지
   // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { setViewMode("목록"); setWorkRows([]); setWorkIncomplete(0); }, [teamParam]);
+  useEffect(() => {
+    setViewMode("목록");
+    setWorkRows([]);
+    setWorkIncomplete(0);
+    // 팀별 미완료 배지 카운트를 즉시 로드 (전체 캐시의 글로벌 카운트 대신 팀별 정확한 값 사용)
+    if (teamParam) {
+      fetch(`/api/work-check?team=${encodeURIComponent(teamParam)}`)
+        .then((r) => r.json())
+        .then((d) => {
+          const rows: WorkCheckRow[] = d.rows ?? [];
+          setWorkIncomplete(rows.filter((r) => !r.workCompleted).length);
+        })
+        .catch(() => {});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [teamParam]);
 
   // ?open=projectId → 해당 캠페인 모달 자동 오픈
   useEffect(() => {
