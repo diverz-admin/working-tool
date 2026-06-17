@@ -401,6 +401,7 @@ export default function ClientModal({ initial, onClose, onSaved, onDelete, onVie
                 <option value="">선택 안 함</option>
                 <option value="영업 1팀">영업 1팀</option>
                 <option value="영업 2팀">영업 2팀</option>
+                <option value="경영팀">경영팀</option>
               </select>
             </div>
             <div>
