@@ -1583,7 +1583,7 @@ function ProjectsInner() {
           {/* 2행: 마감 임박 필터 */}
           <div className="flex items-center gap-3 px-6 py-3" style={{ background: "#FAFBFC" }}>
             {([
-              { group: "프로젝트 종료일", items: [
+              { group: "캠페인 종료일", items: [
                 { key: "D-7" as const, label: "7일 이내" },
                 { key: "D-3" as const, label: "3일 이내" },
                 { key: "D-1" as const, label: "1일 이내" },
