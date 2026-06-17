@@ -105,6 +105,7 @@ export default function ClientModal({ initial, onClose, onSaved, onDelete, onVie
   const [accounts, setAccounts]           = useState<AccountRow[]>([]);
   const [urls,     setUrls]               = useState<UrlRow[]>([]);
   const [linkedProjects, setLinkedProjects] = useState<LinkedProject[]>([]);
+  const [users, setUsers]                 = useState<{ id: string; name: string; team: string | null }[]>([]);
   const [saving, setSaving]               = useState(false);
   const [error, setError]                 = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -112,6 +113,13 @@ export default function ClientModal({ initial, onClose, onSaved, onDelete, onVie
   const bizRegInputRef = useRef<HTMLInputElement>(null);
 
   const isEdit = Boolean(initial?.id);
+
+  useEffect(() => {
+    fetch("/api/users")
+      .then((r) => r.json())
+      .then((d) => setUsers(d.users ?? []))
+      .catch(() => {});
+  }, []);
 
   // 편집 모드일 때 계정·프로젝트·파일 정보를 1번 fetch로 처리 (기존: 3 cold start)
   useEffect(() => {
@@ -416,7 +424,29 @@ export default function ClientModal({ initial, onClose, onSaved, onDelete, onVie
             </div>
             <div>
               <label className={labelCls} style={labelStyle}>담당자 *</label>
-              <input type="text" value={form.assignedPerson} onChange={(e) => { setField("assignedPerson", e.target.value); setError(null); }} placeholder="예: 홍길동" className={inputCls} style={inputStyle} />
+              <select
+                value={form.assignedPerson}
+                onChange={(e) => {
+                  const name = e.target.value;
+                  const user = users.find((u) => u.name === name);
+                  setField("assignedPerson", name);
+                  if (user?.team && !form.assignedTeam) setField("assignedTeam", user.team);
+                  setError(null);
+                }}
+                className={inputCls}
+                style={inputStyle}
+              >
+                <option value="">선택</option>
+                {(form.assignedTeam
+                  ? users.filter((u) => u.team === form.assignedTeam)
+                  : users
+                ).map((u) => (
+                  <option key={u.id} value={u.name}>{u.name}</option>
+                ))}
+                {form.assignedPerson && !users.some((u) => u.name === form.assignedPerson) && (
+                  <option value={form.assignedPerson}>{form.assignedPerson}</option>
+                )}
+              </select>
             </div>
           </div>
 
