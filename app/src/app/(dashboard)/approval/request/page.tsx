@@ -6,6 +6,7 @@ import {
   type PaymentRequest, type PaymentStatus,
   getPaymentRequests, updatePaymentRequest,
 } from "@/lib/approvals";
+import { invalidateProjectCache } from "@/components/projects/ProjectModal";
 
 const STATUS_STYLE: Record<PaymentStatus, { bg: string; color: string; border: string }> = {
   대기: { bg: "rgba(234,179,8,0.1)",  color: "#CA8A04", border: "rgba(234,179,8,0.25)" },
@@ -100,6 +101,7 @@ export default function RequestPage() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ costs: updated }),
               });
+              invalidateProjectCache(pid);
             }
           }
         } catch {}
@@ -183,6 +185,7 @@ export default function RequestPage() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ costs: updated }),
               });
+              invalidateProjectCache(pid);
             }
           }
         }
