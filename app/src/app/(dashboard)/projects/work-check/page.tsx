@@ -3,41 +3,26 @@
 import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 
-interface DailyLog {
-  id: string;
-  revenueId: string;
-  date: string;
-  qty: number;
-  note: string | null;
-  createdAt: string;
-}
-
 interface WorkRow {
   id: string;
   projectId: string;
-  rowType: "revenue" | "cost";
-  revenueRowId: string | null;
   assignee: string | null;
   productName: string | null;
   quantity: number | null;
-  completedQty: number | null;
   workCompleted: boolean | null;
   workStartDate: string | null;
   workEndDate: string | null;
-  paymentDate: string | null;
+  settingDate: string | null;
   total: number | null;
-  completedAt: string | null;
   campaignName: string;
   assignedTeam: string | null;
   groupName: string;
   groupId: string;
-  dailyLogs: DailyLog[];
 }
 
 type FilterTab = "전체" | "미완료" | "완료";
 
 const TAB_COLORS: Record<FilterTab, string> = { 완료: "#059669", 미완료: "#F97316", 전체: "#191F28" };
-const emptyLogEntry = () => ({ date: new Date().toISOString().slice(0, 10), qty: "", note: "" });
 
 function daysLeft(dateStr: string | null): number | null {
   if (!dateStr) return null;
@@ -52,7 +37,7 @@ function fmtDate(d: string | null) {
 }
 
 function rowMonth(r: WorkRow) {
-  const d = r.workStartDate ?? r.paymentDate;
+  const d = r.workStartDate;
   return d ? d.slice(0, 7) : null;
 }
 
@@ -64,9 +49,6 @@ export default function WorkCheckPage() {
   const [filterTab, setTab]     = useState<FilterTab>("미완료");
   const [filterTeam, setTeam]   = useState<string>("전체");
   const [selectedMonth, setMonth] = useState<string>(thisMonth);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [addForm, setAddForm]   = useState<Record<string, { date: string; qty: string; note: string }>>({});
-  const [saving, setSaving]     = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/work-check")
@@ -75,7 +57,6 @@ export default function WorkCheckPage() {
       .catch(() => setLoading(false));
   }, []);
 
-  // 데이터에 존재하는 월 목록 + 팀 목록 (단일 패스)
   const { months, teams } = useMemo(() => {
     const ms = new Set<string>();
     const ts = new Set<string>();
@@ -90,7 +71,6 @@ export default function WorkCheckPage() {
     };
   }, [rows]);
 
-  // 월별 미완료 건수 사전 계산
   const incompleteByMonth = useMemo(() => {
     const map = new Map<string, number>();
     for (const r of rows) {
@@ -100,14 +80,13 @@ export default function WorkCheckPage() {
     return map;
   }, [rows]);
 
-  // 선택된 월 기준 행 → filtered는 그 위에 팀/탭 필터 적용
   const monthRows = useMemo(() => rows.filter((r) => rowMonth(r) === selectedMonth), [rows, selectedMonth]);
 
   const filtered = useMemo(() => monthRows.filter((r) => {
     const teamOk = filterTeam === "전체" || r.assignedTeam === filterTeam;
     const tabOk  =
-      filterTab === "전체"  ? true :
-      filterTab === "미완료" ? !r.workCompleted :
+      filterTab === "전체"   ? true :
+      filterTab === "미완료"  ? !r.workCompleted :
       Boolean(r.workCompleted);
     return teamOk && tabOk;
   }), [monthRows, filterTab, filterTeam]);
@@ -118,7 +97,6 @@ export default function WorkCheckPage() {
     return t;
   }, [monthRows]);
 
-  // group → campaign → rows
   const grouped = useMemo(() => {
     const map = new Map<string, { groupName: string; campaigns: Map<string, { campaignName: string; projectId: string; rows: WorkRow[] }> }>();
     for (const row of filtered) {
@@ -134,45 +112,15 @@ export default function WorkCheckPage() {
 
   async function toggleComplete(row: WorkRow) {
     const next = !row.workCompleted;
-    setRows(prev => prev.map(r => r.id === row.id ? { ...r, workCompleted: next, completedAt: next ? new Date().toISOString() : null } : r));
-    const endpoint = row.rowType === "cost" ? `/api/costs/${row.id}` : `/api/project-revenues/${row.id}`;
-    const res = await fetch(endpoint, {
+    setRows(prev => prev.map(r => r.id === row.id ? { ...r, workCompleted: next } : r));
+    const res = await fetch(`/api/costs/${row.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ workCompleted: next }),
     });
     if (!res.ok) {
-      setRows(prev => prev.map(r => r.id === row.id ? { ...r, workCompleted: row.workCompleted, completedAt: row.completedAt } : r));
+      setRows(prev => prev.map(r => r.id === row.id ? { ...r, workCompleted: row.workCompleted } : r));
     }
-  }
-
-  async function addLog(revenueId: string) {
-    const form = addForm[revenueId];
-    if (!form?.date || !form?.qty) return;
-    setSaving(revenueId);
-    const res = await fetch("/api/work-daily-logs", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ revenueId, date: form.date, qty: parseInt(form.qty), note: form.note }),
-    });
-    const data = await res.json();
-    setRows(prev => prev.map(r => r.id === revenueId ? {
-      ...r,
-      completedQty: data.completedQty,
-      dailyLogs: [...r.dailyLogs, data.log].sort((a, b) => a.date.localeCompare(b.date)),
-    } : r));
-    setAddForm(prev => ({ ...prev, [revenueId]: emptyLogEntry() }));
-    setSaving(null);
-  }
-
-  async function deleteLog(logId: string, revenueId: string) {
-    const res = await fetch(`/api/work-daily-logs/${logId}`, { method: "DELETE" });
-    const data = await res.json();
-    setRows(prev => prev.map(r => r.id === revenueId ? {
-      ...r,
-      completedQty: data.completedQty,
-      dailyLogs: r.dailyLogs.filter(l => l.id !== logId),
-    } : r));
   }
 
   return (
@@ -182,23 +130,12 @@ export default function WorkCheckPage() {
         <div>
           <h1 className="text-xl font-bold" style={{ color: "#191F28" }}>작업확인</h1>
           <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>
-            입금 확인된 캠페인의 작업 진행 현황을 관리합니다.
+            매입(구매) 작업 진행 현황을 관리합니다.
             {totals["미완료"] > 0 && (
               <span style={{ color: "#F97316" }}> · 미완료 {totals["미완료"]}건</span>
             )}
           </p>
         </div>
-        <Link
-          href="/approval/confirm"
-          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition-colors hover:bg-slate-50"
-          style={{ borderColor: "#E9EBEF", color: "#64748B" }}
-        >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-            <polyline points="14 2 14 8 20 8"/><polyline points="9 15 11 17 15 13"/>
-          </svg>
-          입금확인요청
-        </Link>
       </div>
 
       {/* 월 선택 */}
@@ -235,7 +172,6 @@ export default function WorkCheckPage() {
 
       {/* 필터 바 */}
       <div className="flex items-center gap-3 flex-wrap">
-        {/* 탭 */}
         <div className="flex items-center gap-1 p-0.5 rounded-xl" style={{ background: "#F1F5F9" }}>
           {(["미완료", "전체", "완료"] as FilterTab[]).map((tab) => {
             const isActive = filterTab === tab;
@@ -259,7 +195,6 @@ export default function WorkCheckPage() {
           })}
         </div>
 
-        {/* 팀 필터 */}
         {teams.length > 0 && (
           <div className="flex items-center gap-1.5">
             {(["전체", ...teams]).map((t) => (
@@ -286,12 +221,12 @@ export default function WorkCheckPage() {
       {/* 콘텐츠 */}
       {loading ? (
         <div className="rounded-2xl py-20 flex items-center justify-center" style={{ background: "#fff", border: "1px solid #E9EBEF" }}>
-          <svg className="animate-spin" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3182F6" strokeWidth="2.5"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+          <svg className="animate-spin" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F97316" strokeWidth="2.5"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
         </div>
       ) : grouped.length === 0 ? (
         <div className="rounded-2xl py-20 text-center" style={{ background: "#fff", border: "1px solid #E9EBEF" }}>
-          <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-3" style={{ background: "rgba(49,130,246,0.08)" }}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3182F6" strokeWidth="2" strokeLinecap="round">
+          <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-3" style={{ background: "rgba(249,115,22,0.08)" }}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#F97316" strokeWidth="2" strokeLinecap="round">
               <polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
             </svg>
           </div>
@@ -299,14 +234,13 @@ export default function WorkCheckPage() {
             {filterTab === "완료" ? "완료된 작업이 없습니다." : "확인할 작업이 없습니다."}
           </p>
           <p className="text-xs mt-1" style={{ color: "#94A3B8" }}>
-            {filterTab !== "완료" && "입금확인 승인 후 자동으로 표시됩니다."}
+            {filterTab !== "완료" && "매입(구매) 데이터 입력 후 자동으로 표시됩니다."}
           </p>
         </div>
       ) : (
         <div className="space-y-5">
           {grouped.map(({ groupName, campaigns }) => (
             <div key={groupName}>
-              {/* 그룹 헤더 */}
               <div className="flex items-center gap-2 mb-2.5">
                 <h2 className="text-sm font-bold" style={{ color: "#191F28" }}>{groupName}</h2>
                 <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: "#F1F5F9", color: "#64748B" }}>
@@ -321,27 +255,27 @@ export default function WorkCheckPage() {
                   return (
                     <div key={projectId} className="rounded-2xl overflow-hidden" style={{ background: "#fff", border: `1px solid ${allDone ? "rgba(16,185,129,0.25)" : "#E9EBEF"}` }}>
                       {/* 캠페인 헤더 */}
-                      <div className="flex items-center gap-3 px-5 py-3" style={{ background: allDone ? "rgba(16,185,129,0.04)" : "#F8FAFC", borderBottom: "1px solid #F1F5F9" }}>
+                      <div className="flex items-center gap-3 px-5 py-3" style={{ background: allDone ? "rgba(16,185,129,0.04)" : "#FFF7ED", borderBottom: "1px solid #FED7AA" }}>
                         <div className="flex items-center gap-2 flex-1 min-w-0">
                           {allDone ? (
                             <span className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center" style={{ background: "rgba(16,185,129,0.15)" }}>
                               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
                             </span>
                           ) : (
-                            <span className="shrink-0 w-5 h-5 rounded-full border-2" style={{ borderColor: "#E9EBEF" }} />
+                            <span className="shrink-0 w-5 h-5 rounded-full border-2" style={{ borderColor: "#FED7AA" }} />
                           )}
                           <span className="text-sm font-bold truncate" style={{ color: allDone ? "#059669" : "#191F28" }}>{campaignName}</span>
                           <span className="shrink-0 text-xs font-semibold px-2 py-0.5 rounded-full" style={{
-                            background: allDone ? "rgba(16,185,129,0.1)" : "rgba(234,179,8,0.1)",
-                            color: allDone ? "#059669" : "#CA8A04",
+                            background: allDone ? "rgba(16,185,129,0.1)" : "rgba(249,115,22,0.1)",
+                            color: allDone ? "#059669" : "#F97316",
                           }}>
                             {doneCnt}/{campRows.length} 완료
                           </span>
                         </div>
                         <Link
                           href={`/projects?open=${projectId}`}
-                          className="shrink-0 flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg transition-colors hover:bg-blue-50"
-                          style={{ color: "#3182F6", border: "1px solid rgba(49,130,246,0.2)" }}
+                          className="shrink-0 flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg transition-colors hover:bg-orange-50"
+                          style={{ color: "#F97316", border: "1px solid rgba(249,115,22,0.2)" }}
                         >
                           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                             <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
@@ -351,11 +285,11 @@ export default function WorkCheckPage() {
                         </Link>
                       </div>
 
-                      {/* 매출 행 목록 */}
+                      {/* 매입 행 목록 */}
                       <table className="w-full text-xs">
                         <thead>
                           <tr style={{ background: "#FAFBFC" }}>
-                            {["담당자", "품명", "완료/전체", "금액", "작업기간", "잔여일", "완료", ""].map((h, i) => (
+                            {["담당자", "품명", "수량", "금액", "작업기간", "잔여일", "완료"].map((h, i) => (
                               <th key={i} className="px-4 py-2.5 text-left font-semibold whitespace-nowrap" style={{ color: "#94A3B8" }}>{h}</th>
                             ))}
                           </tr>
@@ -363,183 +297,46 @@ export default function WorkCheckPage() {
                         <tbody>
                           {campRows.map((row) => {
                             const isDone = Boolean(row.workCompleted);
-                            const isExpanded = expandedId === row.id;
                             const days = daysLeft(row.workEndDate);
-                            const completedQty = row.completedQty ?? 0;
-                            const totalQty = row.quantity ?? 0;
-                            const pct = totalQty > 0 ? Math.min(100, Math.round(completedQty / totalQty * 100)) : 0;
-                            const isCost = row.rowType === "cost";
 
                             return (
-                              <React.Fragment key={row.id}>
-                                <tr
-                                  className="border-t cursor-pointer hover:bg-slate-50/50"
-                                  style={{ borderColor: "#F1F5F9", opacity: isDone ? 0.65 : 1 }}
-                                  onClick={() => !isCost && setExpandedId(isExpanded ? null : row.id)}
-                                >
-                                  {/* 담당자 */}
-                                  <td className="px-4 py-3 text-xs font-medium" style={{ color: "#475569" }}>{row.assignee || "—"}</td>
-                                  {/* 품명 + 매출/매입 배지 */}
-                                  <td className="px-4 py-3 text-xs font-semibold" style={{ color: isDone ? "#94A3B8" : "#191F28", textDecoration: isDone ? "line-through" : "none" }}>
-                                    <div className="flex items-center gap-1.5">
-                                      <span className="text-xs font-bold px-1.5 py-0.5 rounded-md shrink-0" style={isCost ? { background: "rgba(249,115,22,0.1)", color: "#F97316" } : { background: "rgba(49,130,246,0.1)", color: "#3182F6" }}>
-                                        {isCost ? "매입" : "매출"}
-                                      </span>
-                                      {row.productName || "—"}
-                                    </div>
-                                  </td>
-                                  {/* 완료/전체 + 진행률 */}
-                                  <td className="px-4 py-3">
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-xs font-semibold" style={{ color: "#191F28", minWidth: 55 }}>
-                                        {completedQty}<span style={{ color: "#CBD5E1" }}>/{totalQty || "—"}</span>
-                                      </span>
-                                      {totalQty > 0 && (
-                                        <div className="h-1.5 rounded-full overflow-hidden" style={{ width: 60, background: "#F1F5F9" }}>
-                                          <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: isDone ? "#10B981" : pct >= 70 ? "#3182F6" : pct >= 30 ? "#F59E0B" : "#E2E8F0" }} />
-                                        </div>
-                                      )}
-                                    </div>
-                                  </td>
-                                  {/* 금액 */}
-                                  <td className="px-4 py-3 text-xs font-bold" style={{ color: "#3182F6" }}>
-                                    {row.total ? `₩${row.total.toLocaleString()}` : "—"}
-                                  </td>
-                                  {/* 작업기간 */}
-                                  <td className="px-4 py-3 text-xs whitespace-nowrap" style={{ color: "#94A3B8" }}>
-                                    {row.workStartDate || row.workEndDate ? `${fmtDate(row.workStartDate)} ~ ${fmtDate(row.workEndDate)}` : "—"}
-                                  </td>
-                                  {/* 잔여일 */}
-                                  <td className="px-4 py-3 whitespace-nowrap">
-                                    {isDone ? (
-                                      <span className="text-xs font-semibold" style={{ color: "#059669" }}>
-                                        {row.completedAt ? fmtDate(row.completedAt.slice(0, 10)) : "완료"}
-                                      </span>
-                                    ) : days === null ? (
-                                      <span style={{ color: "#CBD5E1" }}>—</span>
-                                    ) : (
-                                      <span className="font-bold text-xs" style={{ color: days < 0 ? "#EF4444" : days <= 3 ? "#F97316" : days <= 7 ? "#EAB308" : "#64748B" }}>
-                                        {days < 0 ? `+${Math.abs(days)}일 초과` : days === 0 ? "D-0" : `D-${days}`}
-                                      </span>
-                                    )}
-                                  </td>
-                                  {/* 완료 체크박스 */}
-                                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                                    <label className="flex items-center gap-1.5 cursor-pointer">
-                                      <input
-                                        type="checkbox"
-                                        checked={isDone}
-                                        onChange={() => toggleComplete(row)}
-                                        className="w-4 h-4 rounded accent-emerald-500"
-                                      />
-                                      <span className="text-xs font-semibold" style={{ color: isDone ? "#059669" : "#94A3B8" }}>
-                                        {isDone ? "완료" : "미완료"}
-                                      </span>
-                                    </label>
-                                  </td>
-                                  {/* 펼치기 아이콘 — 매출만 */}
-                                  <td className="px-4 py-3">
-                                    {!isCost && (
-                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2.5" strokeLinecap="round"
-                                        style={{ transition: "transform 0.2s", transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)" }}>
-                                        <polyline points="6 9 12 15 18 9"/>
-                                      </svg>
-                                    )}
-                                  </td>
-                                </tr>
-
-                                {/* 데일리 로그 패널 — 매출만 */}
-                                {isExpanded && !isCost && (
-                                  <tr style={{ borderColor: "#F1F5F9" }}>
-                                    <td colSpan={8} className="px-0 pb-0">
-                                      <div style={{ background: "#F8FAFC", borderTop: "1px solid #E9EBEF", borderBottom: "1px solid #E9EBEF" }}>
-                                        <div className="px-5 py-3">
-                                          <p className="text-xs font-bold mb-2.5" style={{ color: "#475569" }}>데일리 작업 기록</p>
-
-                                          {/* 기존 로그 목록 */}
-                                          {row.dailyLogs.length > 0 ? (
-                                            <table className="w-full text-xs mb-3">
-                                              <thead>
-                                                <tr>
-                                                  {["날짜", "수량", "메모", ""].map((h, i) => (
-                                                    <th key={i} className="text-left pb-1.5 pr-4 font-semibold" style={{ color: "#94A3B8" }}>{h}</th>
-                                                  ))}
-                                                </tr>
-                                              </thead>
-                                              <tbody>
-                                                {row.dailyLogs.map((log) => (
-                                                  <tr key={log.id} className="border-t" style={{ borderColor: "#F1F5F9" }}>
-                                                    <td className="py-1.5 pr-4 font-semibold whitespace-nowrap" style={{ color: "#475569" }}>{fmtDate(log.date)}</td>
-                                                    <td className="py-1.5 pr-4 font-bold" style={{ color: "#3182F6" }}>{log.qty.toLocaleString()}</td>
-                                                    <td className="py-1.5 pr-4" style={{ color: "#94A3B8" }}>{log.note || "—"}</td>
-                                                    <td className="py-1.5">
-                                                      <button
-                                                        onClick={() => deleteLog(log.id, row.id)}
-                                                        className="text-xs px-2 py-0.5 rounded-lg transition-colors hover:bg-red-50"
-                                                        style={{ color: "#EF4444" }}
-                                                      >
-                                                        삭제
-                                                      </button>
-                                                    </td>
-                                                  </tr>
-                                                ))}
-                                              </tbody>
-                                            </table>
-                                          ) : (
-                                            <p className="text-xs mb-3" style={{ color: "#CBD5E1" }}>아직 기록된 작업이 없습니다.</p>
-                                          )}
-
-                                          {/* 합계 */}
-                                          {totalQty > 0 && (
-                                            <p className="text-xs font-bold mb-3" style={{ color: completedQty >= totalQty ? "#059669" : "#3182F6" }}>
-                                              합계: {completedQty.toLocaleString()} / {totalQty.toLocaleString()}
-                                              {completedQty >= totalQty && " ✓ 완료"}
-                                            </p>
-                                          )}
-
-                                          {/* 새 로그 추가 폼 */}
-                                          {!isDone && (
-                                            <div className="flex items-center gap-2 flex-wrap">
-                                              <input
-                                                type="date"
-                                                value={addForm[row.id]?.date ?? emptyLogEntry().date}
-                                                onChange={(e) => setAddForm(prev => ({ ...prev, [row.id]: { ...(prev[row.id] ?? emptyLogEntry()), date: e.target.value } }))}
-                                                className="text-xs px-2.5 py-1.5 rounded-lg outline-none border"
-                                                style={{ background: "#fff", borderColor: "#E9EBEF", color: "#191F28" }}
-                                              />
-                                              <input
-                                                type="number"
-                                                min={0}
-                                                placeholder="수량"
-                                                value={addForm[row.id]?.qty ?? ""}
-                                                onChange={(e) => setAddForm(prev => ({ ...prev, [row.id]: { ...(prev[row.id] ?? emptyLogEntry()), qty: e.target.value } }))}
-                                                className="text-xs px-2.5 py-1.5 rounded-lg outline-none border w-20 text-center"
-                                                style={{ background: "#fff", borderColor: "#E9EBEF", color: "#191F28" }}
-                                              />
-                                              <input
-                                                type="text"
-                                                placeholder="메모 (선택)"
-                                                value={addForm[row.id]?.note ?? ""}
-                                                onChange={(e) => setAddForm(prev => ({ ...prev, [row.id]: { ...(prev[row.id] ?? emptyLogEntry()), note: e.target.value } }))}
-                                                className="text-xs px-2.5 py-1.5 rounded-lg outline-none border flex-1 min-w-24"
-                                                style={{ background: "#fff", borderColor: "#E9EBEF", color: "#191F28" }}
-                                              />
-                                              <button
-                                                disabled={saving === row.id || !addForm[row.id]?.qty}
-                                                onClick={() => addLog(row.id)}
-                                                className="text-xs font-semibold px-3 py-1.5 rounded-lg disabled:opacity-40 transition-all"
-                                                style={{ background: "rgba(49,130,246,0.12)", color: "#3182F6", border: "1px solid rgba(49,130,246,0.2)" }}
-                                              >
-                                                {saving === row.id ? "..." : "+ 추가"}
-                                              </button>
-                                            </div>
-                                          )}
-                                        </div>
-                                      </div>
-                                    </td>
-                                  </tr>
-                                )}
-                              </React.Fragment>
+                              <tr key={row.id} className="border-t" style={{ borderColor: "#F1F5F9", opacity: isDone ? 0.65 : 1 }}>
+                                <td className="px-4 py-3 text-xs font-medium" style={{ color: "#475569" }}>{row.assignee || "—"}</td>
+                                <td className="px-4 py-3 text-xs font-semibold" style={{ color: isDone ? "#94A3B8" : "#191F28", textDecoration: isDone ? "line-through" : "none" }}>
+                                  {row.productName || "—"}
+                                </td>
+                                <td className="px-4 py-3 text-xs" style={{ color: "#475569" }}>{row.quantity ?? "—"}</td>
+                                <td className="px-4 py-3 text-xs font-bold" style={{ color: "#F97316" }}>
+                                  {row.total ? `₩${row.total.toLocaleString()}` : "—"}
+                                </td>
+                                <td className="px-4 py-3 text-xs whitespace-nowrap" style={{ color: "#94A3B8" }}>
+                                  {row.workStartDate || row.workEndDate ? `${fmtDate(row.workStartDate)} ~ ${fmtDate(row.workEndDate)}` : "—"}
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap">
+                                  {isDone ? (
+                                    <span className="text-xs font-semibold" style={{ color: "#059669" }}>완료</span>
+                                  ) : days === null ? (
+                                    <span style={{ color: "#CBD5E1" }}>—</span>
+                                  ) : (
+                                    <span className="font-bold text-xs" style={{ color: days < 0 ? "#EF4444" : days <= 3 ? "#F97316" : days <= 7 ? "#EAB308" : "#64748B" }}>
+                                      {days < 0 ? `+${Math.abs(days)}일 초과` : days === 0 ? "D-0" : `D-${days}`}
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                                  <label className="flex items-center gap-1.5 cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={isDone}
+                                      onChange={() => toggleComplete(row)}
+                                      className="w-4 h-4 rounded accent-orange-500"
+                                    />
+                                    <span className="text-xs font-semibold" style={{ color: isDone ? "#059669" : "#94A3B8" }}>
+                                      {isDone ? "완료" : "미완료"}
+                                    </span>
+                                  </label>
+                                </td>
+                              </tr>
                             );
                           })}
                         </tbody>

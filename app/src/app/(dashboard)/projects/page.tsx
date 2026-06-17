@@ -971,8 +971,8 @@ function ProjectsInner() {
       .finally(() => setWorkLoading(false));
   }
 
-  async function updateWorkRow(id: string, patch: { completedQty?: number; workCompleted?: boolean; settingDate?: string }) {
-    await fetch(`/api/revenues/${id}`, {
+  async function updateWorkRow(id: string, patch: { workCompleted?: boolean; settingDate?: string }) {
+    await fetch(`/api/costs/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(patch),

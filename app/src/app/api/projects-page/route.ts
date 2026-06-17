@@ -94,22 +94,11 @@ export async function GET() {
       .where(eq(projects.status, "진행"))
       .groupBy(projects.projectGroupId),
 
-      // 7. 작업확인 미완료 카운트
+      // 7. 작업확인 미완료 카운트 — 매입(구매) 기준
       db.select({ cnt: sql<number>`COUNT(*)` })
-        .from(projectRevenues)
+        .from(projectCosts)
         .where(
-          and(
-            or(eq(projectRevenues.workCompleted, false), isNull(projectRevenues.workCompleted)),
-            sql`EXISTS (
-              SELECT 1 FROM confirm_requests cr
-              WHERE cr.project_id = ${projectRevenues.projectId}::text
-              AND (
-                (cr.row_key = ${projectRevenues.revenueRowId} AND ${projectRevenues.revenueRowId} IS NOT NULL)
-                OR cr.row_key = '__contract__'
-              )
-              AND cr.status = '확인완료'
-            )`
-          )
+          or(eq(projectCosts.workCompleted, false), isNull(projectCosts.workCompleted))
         ),
     ]);
 
