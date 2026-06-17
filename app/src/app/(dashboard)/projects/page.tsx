@@ -1060,6 +1060,14 @@ function ProjectsInner() {
       }
     }
   });
+  // 입금요청/확인요청 제출 시 그룹 캐시 무효화 → 매입 상태 배지 즉시 갱신
+  useEffect(() => {
+    const refresh = () => load(true);
+    window.addEventListener("approval-request-added", refresh);
+    return () => window.removeEventListener("approval-request-added", refresh);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { if (teamParam) setActiveTab(teamParam); }, [teamParam]);
   // 팀 이동 시 작업확인 뷰·배지 초기화 — 이전 팀 데이터가 그대로 보이는 버그 방지
