@@ -4,18 +4,12 @@ import { chatChannels, chatMessages } from "@/db/schema";
 import { asc, max, eq } from "drizzle-orm";
 
 export async function GET() {
-  const channels = await db
-    .select()
-    .from(chatChannels)
-    .orderBy(asc(chatChannels.createdAt));
-
-  const latestRows = await db
-    .select({ channelId: chatMessages.channelId, latestAt: max(chatMessages.createdAt) })
-    .from(chatMessages)
-    .groupBy(chatMessages.channelId);
-
+  const [channels, latestRows] = await Promise.all([
+    db.select().from(chatChannels).orderBy(asc(chatChannels.createdAt)),
+    db.select({ channelId: chatMessages.channelId, latestAt: max(chatMessages.createdAt) })
+      .from(chatMessages).groupBy(chatMessages.channelId),
+  ]);
   const latestMap = Object.fromEntries(latestRows.map((r) => [r.channelId, r.latestAt ?? null]));
-
   return NextResponse.json({
     channels: channels.map((ch) => ({ ...ch, latestMessageAt: latestMap[ch.id] ?? null })),
   });

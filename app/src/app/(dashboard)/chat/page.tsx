@@ -734,19 +734,76 @@ function MessageInput({ channelName, onSend, disabled, users }: {
   );
 }
 
+// ─── 모듈 레벨 캐시 ──────────────────────────────────────
+
+interface ChatInitData {
+  channels: Channel[];
+  firstChannelId: string | null;
+  firstMessages: Message[];
+  users: UserOption[];
+}
+let _chatCache: { data: ChatInitData; ts: number } | null = null;
+let _chatPending: Promise<ChatInitData> | null = null;
+const CHAT_TTL = 30_000;
+
+const _msgCacheMap = new Map<string, { data: Message[]; ts: number }>();
+const MSG_TTL = 30_000;
+
+function fetchChatInit(): Promise<ChatInitData> {
+  if (_chatCache && Date.now() - _chatCache.ts < CHAT_TTL) return Promise.resolve(_chatCache.data);
+  if (_chatPending) return _chatPending;
+  _chatPending = fetch("/api/chat-init")
+    .then(r => r.json())
+    .then((d: ChatInitData) => {
+      _chatCache = { data: d, ts: Date.now() };
+      _chatPending = null;
+      // 첫 채널 메시지도 캐시에 저장
+      if (d.firstChannelId && d.firstMessages?.length) {
+        _msgCacheMap.set(d.firstChannelId, { data: d.firstMessages, ts: Date.now() });
+      }
+      return d;
+    })
+    .catch(err => { _chatPending = null; throw err; });
+  return _chatPending;
+}
+
+function fetchChannelMessages(channelId: string, force = false): Promise<Message[]> {
+  if (!force) {
+    const hit = _msgCacheMap.get(channelId);
+    if (hit && Date.now() - hit.ts < MSG_TTL) return Promise.resolve(hit.data);
+  }
+  return fetch(`/api/chat/messages?channelId=${channelId}`)
+    .then(r => r.json())
+    .then((d: { messages?: Message[] }) => {
+      const msgs = d.messages ?? [];
+      _msgCacheMap.set(channelId, { data: msgs, ts: Date.now() });
+      return msgs;
+    });
+}
+
+// 사이드바 Link hover 시 즉시 프리패치
+if (typeof window !== "undefined") fetchChatInit();
+
 // ─── 메인 페이지 ──────────────────────────────────────────
 
 export default function ChatPage() {
   const [profile, setProfile]             = useState<Profile | null>(null);
-  const [channels, setChannels]           = useState<Channel[]>([]);
-  const [activeChannel, setActiveChannel] = useState<Channel | null>(null);
-  const [messages, setMessages]           = useState<Message[]>([]);
-  const [loadingMsgs, setLoadingMsgs]     = useState(false);
+  const [channels, setChannels]           = useState<Channel[]>(_chatCache?.data.channels ?? []);
+  const [activeChannel, setActiveChannel] = useState<Channel | null>(() => {
+    const chs = _chatCache?.data.channels;
+    return chs?.length ? chs[0] : null;
+  });
+  const [messages, setMessages]           = useState<Message[]>(() => {
+    const d = _chatCache?.data;
+    if (d?.firstChannelId && d.firstMessages?.length) return d.firstMessages;
+    return [];
+  });
+  const [loadingMsgs, setLoadingMsgs]     = useState(!_chatCache);
   const [showAddChannel, setShowAddChannel] = useState(false);
   const [sending, setSending]             = useState(false);
   const [editingId, setEditingId]         = useState<string | null>(null);
   const [editValue, setEditValue]         = useState("");
-  const [userList, setUserList]           = useState<UserOption[]>([]);
+  const [userList, setUserList]           = useState<UserOption[]>(_chatCache?.data.users ?? []);
   const [notifications, setNotifications] = useState<MentionNotification[]>([]);
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
   const [mentionToast, setMentionToast]   = useState<MentionNotification | null>(null);
@@ -774,28 +831,28 @@ export default function ChatPage() {
     } catch { /* ignore */ }
   }, []);
 
+  // 채널 + 첫 메시지 + 유저 — 캐시 히트 시 즉시, 미스 시 단일 cold start
   useEffect(() => {
-    fetch("/api/chat/channels")
-      .then((r) => r.json())
-      .then((d) => {
-        const chs: Channel[] = d.channels ?? [];
-        setChannels(chs);
-        // 채널별 최근 메시지 시간 초기화
-        const map: Record<string, string> = {};
-        chs.forEach((ch) => { if (ch.latestMessageAt) map[ch.id] = ch.latestMessageAt; });
-        setLatestMsgAt(map);
-        if (chs.length) {
-          setActiveChannel(chs[0]);
-          activeChannelRef.current = chs[0];
-          // 첫 채널은 열리자마자 읽음 처리
-          const now = new Date().toISOString();
-          setLastReadAt((prev) => {
-            const next = { ...prev, [chs[0].id]: now };
-            try { localStorage.setItem("diverz_chat_lastread", JSON.stringify(next)); } catch { /* ignore */ }
-            return next;
-          });
-        }
-      });
+    fetchChatInit().then((d) => {
+      const chs = d.channels;
+      setChannels(chs);
+      setUserList(d.users);
+      const map: Record<string, string> = {};
+      chs.forEach((ch) => { if (ch.latestMessageAt) map[ch.id] = ch.latestMessageAt; });
+      setLatestMsgAt(map);
+      if (chs.length) {
+        setActiveChannel(chs[0]);
+        activeChannelRef.current = chs[0];
+        if (d.firstMessages?.length) setMessages(d.firstMessages);
+        setLoadingMsgs(false);
+        const now = new Date().toISOString();
+        setLastReadAt((prev) => {
+          const next = { ...prev, [chs[0].id]: now };
+          try { localStorage.setItem("diverz_chat_lastread", JSON.stringify(next)); } catch { /* ignore */ }
+          return next;
+        });
+      }
+    });
   }, []);
 
   // 모든 채널의 새 메시지를 postgres_changes로 감지 → latestMsgAt 업데이트
@@ -821,11 +878,7 @@ export default function ChatPage() {
     return () => { supabaseRef.current.removeChannel(sub); };
   }, []);
 
-  useEffect(() => {
-    fetch("/api/users")
-      .then((r) => r.json())
-      .then((d) => setUserList((d.users ?? []).map((u: { id: string; name: string; team: string | null }) => ({ id: u.id, name: u.name, team: u.team }))));
-  }, []);
+  // users는 fetchChatInit()에서 함께 로드됨 (위 useEffect)
 
   const markChannelRead = useCallback((channelId: string) => {
     const now = new Date().toISOString();
@@ -862,11 +915,16 @@ export default function ChatPage() {
     return () => document.removeEventListener("mousedown", onClickOutside);
   }, []);
 
-  const loadMessages = useCallback((channelId: string) => {
+  const loadMessages = useCallback((channelId: string, force = false) => {
+    const hit = _msgCacheMap.get(channelId);
+    if (!force && hit && Date.now() - hit.ts < MSG_TTL) {
+      setMessages(hit.data);
+      setLoadingMsgs(false);
+      return;
+    }
     setLoadingMsgs(true);
-    fetch(`/api/chat/messages?channelId=${channelId}`)
-      .then((r) => r.json())
-      .then((d) => setMessages(d.messages ?? []))
+    fetchChannelMessages(channelId, force)
+      .then(msgs => setMessages(msgs))
       .finally(() => setLoadingMsgs(false));
   }, []);
 
