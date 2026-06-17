@@ -135,12 +135,34 @@ function emptyClientForm(assignedTeam = ""): ClientFormData {
   };
 }
 
+/* ── 모듈 레벨 캐시 (페이지 이동 후 재방문 시 즉시 표시) ── */
+let _cache: { data: Client[]; ts: number } | null = null;
+const CACHE_TTL = 60_000;
+let _pending: Promise<Client[]> | null = null;
+
+function fetchClientList(): Promise<Client[]> {
+  if (_pending) return _pending;
+  _pending = fetch("/api/clients")
+    .then((r) => r.json())
+    .then((d) => {
+      const data: Client[] = d.clients ?? [];
+      _cache = { data, ts: Date.now() };
+      _pending = null;
+      return data;
+    })
+    .catch(() => { _pending = null; return []; });
+  return _pending;
+}
+
+// 모듈 로드 즉시 백그라운드 fetch 시작 (cold start 선행)
+fetchClientList();
+
 export default function ClientsPage() {
   const [role] = useCurrentRole();
   const isAdmin = role === "Admin";
 
-  const [clients,      setClients]      = useState<Client[]>([]);
-  const [loading,      setLoading]      = useState(true);
+  const [clients,      setClients]      = useState<Client[]>(_cache?.data ?? []);
+  const [loading,      setLoading]      = useState(!_cache);
   const [error,        setError]        = useState<string | null>(null);
   const [activeTab,    setActiveTab]    = useState<TabKey>("전체");
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("전체");
@@ -153,13 +175,18 @@ export default function ClientsPage() {
   const [deleteTarget, setDeleteTarget] = useState<Client | null>(null);
   const [deleting,     setDeleting]     = useState<string | null>(null);
 
-  const load = useCallback(() => {
+  const load = useCallback((invalidate = false) => {
+    if (!invalidate && _cache && Date.now() - _cache.ts < CACHE_TTL) {
+      setClients(_cache.data);
+      setLoading(false);
+      return;
+    }
+    if (invalidate) _cache = null;
     setLoading(true);
-    fetch("/api/clients")
-      .then((r) => r.json())
+    fetchClientList()
       .then((data) => {
-        if (data.error) throw new Error(data.error);
-        setClients(data.clients);
+        if (!data.length && !_cache) throw new Error("데이터 로드 실패");
+        setClients(data);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -181,7 +208,7 @@ export default function ClientsPage() {
       return;
     }
     setDeleteTarget(null);
-    load();
+    load(true);
   }
 
   function canDelete(client: Client): boolean {
@@ -227,7 +254,7 @@ export default function ClientsPage() {
         <ClientModal
           initial={null}
           onClose={() => setModal(null)}
-          onSaved={() => { setModal(null); load(); }}
+          onSaved={() => { setModal(null); load(true); }}
         />
       )}
 
@@ -235,7 +262,7 @@ export default function ClientsPage() {
         <ClientModal
           initial={editClient}
           onClose={() => setEditClient(null)}
-          onSaved={() => { setEditClient(null); load(); }}
+          onSaved={() => { setEditClient(null); load(true); }}
           onDelete={(id) => { setEditClient(null); handleDelete(id); }}
           onViewProject={(p) => setViewProject(linkedProjectToFormData(p))}
         />
@@ -245,11 +272,11 @@ export default function ClientsPage() {
         <ProjectModal
           initial={viewProject}
           onClose={() => setViewProject(null)}
-          onSaved={() => { setViewProject(null); load(); }}
+          onSaved={() => { setViewProject(null); load(true); }}
           onDelete={async (id) => {
             await fetch(`/api/projects/${id}`, { method: "DELETE" });
             setViewProject(null);
-            load();
+            load(true);
           }}
         />
       )}
