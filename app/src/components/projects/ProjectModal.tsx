@@ -1373,14 +1373,13 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                                   c.productName.trim() &&
                                   c.quantity.trim() &&
                                   parseWon(c.supplyPrice) &&
-                                  parseWon(c.total) &&
-                                  c.invoiceFileUrl
+                                  parseWon(c.total)
                                 );
                                 const isSending = sendingPayment.has(rowKey);
                                 return (
                                   <button type="button"
                                     disabled={!canPayRequest || isSending}
-                                    title={!canPayRequest ? "담당자·매입처·품명·개수·공급가·합계·세금계산서 파일을 모두 입력해주세요." : ""}
+                                    title={!canPayRequest ? "담당자·매입처·품명·개수·공급가·합계를 모두 입력해주세요." : ""}
                                     onClick={async () => {
                                       const pid = await ensureSaved();
                                       if (!pid) return;
