@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, integer, date, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, integer, date, timestamp, boolean, index } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id:           uuid("id").primaryKey().defaultRandom(),
@@ -79,7 +79,10 @@ export const projectGroups = pgTable("project_groups", {
   notes:          text("notes"),
   createdAt:      timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt:      timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => [
+  index("project_groups_client_id_idx").on(table.clientId),
+  index("project_groups_status_idx").on(table.status),
+]);
 
 export type ProjectGroup = typeof projectGroups.$inferSelect;
 export type NewProjectGroup = typeof projectGroups.$inferInsert;
@@ -109,7 +112,12 @@ export const projects = pgTable("projects", {
   extensionNotes:   text("extension_notes"),
   createdAt:        timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt:        timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => [
+  index("projects_project_group_id_idx").on(table.projectGroupId),
+  index("projects_client_id_idx").on(table.clientId),
+  index("projects_status_idx").on(table.status),
+  index("projects_start_date_idx").on(table.startDate),
+]);
 
 export type Project = typeof projects.$inferSelect;
 
@@ -135,7 +143,11 @@ export const projectRevenues = pgTable("project_revenues", {
   sectionLabel:  text("section_label"),
   settingDate:   date("setting_date"),
   createdAt:     timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => [
+  index("project_revenues_project_id_idx").on(table.projectId),
+  index("project_revenues_payment_date_idx").on(table.paymentDate),
+  index("project_revenues_invoice_date_idx").on(table.invoiceDate),
+]);
 
 export type ProjectRevenue = typeof projectRevenues.$inferSelect;
 
@@ -162,7 +174,10 @@ export const projectCosts = pgTable("project_costs", {
   invoiceFileUrl:  text("invoice_file_url"),
   invoiceFileName: text("invoice_file_name"),
   createdAt:       timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => [
+  index("project_costs_project_id_idx").on(table.projectId),
+  index("project_costs_is_approved_idx").on(table.isApproved),
+]);
 
 export type ProjectCost = typeof projectCosts.$inferSelect;
 
@@ -178,7 +193,10 @@ export const keywordTrackers = pgTable("keyword_trackers", {
   endDate:     date("end_date"),
   isActive:    boolean("is_active").notNull().default(true),
   createdAt:   timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => [
+  index("keyword_trackers_client_id_idx").on(table.clientId),
+  index("keyword_trackers_project_id_idx").on(table.projectId),
+]);
 
 export type KeywordTracker = typeof keywordTrackers.$inferSelect;
 export type NewKeywordTracker = typeof keywordTrackers.$inferInsert;
@@ -189,7 +207,9 @@ export const keywordRankings = pgTable("keyword_rankings", {
   rank:         integer("rank"),           // NULL = 300위 밖
   totalResults: integer("total_results"),
   checkedAt:    timestamp("checked_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => [
+  index("keyword_rankings_tracker_id_idx").on(table.trackerId),
+]);
 
 export type KeywordRanking = typeof keywordRankings.$inferSelect;
 
@@ -446,7 +466,9 @@ export const userTodos = pgTable("user_todos", {
   priority:  text("priority").notNull().default("medium"), // low | medium | high
   dueDate:   date("due_date"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => [
+  index("user_todos_user_id_idx").on(table.userId),
+]);
 
 export type UserTodo = typeof userTodos.$inferSelect;
 
@@ -465,6 +487,8 @@ export const workDailyLogs = pgTable("work_daily_logs", {
   qty:       integer("qty").notNull().default(0),
   note:      text("note"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => [
+  index("work_daily_logs_revenue_id_idx").on(table.revenueId),
+]);
 
 export type WorkDailyLog = typeof workDailyLogs.$inferSelect;

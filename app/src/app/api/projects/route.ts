@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { projects, projectRevenues, projectCosts, projectGroups } from "@/db/schema";
 import { NextRequest } from "next/server";
-import { desc, eq, max, getTableColumns, count, sql, and } from "drizzle-orm";
+import { desc, eq, max, getTableColumns, count, sql, and, inArray } from "drizzle-orm";
 import { clients } from "@/db/schema";
 
 function daysRemaining(dateStr: string | null): number | null {
@@ -37,18 +37,30 @@ export async function GET(req: NextRequest) {
       .groupBy(projects.id)
       .orderBy(desc(projects.createdAt));
 
-    // 매입 진행상황 집계 (별도 쿼리)
-    const costProgress = await db
-      .select({
-        projectId:    projectCosts.projectId,
-        costTotal:    count(projectCosts.id),
-        costCompleted: sql<number>`COUNT(*) FILTER (WHERE ${projectCosts.workCompleted} = TRUE)`,
-      })
-      .from(projectCosts)
-      .groupBy(projectCosts.projectId);
+    // 매입 진행상황 집계 (조회된 프로젝트 ID 리스트로 한정하여 풀스캔 방지)
+    const targetProjectIds = rows.map((r) => r.id);
+    let costProgress: { projectId: string; costTotal: number; costCompleted: number; }[] = [];
+
+    if (targetProjectIds.length > 0) {
+      const costRows = await db
+        .select({
+          projectId:    projectCosts.projectId,
+          costTotal:    count(projectCosts.id),
+          costCompleted: sql<number>`COUNT(*) FILTER (WHERE ${projectCosts.workCompleted} = TRUE)`,
+        })
+        .from(projectCosts)
+        .where(inArray(projectCosts.projectId, targetProjectIds))
+        .groupBy(projectCosts.projectId);
+      
+      costProgress = costRows.map(c => ({
+        projectId: c.projectId,
+        costTotal: Number(c.costTotal),
+        costCompleted: Number(c.costCompleted)
+      }));
+    }
 
     const costMap = new Map(
-      costProgress.map((c) => [c.projectId, { costTotal: Number(c.costTotal), costCompleted: Number(c.costCompleted) }])
+      costProgress.map((c) => [c.projectId, { costTotal: c.costTotal, costCompleted: c.costCompleted }])
     );
 
     const result = rows.map((p) => {

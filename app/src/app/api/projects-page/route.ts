@@ -13,11 +13,10 @@ function daysRemaining(dateStr: string | null): number | null {
 
 export async function GET() {
   try {
-    // ── 11개 쿼리 병렬 (stats/revenue는 클라이언트에서 별도 fetch로 분리)
+    // ── 7개 쿼리 병렬 (가장 무거운 전체 캠페인 관련 4개 쿼리를 완전히 제거하여 최적화)
     const [
       groupRows,
       workEndRows, revTotal, revStats, costTotal, costStats,
-      allCampaigns, campCostTotal, campRevStats, campCostStats,
       workIncompleteResult,
     ] = await Promise.all([
 
@@ -95,56 +94,7 @@ export async function GET() {
       .where(eq(projects.status, "진행"))
       .groupBy(projects.projectGroupId),
 
-      // 7. 전체 캠페인 목록
-      db.select({
-        id:             projects.id,
-        projectGroupId: projects.projectGroupId,
-        campaignName:   projects.campaignName,
-        projectType:    projects.projectType,
-        product:        projects.product,
-        status:         projects.status,
-        startDate:      projects.startDate,
-        endDate:        projects.endDate,
-        contractAmount: projects.contractAmount,
-        kpiSupply:      projects.kpiSupply,
-        kpiTax:         projects.kpiTax,
-        isExtended:     projects.isExtended,
-        placeLink:      projects.placeLink,
-        notes:          projects.notes,
-        assignedTeam:   projects.assignedTeam,
-        assignedPerson: projects.assignedPerson,
-        clientId:       projects.clientId,
-        advertiser:     projects.advertiser,
-        workEndDate:    max(projectRevenues.workEndDate),
-        revenueTotal:   count(projectRevenues.id),
-      })
-      .from(projects)
-      .leftJoin(projectRevenues, eq(projectRevenues.projectId, projects.id))
-      .groupBy(projects.id)
-      .orderBy(desc(projects.createdAt)),
-
-      // 8. 캠페인별 매입 총계
-      db.select({ projectId: projectCosts.projectId, total: count(projectCosts.id) })
-        .from(projectCosts).groupBy(projectCosts.projectId),
-
-      // 9. 캠페인별 매출 상태
-      db.select({
-        projectId: confirmRequests.projectId,
-        invoiced:  sql<number>`COUNT(*) FILTER (WHERE ${confirmRequests.taxInvoiceDate} IS NOT NULL)`,
-        confirmed: sql<number>`COUNT(*) FILTER (WHERE ${confirmRequests.status} = '확인완료' AND ${confirmRequests.taxInvoiceDate} IS NULL)`,
-        pending:   sql<number>`COUNT(*) FILTER (WHERE ${confirmRequests.status} = '대기')`,
-      })
-      .from(confirmRequests).groupBy(confirmRequests.projectId),
-
-      // 10. 캠페인별 매입 상태
-      db.select({
-        projectId: paymentRequests.projectId,
-        approved:  sql<number>`COUNT(*) FILTER (WHERE ${paymentRequests.status} = '승인')`,
-        pending:   sql<number>`COUNT(*) FILTER (WHERE ${paymentRequests.status} = '대기')`,
-      })
-      .from(paymentRequests).groupBy(paymentRequests.projectId),
-
-      // 11. 작업확인 미완료 카운트
+      // 7. 작업확인 미완료 카운트
       db.select({ cnt: sql<number>`COUNT(*)` })
         .from(projectRevenues)
         .where(
@@ -163,37 +113,12 @@ export async function GET() {
         ),
     ]);
 
-    // ── 그룹/캠페인 조립 ────────────────────────────────────
+    // ── 그룹 조립 ────────────────────────────────────
     const workEndMap    = new Map(workEndRows.map(r => [r.groupId, r.minWorkEnd ?? null]));
     const revTotalMap   = new Map(revTotal.map(r => [r.groupId, Number(r.total)]));
     const revStatsMap   = new Map(revStats.map(r => [r.groupId, { invoiced: Number(r.invoiced), confirmed: Number(r.confirmed), pending: Number(r.pending) }]));
     const costTotalMap  = new Map(costTotal.map(r => [r.groupId, Number(r.total)]));
     const costStatsMap  = new Map(costStats.map(r => [r.groupId, { approved: Number(r.approved), pending: Number(r.pending) }]));
-    const campCostMap   = new Map(campCostTotal.map(r => [r.projectId!, Number(r.total)]));
-    const campRevMap    = new Map(campRevStats.map(r => [r.projectId!, { invoiced: Number(r.invoiced), confirmed: Number(r.confirmed), pending: Number(r.pending) }]));
-    const campCostStMap = new Map(campCostStats.map(r => [r.projectId!, { approved: Number(r.approved), pending: Number(r.pending) }]));
-
-    const campaignsByGroup = new Map<string, object[]>();
-    for (const c of allCampaigns) {
-      if (!c.projectGroupId) continue;
-      const effectiveEnd = c.workEndDate ?? c.endDate;
-      const rev  = campRevMap.get(c.id)    ?? { invoiced: 0, confirmed: 0, pending: 0 };
-      const cost = campCostStMap.get(c.id) ?? { approved: 0, pending: 0 };
-      const camp = {
-        ...c,
-        workEndDate:      c.workEndDate ?? null,
-        daysRemaining:    daysRemaining(effectiveEnd),
-        revenueTotal:     Number(c.revenueTotal),
-        revenueInvoiced:  rev.invoiced,
-        revenueConfirmed: rev.confirmed,
-        revenuePending:   rev.pending,
-        costTotal:        campCostMap.get(c.id) ?? 0,
-        costApproved:     cost.approved,
-        costPending:      cost.pending,
-      };
-      if (!campaignsByGroup.has(c.projectGroupId)) campaignsByGroup.set(c.projectGroupId, []);
-      campaignsByGroup.get(c.projectGroupId)!.push(camp);
-    }
 
     const groups = groupRows.map(r => {
       const rev  = revStatsMap.get(r.id)  ?? { invoiced: 0, confirmed: 0, pending: 0 };
@@ -212,7 +137,7 @@ export async function GET() {
         costTotal:               costTotalMap.get(r.id) ?? 0,
         costApproved:            cost.approved,
         costPending:             cost.pending,
-        campaigns:               campaignsByGroup.get(r.id) ?? [],
+        campaigns:               [], // 최초 로딩 시에는 빈 배열로 반환하고 아코디언 펼칠 때 동적 로드하도록 함
       };
     });
 
@@ -224,3 +149,5 @@ export async function GET() {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }
+
+

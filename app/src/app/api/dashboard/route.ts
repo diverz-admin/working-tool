@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { projects, projectRevenues, projectCosts, notices } from "@/db/schema";
-import { eq, and, isNotNull, sql, desc, inArray } from "drizzle-orm";
+import { eq, and, isNotNull, sql, desc, inArray, gte, lte } from "drizzle-orm";
 
 export async function GET(req: NextRequest) {
   try {
     const year     = parseInt(req.nextUrl.searchParams.get("year")     ?? String(new Date().getFullYear()));
     const criteria = req.nextUrl.searchParams.get("criteria")          ?? "캠페인 시작날짜";
     const useInvoice = criteria === "계산서날짜";
+
+    const startOfYear = `${year}-01-01`;
+    const endOfYear = `${year}-12-31`;
 
     // 4개 쿼리 완전 병렬 실행 (1 cold start, 1 DB connection)
     const [projectRows, revRows, costRows, noticeRows] = await Promise.all([
@@ -43,8 +46,17 @@ export async function GET(req: NextRequest) {
       .innerJoin(projectRevenues, eq(projectRevenues.projectId, projects.id))
       .where(
         useInvoice
-          ? and(isNotNull(projectRevenues.paymentDate), isNotNull(projectRevenues.invoiceDate), sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`)
-          : and(isNotNull(projectRevenues.paymentDate), sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`)
+          ? and(
+              isNotNull(projectRevenues.paymentDate),
+              isNotNull(projectRevenues.invoiceDate),
+              gte(projects.startDate, startOfYear),
+              lte(projects.startDate, endOfYear)
+            )
+          : and(
+              isNotNull(projectRevenues.paymentDate),
+              gte(projects.startDate, startOfYear),
+              lte(projects.startDate, endOfYear)
+            )
       )
       .groupBy(projects.id, projects.startDate, projects.contractAmount, projects.kpiSupply, projects.kpiTax),
 
@@ -63,11 +75,19 @@ export async function GET(req: NextRequest) {
           eq(projectCosts.isApproved, true),
           inArray(
             projectCosts.projectId,
-            db.selectDistinct({ projectId: projectRevenues.projectId })
+            db.select({ projectId: projectRevenues.projectId })
               .from(projectRevenues)
-              .where(isNotNull(projectRevenues.paymentDate))
+              .innerJoin(projects, eq(projects.id, projectRevenues.projectId))
+              .where(
+                and(
+                  isNotNull(projectRevenues.paymentDate),
+                  gte(projects.startDate, startOfYear),
+                  lte(projects.startDate, endOfYear)
+                )
+              )
           ),
-          sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`
+          gte(projects.startDate, startOfYear),
+          lte(projects.startDate, endOfYear)
         )
       )
       .groupBy(sql`TO_CHAR(${projects.startDate}, 'YYYY-MM')`),
