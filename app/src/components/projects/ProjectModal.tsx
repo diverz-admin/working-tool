@@ -33,6 +33,7 @@ interface RevenueRow {
   sectionLabel: string;
   assignee: string;
   productName: string;
+  productId: string;       // 동명 상품(벤더 다름) 구분용 transient ID
   unitPrice: number;
   quantity: string;
   supplyPrice: string;
@@ -53,6 +54,7 @@ interface CostRow {
   assignee: string;
   vendor: string;
   productName: string;
+  productId: string;       // 동명 상품(벤더 다름) 구분용 transient ID
   unitPrice: number;
   quantity: string;
   supplyPrice: string;
@@ -102,10 +104,10 @@ export function invalidateProjectCache(id: string) {
 }
 
 function emptyRevenue(sectionLabel = "1주"): RevenueRow {
-  return { localId: nid(), revenueRowId: crypto.randomUUID(), linkedCostLocalId: null, sectionLabel, assignee: "", productName: "", unitPrice: 0, quantity: "", supplyPrice: "", tax: "", total: "", paymentDate: "", invoiceDate: "", workStartDate: "", workEndDate: "", completedQty: "", workCompleted: false, depositAccount: "" };
+  return { localId: nid(), revenueRowId: crypto.randomUUID(), linkedCostLocalId: null, sectionLabel, assignee: "", productName: "", productId: "", unitPrice: 0, quantity: "", supplyPrice: "", tax: "", total: "", paymentDate: "", invoiceDate: "", workStartDate: "", workEndDate: "", completedQty: "", workCompleted: false, depositAccount: "" };
 }
 function emptyCost(): CostRow {
-  return { localId: nid(), costRowId: crypto.randomUUID(), assignee: "", vendor: "", productName: "", unitPrice: 0, quantity: "", supplyPrice: "", tax: "", total: "", purchaseDate: "", invoiceDate: "", workStartDate: "", workEndDate: "", workCompleted: false, isApproved: false, settingDate: "", invoiceFileUrl: "", invoiceFileName: "" };
+  return { localId: nid(), costRowId: crypto.randomUUID(), assignee: "", vendor: "", productName: "", productId: "", unitPrice: 0, quantity: "", supplyPrice: "", tax: "", total: "", purchaseDate: "", invoiceDate: "", workStartDate: "", workEndDate: "", workCompleted: false, isApproved: false, settingDate: "", invoiceFileUrl: "", invoiceFileName: "" };
 }
 
 function daysLeft(dateStr: string): number | null {
@@ -292,6 +294,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
             sectionLabel:   String(r.sectionLabel ?? "1주"),
             assignee:       String(r.assignee ?? ""),
             productName:    String(r.productName ?? ""),
+            productId:      "",
             linkedCostLocalId: null,
             unitPrice:      0,
             quantity:       r.quantity != null ? String(r.quantity) : "",
@@ -312,6 +315,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
             assignee:   String(c.assignee ?? ""),
             vendor:     String(c.vendor ?? ""),
             productName: String(c.productName ?? ""),
+            productId:  "",
             unitPrice:  c.unitPrice != null ? Number(c.unitPrice) : 0,
             quantity:     c.quantity != null ? String(c.quantity) : "",
             supplyPrice:  c.supplyPrice != null ? String(c.supplyPrice) : "",
@@ -511,6 +515,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
         return {
           ...c,
           productName: p.name,
+          productId:   p.id,
           vendor:      p.vendor ?? c.vendor,
           unitPrice:   costUP,
           supplyPrice: costUP > 0 ? String(costSupply) : c.supplyPrice,
@@ -529,6 +534,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
       return {
         ...r,
         productName: p.name,
+        productId:   p.id,
         unitPrice:   saleUP,
         supplyPrice: saleUP > 0 ? String(supply) : r.supplyPrice,
         tax:         saleUP > 0 ? String(tax)    : r.tax,
@@ -581,6 +587,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
       return {
         ...c,
         productName: p.name,
+        productId:   p.id,
         vendor:      p.vendor ?? c.vendor,
         unitPrice,
         supplyPrice: unitPrice > 0 ? String(supply) : c.supplyPrice,
@@ -1238,10 +1245,10 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                               </td>
                               <td className="px-1 py-1">
                                 <select
-                                  value={managedProducts.find((p) => p.name === r.productName)?.id ?? ""}
+                                  value={r.productId || managedProducts.find((p) => p.name === r.productName)?.id || ""}
                                   onChange={(e) => {
                                     if (e.target.value) pickProductForRev(r.localId, e.target.value);
-                                    else updateRev(r.localId, "productName", "");
+                                    else { updateRev(r.localId, "productName", ""); updateRev(r.localId, "productId", ""); }
                                   }}
                                   className={inputCls}
                                   style={{...inputStyle, width: 150}}
@@ -1457,10 +1464,10 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                             <td className="px-1 py-1"><input type="text" value={c.vendor} onChange={(e) => updateCost(c.localId,"vendor",e.target.value)} disabled={costDeleteBlocked} className={inputCls} style={{...inputStyle, width:80, opacity: costDeleteBlocked ? 0.45 : 1}} /></td>
                             <td className="px-1 py-1">
                               <select
-                                value={managedProducts.find((p) => p.name === c.productName)?.id ?? ""}
+                                value={c.productId || managedProducts.find((p) => p.name === c.productName)?.id || ""}
                                 onChange={(e) => {
                                   if (e.target.value) pickProductForCost(c.localId, e.target.value);
-                                  else updateCost(c.localId, "productName", "");
+                                  else { updateCost(c.localId, "productName", ""); updateCost(c.localId, "productId", ""); }
                                 }}
                                 disabled={costDeleteBlocked}
                                 className={inputCls}
