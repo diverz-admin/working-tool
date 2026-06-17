@@ -840,14 +840,35 @@ function fetchGroups(): Promise<GroupsData> {
       const data: GroupsData = { groups: d.groups ?? [], workIncompleteCount: d.workIncompleteCount ?? 0 };
       _groupsCache = { data, ts: Date.now() };
       _groupsPending = null;
-      // 그룹 목록 확보 즉시 모든 캠페인 백그라운드 프리패치
-      for (const g of data.groups) fetchGroupCampaigns(g.id);
       return data;
     })
     .catch(() => { _groupsPending = null; return { groups: [], workIncompleteCount: 0 }; });
   return _groupsPending;
 }
-fetchGroups(); // 모듈 로드 즉시 선행 fetch (Next.js Link hover prefetch와 맞물려 진입 전 데이터 준비)
+
+/* ── 전체 캠페인 배치 fetch (N개 개별 요청 → 1개 통합 요청) ── */
+let _allCampaignsPending: Promise<void> | null = null;
+
+function fetchAllCampaigns(): Promise<void> {
+  if (_allCampaignsPending) return _allCampaignsPending;
+  _allCampaignsPending = fetch("/api/projects-page/campaigns")
+    .then((r) => r.json())
+    .then((d: { campaignsByGroup?: Record<string, Campaign[]> }) => {
+      const byGroup = d.campaignsByGroup ?? {};
+      const now = Date.now();
+      for (const [groupId, campaigns] of Object.entries(byGroup)) {
+        _campaignCacheMap.set(groupId, { data: campaigns as Campaign[], ts: now });
+        _campaignErrorMap.delete(groupId);
+      }
+      _allCampaignsPending = null;
+    })
+    .catch(() => { _allCampaignsPending = null; });
+  return _allCampaignsPending;
+}
+
+// 모듈 로드 즉시 그룹·캠페인 병렬 선행 fetch
+fetchGroups();
+fetchAllCampaigns();
 
 const _statsCacheMap = new Map<string, { data: RevenueStats; ts: number }>();
 const STATS_TTL = 60_000;
@@ -975,8 +996,10 @@ function ProjectsInner() {
       setLoading(false);
       return;
     }
-    if (invalidate) _groupsCache = null;
+    if (invalidate) { _groupsCache = null; _allCampaignsPending = null; }
     setLoading(true);
+    // 그룹·캠페인 병렬 fetch — 캐시 무효화 후에도 동시에 재로드
+    fetchAllCampaigns();
     fetchGroups()
       .then(({ groups, workIncompleteCount }) => {
         setGroups(groups);
