@@ -1658,39 +1658,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
 
             {/* 버튼 */}
             <div className="flex items-center justify-between pt-1">
-              {isEdit && onDelete ? (
-                <div className="flex items-center gap-2">
-                  <button type="button" onClick={() => onDelete(initial!.id!)}
-                    className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl border-2 transition-all hover:bg-red-50"
-                    style={{ borderColor: "#EF4444", color: "#EF4444" }}>
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-                    삭제
-                  </button>
-                  {form.status !== "종료" && (
-                    <button
-                      type="button"
-                      disabled={saving}
-                      onClick={async () => {
-                        if (!confirm("캠페인을 종료 처리하시겠습니까?")) return;
-                        setSaving(true); setError(null);
-                        const res = await fetch(`/api/projects/${initial!.id}`, {
-                          method: "PATCH",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ status: "종료" }),
-                        });
-                        setSaving(false);
-                        if (!res.ok) { setError("저장에 실패했습니다."); return; }
-                        onSaved(undefined);
-                      }}
-                      className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl border-2 transition-all hover:bg-orange-50 disabled:opacity-40"
-                      style={{ borderColor: "#F97316", color: "#F97316" }}
-                    >
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-                      종료
-                    </button>
-                  )}
-                </div>
-              ) : <div />}
+              <div />
               <div className="flex gap-3">
                 <button type="button" onClick={onClose} className="px-5 py-2 text-sm font-medium rounded-xl border transition-colors hover:bg-slate-50" style={{ borderColor: "#E9EBEF", color: "#64748B" }}>취소</button>
                 <button type="submit" disabled={saving || !isDirty || (!isEdit && !isFormValid)}
