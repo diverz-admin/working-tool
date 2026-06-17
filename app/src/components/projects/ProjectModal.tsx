@@ -103,6 +103,21 @@ export function invalidateProjectCache(id: string) {
   _projectCache.delete(id);
 }
 
+// 팀 배지 스타일 (영업 1팀·영업 2팀·경영팀 등)
+function teamBadgeStyle(team: string, alpha = "0.12") {
+  if (team === "영업 1팀") return { background: `rgba(99,102,241,${alpha})`,  color: "#6366F1" };
+  if (team === "영업 2팀") return { background: `rgba(16,185,129,${alpha})`,  color: "#10B981" };
+  return                          { background: `rgba(245,158,11,${alpha})`,  color: "#F59E0B" };
+}
+
+// 사용자 팀("경영")과 광고주 팀("경영팀") 명칭 불일치 매핑
+function matchesTeam(clientTeam: string | undefined, formTeam: string) {
+  if (!clientTeam || !formTeam) return false;
+  if (clientTeam === formTeam) return true;
+  const normalize = (t: string) => t.replace(/팀$/, "");
+  return normalize(clientTeam) === normalize(formTeam);
+}
+
 function emptyRevenue(sectionLabel = "1주"): RevenueRow {
   return { localId: nid(), revenueRowId: crypto.randomUUID(), linkedCostLocalId: null, sectionLabel, assignee: "", productName: "", productId: "", unitPrice: 0, quantity: "", supplyPrice: "", tax: "", total: "", paymentDate: "", invoiceDate: "", workStartDate: "", workEndDate: "", completedQty: "", workCompleted: false, depositAccount: "" };
 }
@@ -789,10 +804,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                 <label className={labelCls} style={labelStyle}>담당팀</label>
                 <div className={`${inputCls} flex items-center`} style={{ ...inputStyle, cursor: "default" }}>
                   {form.assignedTeam ? (
-                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{
-                      background: form.assignedTeam === "영업 1팀" ? "rgba(99,102,241,0.12)" : "rgba(16,185,129,0.12)",
-                      color:      form.assignedTeam === "영업 1팀" ? "#6366F1" : "#10B981",
-                    }}>{form.assignedTeam}</span>
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={teamBadgeStyle(form.assignedTeam)}>{form.assignedTeam}</span>
                   ) : (
                     <span style={{ color: "#94A3B8", fontSize: "13px" }}>담당자 선택 시 자동 입력</span>
                   )}
@@ -871,11 +883,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                 <div className="flex items-center justify-between mb-1">
                   <label className={labelCls} style={{ ...labelStyle, marginBottom: 0 }}>연결 광고주</label>
                   {form.assignedTeam && (
-                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
-                      style={{
-                        background: form.assignedTeam === "영업 1팀" ? "rgba(99,102,241,0.1)" : "rgba(16,185,129,0.1)",
-                        color:      form.assignedTeam === "영업 1팀" ? "#6366F1" : "#10B981",
-                      }}>
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={teamBadgeStyle(form.assignedTeam, "0.1")}>
                       {form.assignedTeam}
                     </span>
                   )}
@@ -910,7 +918,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                       >
                         <option value="">선택 안 함</option>
                         {clients
-                          .filter((c) => c.assignedTeam === form.assignedTeam)
+                          .filter((c) => matchesTeam(c.assignedTeam, form.assignedTeam))
                           .map((c) => (
                             <option key={c.id} value={c.id}>{c.companyName}</option>
                           ))
@@ -927,7 +935,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                         </button>
                       )}
                     </div>
-                    {clients.filter(c => c.assignedTeam === form.assignedTeam).length === 0 && (
+                    {clients.filter(c => matchesTeam(c.assignedTeam, form.assignedTeam)).length === 0 && (
                       <p className="text-xs mt-1" style={{ color: "#F97316" }}>
                         {form.assignedTeam}에 등록된 광고주가 없습니다.
                       </p>
