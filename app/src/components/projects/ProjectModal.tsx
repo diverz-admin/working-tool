@@ -540,7 +540,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
       const tax    = noTax ? 0 : Math.round(supply * 0.1);
       return {
         ...r,
-        productName: p.name,
+        productName: p.vendor ? `${p.name} · ${p.vendor}` : p.name,
         productId:   p.id,
         unitPrice:   saleUP,
         supplyPrice: saleUP > 0 ? String(supply) : r.supplyPrice,
@@ -1245,7 +1245,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                               </td>
                               <td className="px-1 py-1">
                                 <select
-                                  value={r.productId || managedProducts.find((p) => p.name === r.productName)?.id || ""}
+                                  value={r.productId || managedProducts.find((p) => (p.vendor ? `${p.name} · ${p.vendor}` : p.name) === r.productName || p.name === r.productName)?.id || ""}
                                   onChange={(e) => {
                                     if (e.target.value) pickProductForRev(r.localId, e.target.value);
                                     else { updateRev(r.localId, "productName", ""); updateRev(r.localId, "productId", ""); }
