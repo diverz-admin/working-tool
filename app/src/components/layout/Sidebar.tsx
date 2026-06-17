@@ -7,6 +7,9 @@ import { useUser } from "@/lib/UserContext";
 
 const TEAMS = ["영업 1팀", "영업 2팀"];
 
+let _pendingCache: { confirm: number; payment: number; ts: number } | null = null;
+const PENDING_TTL = 60_000;
+
 const MARKETING_SUB = [
   { href: "/marketing/reports", label: "리포트" },
   { href: "/marketing/board",   label: "프로젝트 보드" },
@@ -245,15 +248,24 @@ function ApprovalNavSection() {
   useEffect(() => { if (isActive) setOpen(true); }, [isActive]);
 
   useEffect(() => {
-    function fetchCounts() {
+    function fetchCounts(force = false) {
+      if (!force && _pendingCache && Date.now() - _pendingCache.ts < PENDING_TTL) {
+        setCounts({ confirm: _pendingCache.confirm, payment: _pendingCache.payment });
+        return;
+      }
       fetch("/api/approvals/pending-counts")
         .then((r) => r.json())
-        .then((d) => setCounts({ confirm: d.confirm ?? 0, payment: d.payment ?? 0 }))
+        .then((d) => {
+          const next = { confirm: d.confirm ?? 0, payment: d.payment ?? 0 };
+          _pendingCache = { ...next, ts: Date.now() };
+          setCounts(next);
+        })
         .catch(() => {});
     }
     fetchCounts();
-    window.addEventListener("approval-request-added", fetchCounts);
-    return () => window.removeEventListener("approval-request-added", fetchCounts);
+    const forceRefetch = () => { _pendingCache = null; fetchCounts(true); };
+    window.addEventListener("approval-request-added", forceRefetch);
+    return () => window.removeEventListener("approval-request-added", forceRefetch);
   }, [pathname]);
 
   const badgeCounts: Record<string, number> = {

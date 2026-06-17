@@ -1,30 +1,24 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { db } from "@/db";
 import {
   projectGroups, projects, projectRevenues, projectCosts,
-  confirmRequests, paymentRequests, kpiTargets,
+  confirmRequests, paymentRequests,
 } from "@/db/schema";
-import { eq, count, sql, max, desc, and, isNotNull, inArray } from "drizzle-orm";
+import { eq, count, sql, max, desc, and, or, isNull } from "drizzle-orm";
 
 function daysRemaining(dateStr: string | null): number | null {
   if (!dateStr) return null;
   return Math.ceil((new Date(dateStr).setHours(0,0,0,0) - new Date().setHours(0,0,0,0)) / 86400000);
 }
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
-    const year       = parseInt(req.nextUrl.searchParams.get("year") ?? String(new Date().getFullYear()));
-    const criteria   = req.nextUrl.searchParams.get("criteria") ?? "캠페인 시작날짜";
-    const useInvoice = criteria === "계산서날짜";
-
-    // ── 13개 쿼리 전부 병렬 (기존: 3 cold start + project-groups 내부 sequential 2 round trip)
+    // ── 11개 쿼리 병렬 (stats/revenue는 클라이언트에서 별도 fetch로 분리)
     const [
-      // ─ 그룹/캠페인 목록 (project-groups) ─
       groupRows,
       workEndRows, revTotal, revStats, costTotal, costStats,
       allCampaigns, campCostTotal, campRevStats, campCostStats,
-      // ─ 매출 KPI 통계 (stats/revenue) ─
-      statsProjectData, kpiRows, statsCostRows,
+      workIncompleteResult,
     ] = await Promise.all([
 
       // 1. 그룹 + 캠페인 카운트
@@ -150,39 +144,23 @@ export async function GET(req: NextRequest) {
       })
       .from(paymentRequests).groupBy(paymentRequests.projectId),
 
-      // 11. 매출 통계 (stats/revenue)
-      db.select({
-        id:             projects.id,
-        startDate:      projects.startDate,
-        assignedTeam:   projects.assignedTeam,
-        contractAmount: projects.contractAmount,
-        totalSum:       sql<number>`COALESCE(SUM(${projectRevenues.total}), 0)`,
-        refMonth:       sql<string>`TO_CHAR(MAX(${useInvoice ? projectRevenues.invoiceDate : projectRevenues.paymentDate}), 'YYYY-MM')`,
-      })
-      .from(projects)
-      .innerJoin(projectRevenues, eq(projectRevenues.projectId, projects.id))
-      .where(
-        useInvoice
-          ? and(isNotNull(projectRevenues.paymentDate), isNotNull(projectRevenues.invoiceDate), sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`)
-          : and(isNotNull(projectRevenues.paymentDate), sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`)
-      )
-      .groupBy(projects.id, projects.startDate, projects.assignedTeam, projects.contractAmount),
-
-      // 12. KPI 목표
-      db.select().from(kpiTargets).where(eq(kpiTargets.year, year)),
-
-      // 13. 월별 매입 비용
-      db.select({
-        month: sql<string>`TO_CHAR(${projects.startDate}, 'YYYY-MM')`,
-        total: sql<number>`COALESCE(SUM(${projectCosts.total}), 0)`,
-      })
-      .from(projectCosts)
-      .innerJoin(projects, eq(projects.id, projectCosts.projectId))
-      .where(and(
-        eq(projectCosts.isApproved, true),
-        sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`,
-      ))
-      .groupBy(sql`TO_CHAR(${projects.startDate}, 'YYYY-MM')`),
+      // 11. 작업확인 미완료 카운트
+      db.select({ cnt: sql<number>`COUNT(*)` })
+        .from(projectRevenues)
+        .where(
+          and(
+            or(eq(projectRevenues.workCompleted, false), isNull(projectRevenues.workCompleted)),
+            sql`EXISTS (
+              SELECT 1 FROM confirm_requests cr
+              WHERE cr.project_id = ${projectRevenues.projectId}::text
+              AND (
+                (cr.row_key = ${projectRevenues.revenueRowId} AND ${projectRevenues.revenueRowId} IS NOT NULL)
+                OR cr.row_key = '__contract__'
+              )
+              AND cr.status = '확인완료'
+            )`
+          )
+        ),
     ]);
 
     // ── 그룹/캠페인 조립 ────────────────────────────────────
@@ -238,93 +216,9 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    // ── 매출 KPI 통계 조립 ──────────────────────────────────
-    const monthlyCosts = Array.from({ length: 12 }, (_, i) => {
-      const m = `${year}-${String(i + 1).padStart(2, "0")}`;
-      const row = statsCostRows.find(r => r.month === m);
-      return row ? Number(row.total) : 0;
-    });
+    const workIncompleteCount = Number(workIncompleteResult[0]?.cnt ?? 0);
 
-    type MonthEntry = { [team: string]: number };
-    const teamMonthMap = new Map<string, MonthEntry[]>();
-    for (const p of statsProjectData) {
-      const monthStr = useInvoice
-        ? (p.refMonth ?? "")
-        : (p.startDate ? `${year}-${p.startDate.substring(5, 7)}` : "");
-      if (!monthStr || !monthStr.startsWith(`${year}`)) continue;
-      const monthIdx = parseInt(monthStr.substring(5, 7)) - 1;
-      const team  = p.assignedTeam ?? "";
-      const total = p.contractAmount ?? Number(p.totalSum ?? 0);
-      if (!teamMonthMap.has(team)) teamMonthMap.set(team, Array.from({ length: 12 }, () => ({ total: 0 })));
-      teamMonthMap.get(team)![monthIdx].total += total;
-    }
-
-    const rows: { month: string; team: string | null; total: number }[] = [];
-    for (const [team, months] of teamMonthMap.entries()) {
-      months.forEach((m, i) => {
-        if (m.total > 0) rows.push({ month: `${year}-${String(i + 1).padStart(2, "0")}`, team, total: m.total });
-      });
-    }
-
-    const teams      = Array.from(teamMonthMap.keys()).filter(Boolean) as string[];
-    const monthStrs  = Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, "0")}`);
-
-    const monthly = monthStrs.map((month, idx) => {
-      const monthNum = idx + 1;
-      const entry: Record<string, string | number> = { month };
-      let total = 0; let kpiTotal = 0;
-      for (const team of teams) {
-        const row = rows.find(r => r.month === month && r.team === team);
-        const v = row ? row.total : 0;
-        entry[team] = v; total += v;
-        const kpi = kpiRows.find(k => k.month === monthNum && k.team === team);
-        const kv = kpi ? kpi.target : 0;
-        entry[`kpi_${team}`] = kv; kpiTotal += kv;
-      }
-      const kpiAll = kpiRows.find(k => k.month === monthNum && k.team === "전체");
-      entry.kpiTotal = kpiAll ? kpiAll.target : kpiTotal;
-      entry.total  = total;
-      entry.cost   = monthlyCosts[idx];
-      entry.profit = total - monthlyCosts[idx];
-      return entry;
-    });
-
-    const yearTotal: Record<string, number> = { total: 0 };
-    const yearKpi:   Record<string, number> = { total: 0 };
-    for (const team of teams) {
-      yearTotal[team] = rows.filter(r => r.team === team).reduce((s, r) => s + r.total, 0);
-      yearTotal.total += yearTotal[team];
-      yearKpi[team]   = kpiRows.filter(k => k.team === team).reduce((s, k) => s + k.target, 0);
-      yearKpi.total  += yearKpi[team];
-    }
-
-    const thisMonthNum = new Date().getMonth() + 1;
-    const thisMonth    = `${year}-${String(thisMonthNum).padStart(2, "0")}`;
-    const currentMonth: Record<string, number> = { total: 0 };
-    const currentKpi:   Record<string, number> = { total: 0 };
-    for (const team of teams) {
-      const row = rows.find(r => r.month === thisMonth && r.team === team);
-      currentMonth[team] = row ? row.total : 0;
-      currentMonth.total += currentMonth[team];
-      const kpi = kpiRows.find(k => k.month === thisMonthNum && k.team === team);
-      currentKpi[team]  = kpi ? kpi.target : 0;
-      currentKpi.total += currentKpi[team];
-    }
-    const kpiAllMonth = kpiRows.find(k => k.month === thisMonthNum && k.team === "전체");
-    if (kpiAllMonth) currentKpi.total = kpiAllMonth.target;
-
-    const prevDate     = new Date(year, new Date().getMonth() - 1, 1);
-    const prevMonthStr = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, "0")}`;
-    const prevMonth: Record<string, number> = { total: 0 };
-    for (const team of teams) {
-      const row = rows.find(r => r.month === prevMonthStr && r.team === team);
-      prevMonth[team] = row ? row.total : 0;
-      prevMonth.total += prevMonth[team];
-    }
-
-    const stats = { monthly, yearTotal, yearKpi, currentMonth, currentKpi, prevMonth: prevMonth, monthlyCosts, teams, year };
-
-    return NextResponse.json({ groups, stats });
+    return NextResponse.json({ groups, workIncompleteCount });
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: String(err) }, { status: 500 });

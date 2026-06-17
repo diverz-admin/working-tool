@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, Suspense, useRef } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import ProjectModal, { ProjectFormData, preloadModalInit, prefetchProject, invalidateProjectCache } from "@/components/projects/ProjectModal";
 import ClientModal, { ClientFormData } from "@/components/clients/ClientModal";
@@ -868,16 +868,6 @@ function ProjectsInner() {
   const [workIncomplete, setWorkIncomplete] = useState(0);
   const [workMonth, setWorkMonth]           = useState<string>(new Date().toISOString().slice(0, 7));
 
-  useEffect(() => {
-    fetch("/api/work-check")
-      .then((r) => r.json())
-      .then((d) => {
-        const rows: WorkCheckRow[] = d.rows ?? [];
-        const filtered = teamParam ? rows.filter((r) => r.assignedTeam === teamParam) : rows;
-        setWorkIncomplete(filtered.filter((r) => !r.workCompleted).length);
-      })
-      .catch(() => {});
-  }, [teamParam]);
 
   function loadWorkCheck() {
     setWorkLoading(true);
@@ -906,13 +896,10 @@ function ProjectsInner() {
     }));
   }
 
-  // 최초 로드: project-groups + stats/revenue + KPI를 1번의 fetch로 처리
-  const statsLoadedRef = useRef(false);
-
+  // 그룹 목록 로드 (stats와 병렬 fetch — 더 빠르게 화면에 표시)
   const load = useCallback(() => {
     setLoading(true);
-    const year = new Date().getFullYear();
-    fetch(`/api/projects-page?year=${year}&criteria=${encodeURIComponent(statsCriteria)}`)
+    fetch("/api/projects-page")
       .then((r) => r.json())
       .then((d) => {
         const groups = d.groups ?? [];
@@ -924,17 +911,13 @@ function ProjectsInner() {
           }
           return n;
         });
-        if (d.stats) {
-          setRevenueStats(d.stats);
-          statsLoadedRef.current = true;
-        }
+        if (d.workIncompleteCount != null) setWorkIncomplete(d.workIncompleteCount);
       })
       .finally(() => setLoading(false));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // criteria 변경 시에만 stats 재조회 (초기 로딩은 위 load()에서 처리)
+  // stats/revenue 로드 — 마운트 시 + criteria 변경 시 모두 실행
   const loadStats = useCallback(() => {
-    if (!statsLoadedRef.current) return;
     fetch(`/api/stats/revenue?year=${new Date().getFullYear()}&criteria=${encodeURIComponent(statsCriteria)}`)
       .then((r) => r.json())
       .then((d) => setRevenueStats(d))

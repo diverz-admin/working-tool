@@ -157,6 +157,8 @@ export default function ProductsPage() {
   const [saving,     setSaving]     = useState(false);
   const [showAddSec, setShowAddSec] = useState(false);
   const [delSecId,   setDelSecId]   = useState<string|null>(null);
+  const [editSecId,  setEditSecId]  = useState<string|null>(null);
+  const [editSecName,setEditSecName]= useState("");
 
   const load = useCallback(()=>{
     setLoading(true);
@@ -197,6 +199,12 @@ export default function ProductsPage() {
   async function handleAddSection(name: string, accent: string) {
     await fetch("/api/product-sections",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name,accent,tabType:"purchase"})});
     load();
+  }
+
+  async function handleRenameSection(id: string, name: string) {
+    if(!name.trim()) return;
+    await fetch(`/api/product-sections/${id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({name})});
+    setEditSecId(null); load();
   }
 
   async function handleDeleteSection(sec: Section) {
@@ -269,7 +277,40 @@ export default function ProductsPage() {
                 <div className="flex items-center justify-between px-5 py-4" style={{borderBottom:"1px solid #F2F4F6"}}>
                   <div className="flex items-center gap-3">
                     <span className="w-1 h-5 rounded-full shrink-0" style={{background:accent}}/>
-                    <span className="text-sm font-bold" style={{color:"#191F28"}}>{sec.name}</span>
+                    {editSecId===sec.id ? (
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          autoFocus
+                          value={editSecName}
+                          onChange={e=>setEditSecName(e.target.value)}
+                          onKeyDown={e=>{
+                            if(e.key==="Enter"){e.preventDefault();handleRenameSection(sec.id,editSecName);}
+                            if(e.key==="Escape"){setEditSecId(null);}
+                          }}
+                          className="text-sm font-bold px-2 py-1 rounded-lg border outline-none focus:border-[#8B5CF6]"
+                          style={{color:"#191F28",background:"#F8FAFC",borderColor:"#E5E8EB",minWidth:120}}
+                        />
+                        <button onClick={()=>handleRenameSection(sec.id,editSecName)}
+                          className="px-2 py-1 text-xs font-semibold rounded-lg text-white"
+                          style={{background:"#8B5CF6"}}>저장</button>
+                        <button onClick={()=>setEditSecId(null)}
+                          className="px-2 py-1 text-xs font-medium rounded-lg border"
+                          style={{borderColor:"#E5E8EB",color:"#8B95A1"}}>취소</button>
+                      </div>
+                    ) : (
+                      <div className="group/name flex items-center gap-1.5">
+                        <span className="text-sm font-bold" style={{color:"#191F28"}}>{sec.name}</span>
+                        <button
+                          onClick={()=>{setEditSecId(sec.id);setEditSecName(sec.name);setDelSecId(null);}}
+                          className="opacity-0 group-hover/name:opacity-100 p-1 rounded-lg transition-opacity hover:bg-slate-100"
+                          title="이름 수정">
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#8B95A1" strokeWidth="2.5" strokeLinecap="round">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                          </svg>
+                        </button>
+                      </div>
+                    )}
                     <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{background:"#F2F4F6",color:"#8B95A1"}}>
                       {catProducts.length}개
                     </span>

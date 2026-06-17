@@ -46,11 +46,17 @@ export interface LinkedProject {
 }
 
 interface AccountRow {
-  localId: number;       // 화면 key용 (임시)
+  localId: number;
   platform: string;
   username: string;
   password: string;
   showPassword: boolean;
+}
+
+interface UrlRow {
+  localId: number;
+  label: string;
+  url: string;
 }
 
 const PRODUCT_OPTIONS = [
@@ -69,6 +75,10 @@ function nextId() { return ++_localId; }
 
 function emptyAccount(): AccountRow {
   return { localId: nextId(), platform: "", username: "", password: "", showPassword: false };
+}
+
+function emptyUrl(): UrlRow {
+  return { localId: nextId(), label: "", url: "" };
 }
 
 function emptyForm(): ClientFormData {
@@ -92,6 +102,7 @@ interface Props {
 export default function ClientModal({ initial, onClose, onSaved, onDelete, onViewProject }: Props) {
   const [form, setForm]                   = useState<ClientFormData>(initial ?? emptyForm());
   const [accounts, setAccounts]           = useState<AccountRow[]>([]);
+  const [urls,     setUrls]               = useState<UrlRow[]>([]);
   const [linkedProjects, setLinkedProjects] = useState<LinkedProject[]>([]);
   const [saving, setSaving]               = useState(false);
   const [error, setError]                 = useState<string | null>(null);
@@ -101,13 +112,14 @@ export default function ClientModal({ initial, onClose, onSaved, onDelete, onVie
 
   const isEdit = Boolean(initial?.id);
 
-  // 편집 모드일 때 기존 계정 불러오기
+  // 편집 모드일 때 계정·프로젝트·파일 정보를 1번 fetch로 처리 (기존: 3 cold start)
   useEffect(() => {
     document.body.style.overflow = "hidden";
     if (isEdit && initial?.id) {
-      fetch(`/api/clients/${initial.id}/accounts`)
+      fetch(`/api/clients/${initial.id}/detail`)
         .then((r) => r.json())
-        .then(({ accounts: rows }) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .then(({ client, accounts: rows, urls: urlRows, projects }) => {
           setAccounts(
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (rows ?? []).map((r: any) => ({
@@ -118,17 +130,9 @@ export default function ClientModal({ initial, onClose, onSaved, onDelete, onVie
               showPassword: false,
             }))
           );
-        })
-        .catch(() => {});
-
-      fetch(`/api/clients/${initial.id}/projects`)
-        .then((r) => r.json())
-        .then(({ projects }) => setLinkedProjects(projects ?? []))
-        .catch(() => {});
-
-      fetch(`/api/clients/${initial.id}`)
-        .then((r) => r.json())
-        .then(({ client }) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          setUrls((urlRows ?? []).map((u: any) => ({ localId: nextId(), label: u.label ?? "", url: u.url ?? "" })));
+          setLinkedProjects(projects ?? []);
           if (client) {
             setForm((prev) => ({
               ...prev,
@@ -227,15 +231,26 @@ export default function ClientModal({ initial, onClose, onSaved, onDelete, onVie
     const { client } = await res.json();
     const clientId = isEdit ? initial!.id! : client.id;
 
-    await fetch(`/api/clients/${clientId}/accounts`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        accounts: accounts
-          .filter((a) => a.platform.trim())
-          .map(({ platform, username, password }) => ({ platform, username, password })),
+    await Promise.all([
+      fetch(`/api/clients/${clientId}/accounts`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accounts: accounts
+            .filter((a) => a.platform.trim())
+            .map(({ platform, username, password }) => ({ platform, username, password })),
+        }),
       }),
-    });
+      fetch(`/api/clients/${clientId}/urls`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          urls: urls
+            .filter((u) => u.url.trim())
+            .map(({ label, url }) => ({ label, url })),
+        }),
+      }),
+    ]);
 
     setSaving(false);
     onSaved();
@@ -412,6 +427,83 @@ export default function ClientModal({ initial, onClose, onSaved, onDelete, onVie
           <div>
             <label className={labelCls} style={labelStyle}>메모</label>
             <textarea value={form.notes} onChange={(e) => setField("notes", e.target.value)} placeholder="특이사항, 히스토리 등 자유 메모" rows={3} className={`${inputCls} resize-none`} style={inputStyle} />
+          </div>
+
+          {/* 관련 URL */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <div className="flex-1 h-px" style={{ background: "#F1F5F9" }} />
+              <span className="text-xs font-bold px-2" style={{ color: "#94A3B8" }}>관련 URL</span>
+              <div className="flex-1 h-px" style={{ background: "#F1F5F9" }} />
+            </div>
+
+            {urls.length > 0 && (
+              <div className="space-y-2 mb-3">
+                <div className="grid gap-2 px-1" style={{ gridTemplateColumns: "120px 1fr auto auto" }}>
+                  {["구분", "URL", "", ""].map((h, i) => (
+                    <span key={i} className="text-xs font-semibold" style={{ color: "#94A3B8" }}>{h}</span>
+                  ))}
+                </div>
+                {urls.map((u) => (
+                  <div key={u.localId} className="grid gap-2 items-center" style={{ gridTemplateColumns: "120px 1fr auto auto" }}>
+                    <input
+                      type="text"
+                      value={u.label}
+                      onChange={(e) => setUrls((prev) => prev.map((r) => r.localId === u.localId ? { ...r, label: e.target.value } : r))}
+                      placeholder="홈페이지, 인스타 등"
+                      className={inputCls}
+                      style={inputStyle}
+                    />
+                    <input
+                      type="url"
+                      value={u.url}
+                      onChange={(e) => setUrls((prev) => prev.map((r) => r.localId === u.localId ? { ...r, url: e.target.value } : r))}
+                      placeholder="https://"
+                      className={inputCls}
+                      style={inputStyle}
+                    />
+                    <a
+                      href={u.url || "#"}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => { if (!u.url.trim()) e.preventDefault(); }}
+                      className="p-1.5 rounded-lg transition-colors flex-shrink-0"
+                      style={{ color: u.url.trim() ? "#3182F6" : "#CBD5E1", pointerEvents: u.url.trim() ? "auto" : "none" }}
+                      title="새 탭에서 열기"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                        <polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+                      </svg>
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => setUrls((prev) => prev.filter((r) => r.localId !== u.localId))}
+                      className="p-1.5 rounded-lg transition-colors flex-shrink-0"
+                      style={{ color: "#EF4444" }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(239,68,68,0.08)")}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setUrls((prev) => [...prev, emptyUrl()])}
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border transition-colors hover:bg-slate-50"
+              style={{ borderColor: "#E9EBEF", color: "#64748B", borderStyle: "dashed" }}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              URL 추가
+            </button>
           </div>
 
           {/* 사업자등록증 */}

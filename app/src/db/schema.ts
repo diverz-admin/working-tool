@@ -58,6 +58,16 @@ export const clientAccounts = pgTable("client_accounts", {
 
 export type ClientAccount = typeof clientAccounts.$inferSelect;
 
+export const clientUrls = pgTable("client_urls", {
+  id:        uuid("id").primaryKey().defaultRandom(),
+  clientId:  uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+  label:     text("label").notNull().default(""),
+  url:       text("url").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type ClientUrl = typeof clientUrls.$inferSelect;
+
 // 프로젝트 = 광고주 단위 컨테이너
 export const projectGroups = pgTable("project_groups", {
   id:             uuid("id").primaryKey().defaultRandom(),
