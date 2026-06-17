@@ -26,12 +26,18 @@ export async function proxy(req: NextRequest) {
 
   const isManagerRestricted = MANAGER_PATHS.some(p => pathname.startsWith(p));
   if (isManagerRestricted && payload.role === "Staff") {
-    if (pathname.startsWith("/api/")) {
-      return NextResponse.json({ error: "권한이 없습니다." }, { status: 403 });
+    // Staff가 입금확인요청·입금요청을 직접 제출할 수 있도록 POST는 허용
+    const isApprovalSubmit =
+      (pathname === "/api/approvals/confirm" || pathname === "/api/approvals/payment") &&
+      req.method === "POST";
+    if (!isApprovalSubmit) {
+      if (pathname.startsWith("/api/")) {
+        return NextResponse.json({ error: "권한이 없습니다." }, { status: 403 });
+      }
+      const url = req.nextUrl.clone();
+      url.pathname = "/403";
+      return NextResponse.redirect(url);
     }
-    const url = req.nextUrl.clone();
-    url.pathname = "/403";
-    return NextResponse.redirect(url);
   }
 
   return NextResponse.next();
