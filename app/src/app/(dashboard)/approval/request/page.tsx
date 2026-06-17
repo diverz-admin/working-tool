@@ -392,7 +392,7 @@ export default function RequestPage() {
 
       {/* 상태 필터 */}
       <div className="flex items-center gap-1 p-0.5 rounded-xl self-start" style={{ background: "#F1F5F9" }}>
-        {(["전체", "대기", "승인", "반려"] as const).map((s) => {
+        {(["대기", "승인", "반려", "전체"] as const).map((s) => {
           const isActive = filter === s;
           const st = s !== "전체" ? STATUS_STYLE[s] : null;
           return (
