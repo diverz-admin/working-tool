@@ -45,6 +45,7 @@ export async function PUT(req: Request, { params }: Params) {
           completedQty:   r.completedQty ? parseInt(String(r.completedQty)) : 0,
           workCompleted:  Boolean(r.workCompleted),
           sectionLabel:   r.sectionLabel ? String(r.sectionLabel) : null,
+          settingDate:    r.settingDate || null,
         }))
       );
     }
