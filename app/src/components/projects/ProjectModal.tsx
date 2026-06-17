@@ -966,6 +966,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                 const contractKey = "__contract__";
                 const cs = confirmStatuses[contractKey];
                 const canRequest = Boolean(
+                  (isEdit || isFormValid) &&
                   form.campaignName &&
                   form.assignedPerson &&
                   parseWon(form.contractAmount) &&
@@ -1047,12 +1048,6 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                         {cs?.status === "발행완료" && (
                           <span className="text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ background: "rgba(5,150,105,0.1)", color: "#059669", border: "1px solid rgba(5,150,105,0.2)" }}>계산서 발행완료</span>
                         )}
-                        {cs?.status === "확인완료" && (
-                          <span className="text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ background: "rgba(16,185,129,0.1)", color: "#059669", border: "1px solid rgba(16,185,129,0.2)" }}>입금 확인완료</span>
-                        )}
-                        {cs?.status === "대기" && (
-                          <span className="text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ background: "rgba(234,179,8,0.1)", color: "#CA8A04", border: "1px solid rgba(234,179,8,0.2)" }}>요청됨 (검토 중)</span>
-                        )}
                         {cs?.status === "반려" && (
                           <div className="flex items-center gap-1.5">
                             <button type="button"
@@ -1063,68 +1058,83 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                               className="text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ background: "rgba(49,130,246,0.1)", color: "#3182F6", border: "1px solid rgba(49,130,246,0.2)" }}>재요청</button>
                           </div>
                         )}
-                        {(!cs || cs.status === undefined) && (
-                          <button
-                            type="button"
-                            disabled={!canRequest}
-                            title={!canRequest ? (
-                              !form.campaignName ? "캠페인명을 입력해주세요." :
-                              !form.assignedPerson ? "담당자를 입력해주세요." :
-                              !parseWon(form.contractAmount) ? "매출 KPI(공급가 합계)를 입력해주세요." :
-                              "매출(판매) 데이터를 입력해주세요."
-                            ) : ""}
-                            onClick={async () => {
-                              const pid = await ensureSaved();
-                              if (!pid) return;
-                              let clientBusinessNumber = "", clientEmail = "", clientIndustry = "", clientCategory = "";
-                              if (form.clientId) {
-                                try {
-                                  const res = await fetch(`/api/clients/${form.clientId}`);
-                                  const { client } = await res.json();
-                                  clientBusinessNumber = client?.businessNumber ?? "";
-                                  clientEmail          = client?.contactEmail  ?? "";
-                                  clientIndustry       = client?.industry      ?? "";
-                                  clientCategory       = client?.category      ?? "";
-                                } catch {}
-                              }
-                              const clientInfo = clients.find((c) => c.id === form.clientId);
-                              const newReq = await addConfirmRequest({
-                                projectId:      pid,
-                                rowKey:         contractKey,
-                                clientId:       form.clientId,
-                                assignedTeam:   form.assignedTeam || null,
-                                projectName:    form.campaignName || "미지정",
-                                requester:      form.assignedPerson || "—",
-                                productName:    "계약금액 일괄",
-                                description:    form.campaignName || "",
-                                quantity:       "1",
-                                amount:         `₩${effectiveTotal.toLocaleString()}`,
-                                workStartDate:  form.startDate || "",
-                                workEndDate:    form.endDate || "",
-                                clientName:     clientInfo?.companyName || form.advertiser || "—",
-                                clientBusinessNumber,
-                                clientEmail,
-                                clientIndustry,
-                                clientCategory,
-                                dueDate:        form.startDate || "",
-                                depositAccount: revenuesRef.current.find(r => r.depositAccount)?.depositAccount || "",
-                                depositorName:  clientInfo?.advertiserName || "",
-                              });
-                              setConfirmStatuses((p) => ({ ...p, [contractKey]: { status: "대기", requestId: newReq.id } }));
-                              showToast("입금확인 요청이 전송되었습니다.");
-                              window.dispatchEvent(new Event("approval-request-added"));
-                            }}
-                            className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg whitespace-nowrap transition-all"
-                            style={{
-                              background: canRequest ? "linear-gradient(135deg, #3182F6, #2462D8)" : "#F1F5F9",
-                              color: canRequest ? "#fff" : "#CBD5E1",
-                              cursor: canRequest ? "pointer" : "not-allowed",
-                              boxShadow: canRequest ? "0 1px 4px rgba(49,130,246,0.3)" : "none",
-                            }}>
-                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="22 2 11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-                            입금확인요청
-                          </button>
-                        )}
+                        {cs?.status !== "반려" && cs?.status !== "발행완료" && (() => {
+                          const isPending  = cs?.status === "대기";
+                          const isApproved = cs?.status === "확인완료";
+                          const isActive   = !isPending && !isApproved && canRequest;
+                          return (
+                            <button
+                              type="button"
+                              disabled={isPending || isApproved || !canRequest}
+                              title={(!isPending && !isApproved && !canRequest) ? (
+                                !form.campaignName ? "캠페인명을 입력해주세요." :
+                                !form.assignedPerson ? "담당자를 입력해주세요." :
+                                !isFormValid && !isEdit ? `기본 정보를 모두 입력해주세요: ${missingFields.filter(f => f.key !== "campaignName" && f.key !== "assignedPerson").map(f => f.label).join(", ")}` :
+                                !parseWon(form.contractAmount) ? "매출 KPI(공급가 합계)를 입력해주세요." :
+                                "매출(판매) 데이터를 입력해주세요."
+                              ) : ""}
+                              onClick={async () => {
+                                const pid = await ensureSaved();
+                                if (!pid) return;
+                                let clientBusinessNumber = "", clientEmail = "", clientIndustry = "", clientCategory = "";
+                                if (form.clientId) {
+                                  try {
+                                    const res = await fetch(`/api/clients/${form.clientId}`);
+                                    const { client } = await res.json();
+                                    clientBusinessNumber = client?.businessNumber ?? "";
+                                    clientEmail          = client?.contactEmail  ?? "";
+                                    clientIndustry       = client?.industry      ?? "";
+                                    clientCategory       = client?.category      ?? "";
+                                  } catch {}
+                                }
+                                const clientInfo = clients.find((c) => c.id === form.clientId);
+                                const newReq = await addConfirmRequest({
+                                  projectId:      pid,
+                                  rowKey:         contractKey,
+                                  clientId:       form.clientId,
+                                  assignedTeam:   form.assignedTeam || null,
+                                  projectName:    form.campaignName || "미지정",
+                                  requester:      form.assignedPerson || "—",
+                                  productName:    "계약금액 일괄",
+                                  description:    form.campaignName || "",
+                                  quantity:       "1",
+                                  amount:         `₩${effectiveTotal.toLocaleString()}`,
+                                  workStartDate:  form.startDate || "",
+                                  workEndDate:    form.endDate || "",
+                                  clientName:     clientInfo?.companyName || form.advertiser || "—",
+                                  clientBusinessNumber,
+                                  clientEmail,
+                                  clientIndustry,
+                                  clientCategory,
+                                  dueDate:        form.startDate || "",
+                                  depositAccount: revenuesRef.current.find(r => r.depositAccount)?.depositAccount || "",
+                                  depositorName:  clientInfo?.advertiserName || "",
+                                });
+                                setConfirmStatuses((p) => ({ ...p, [contractKey]: { status: "대기", requestId: newReq.id } }));
+                                invalidateProjectCache(pid);
+                                showToast("입금확인 요청이 전송되었습니다.");
+                                window.dispatchEvent(new Event("approval-request-added"));
+                              }}
+                              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg whitespace-nowrap transition-all"
+                              style={{
+                                background: isApproved ? "linear-gradient(135deg, #10B981, #059669)"
+                                          : isActive   ? "linear-gradient(135deg, #3182F6, #2462D8)"
+                                          : "#F1F5F9",
+                                color:      isApproved ? "#fff" : isActive ? "#fff" : "#94A3B8",
+                                cursor:     (isPending || isApproved || !canRequest) ? "not-allowed" : "pointer",
+                                boxShadow:  isApproved ? "0 1px 4px rgba(16,185,129,0.3)"
+                                          : isActive   ? "0 1px 4px rgba(49,130,246,0.3)" : "none",
+                              }}>
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                                {isApproved
+                                  ? <polyline points="20 6 9 17 4 12"/>
+                                  : <><polyline points="22 2 11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></>
+                                }
+                              </svg>
+                              {isApproved ? "승인됨" : isPending ? "요청됨 (검토 중)" : "입금확인요청"}
+                            </button>
+                          );
+                        })()}
                       </div>
                     </div>
                   </div>
