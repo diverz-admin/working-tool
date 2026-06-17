@@ -14,35 +14,40 @@ export async function GET(_req: Request, { params }: Params) {
   try {
     const { id } = await params;
 
-    const [group] = await db.select().from(projectGroups).where(eq(projectGroups.id, id));
-    if (!group) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    // 그룹 조회와 캠페인 조회는 독립적 — 병렬 실행으로 DB 라운드트립 1회 단축
+    const [[group], campaigns] = await Promise.all([
+      db.select().from(projectGroups).where(eq(projectGroups.id, id)),
+      db
+        .select({
+          id:             projects.id,
+          campaignName:   projects.campaignName,
+          projectType:    projects.projectType,
+          product:        projects.product,
+          status:         projects.status,
+          startDate:      projects.startDate,
+          endDate:        projects.endDate,
+          contractAmount: projects.contractAmount,
+          kpiSupply:      projects.kpiSupply,
+          kpiTax:         projects.kpiTax,
+          isExtended:     projects.isExtended,
+          placeLink:      projects.placeLink,
+          notes:          projects.notes,
+          assignedTeam:   projects.assignedTeam,
+          assignedPerson: projects.assignedPerson,
+          clientId:       projects.clientId,
+          advertiser:     projects.advertiser,
+          projectGroupId: projects.projectGroupId,
+          workEndDate:    max(projectRevenues.workEndDate),
+          revenueTotal:   count(projectRevenues.id),
+        })
+        .from(projects)
+        .leftJoin(projectRevenues, eq(projectRevenues.projectId, projects.id))
+        .where(eq(projects.projectGroupId, id))
+        .groupBy(projects.id)
+        .orderBy(desc(projects.createdAt)),
+    ]);
 
-    const campaigns = await db
-      .select({
-        id:             projects.id,
-        campaignName:   projects.campaignName,
-        projectType:    projects.projectType,
-        product:        projects.product,
-        status:         projects.status,
-        startDate:      projects.startDate,
-        endDate:        projects.endDate,
-        contractAmount: projects.contractAmount,
-        isExtended:     projects.isExtended,
-        placeLink:      projects.placeLink,
-        notes:          projects.notes,
-        assignedTeam:   projects.assignedTeam,
-        assignedPerson: projects.assignedPerson,
-        clientId:       projects.clientId,
-        advertiser:     projects.advertiser,
-        projectGroupId: projects.projectGroupId,
-        workEndDate:    max(projectRevenues.workEndDate),
-        revenueTotal:   count(projectRevenues.id),
-      })
-      .from(projects)
-      .leftJoin(projectRevenues, eq(projectRevenues.projectId, projects.id))
-      .where(eq(projects.projectGroupId, id))
-      .groupBy(projects.id)
-      .orderBy(desc(projects.createdAt));
+    if (!group) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
     const campaignIds = campaigns.map((c) => c.id);
 

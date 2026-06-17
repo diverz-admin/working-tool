@@ -953,7 +953,8 @@ function ProjectsInner() {
       setGroups(groups);
       setCampaignMap((prev) => {
         const n = new Map(prev);
-        for (const g of groups) if (Array.isArray(g.campaigns)) n.set(g.id, g.campaigns as Campaign[]);
+        // 빈 배열은 저장하지 않음 — has()가 true가 되어 아코디언 클릭 시 로드를 건너뛰는 버그 방지
+        for (const g of groups) if (Array.isArray(g.campaigns) && g.campaigns.length > 0) n.set(g.id, g.campaigns as Campaign[]);
         return n;
       });
       setWorkIncomplete(workIncompleteCount);
@@ -967,7 +968,7 @@ function ProjectsInner() {
         setGroups(groups);
         setCampaignMap((prev) => {
           const n = new Map(prev);
-          for (const g of groups) if (Array.isArray(g.campaigns)) n.set(g.id, g.campaigns as Campaign[]);
+          for (const g of groups) if (Array.isArray(g.campaigns) && g.campaigns.length > 0) n.set(g.id, g.campaigns as Campaign[]);
           return n;
         });
         setWorkIncomplete(workIncompleteCount);
@@ -991,6 +992,14 @@ function ProjectsInner() {
   useEffect(() => { loadStats(); }, [loadStats]);
   // 페이지 마운트 시 모달 정적 데이터(clients/products/users) 백그라운드 프리로드
   useEffect(() => { preloadModalInit(); }, []);
+  // 펼쳐진 행 중 campaignMap·loadingGroups에 없는 그룹 자동 로드
+  // deps 없음 — 렌더마다 체크해서 HMR/상태 desync 대응. 데이터 로드 완료 시 조건이 false가 되어 무한루프 없음
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    for (const id of expanded) {
+      if (!campaignMap.has(id) && !loadingGroups.has(id)) loadCampaigns(id);
+    }
+  });
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { if (teamParam) setActiveTab(teamParam); }, [teamParam]);
 
@@ -1072,17 +1081,15 @@ function ProjectsInner() {
   }
 
   function toggleExpand(groupId: string) {
+    const willExpand = !expanded.has(groupId);
     setExpanded((s) => {
       const n = new Set(s);
-      if (n.has(groupId)) {
-        n.delete(groupId);
-      } else {
-        n.add(groupId);
-        // 초기 로드 시 사전 캐시되어 있으므로 대부분 즉시 표시
-        if (!campaignMap.has(groupId)) loadCampaigns(groupId);
-      }
+      if (n.has(groupId)) n.delete(groupId);
+      else n.add(groupId);
       return n;
     });
+    // 업데이터 함수 밖에서 호출해야 setCampaignMap이 정상 적용됨
+    if (willExpand && !campaignMap.has(groupId)) loadCampaigns(groupId);
   }
 
   // 캠페인 복사
