@@ -965,7 +965,12 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
               {(() => {
                 const contractKey = "__contract__";
                 const cs = confirmStatuses[contractKey];
-                const canRequest = Boolean(effectiveTotal && form.assignedPerson);
+                const canRequest = Boolean(
+                  form.campaignName &&
+                  form.assignedPerson &&
+                  parseWon(form.contractAmount) &&
+                  totalRevenue > 0
+                );
 
                 return (
                   <div className="mb-4 p-4 rounded-2xl" style={{ background: "#F8FAFC", border: "1px solid #E9EBEF" }}>
@@ -1062,7 +1067,12 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                           <button
                             type="button"
                             disabled={!canRequest}
-                            title={!canRequest ? (effectiveTotal ? "담당자를 입력해주세요." : "총 매출 금액을 입력해주세요.") : ""}
+                            title={!canRequest ? (
+                              !form.campaignName ? "캠페인명을 입력해주세요." :
+                              !form.assignedPerson ? "담당자를 입력해주세요." :
+                              !parseWon(form.contractAmount) ? "매출 KPI(공급가 합계)를 입력해주세요." :
+                              "매출(판매) 데이터를 입력해주세요."
+                            ) : ""}
                             onClick={async () => {
                               const pid = await ensureSaved();
                               if (!pid) return;
