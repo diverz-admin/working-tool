@@ -960,7 +960,10 @@ function ProjectsInner() {
       .then((r) => r.json())
       .then((d) => {
         const rows: WorkCheckRow[] = d.rows ?? [];
-        setWorkRows(teamParam ? rows.filter((r) => r.assignedTeam === teamParam) : rows);
+        const filtered = teamParam ? rows.filter((r) => r.assignedTeam === teamParam) : rows;
+        setWorkRows(filtered);
+        // 팀별 미완료 건수로 배지 업데이트
+        if (teamParam) setWorkIncomplete(filtered.filter((r) => !r.workCompleted).length);
       })
       .finally(() => setWorkLoading(false));
   }
@@ -1055,6 +1058,9 @@ function ProjectsInner() {
   });
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { if (teamParam) setActiveTab(teamParam); }, [teamParam]);
+  // 팀 이동 시 작업확인 뷰 초기화 — 이전 팀 데이터가 그대로 보이는 버그 방지
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { setViewMode("목록"); setWorkRows([]); }, [teamParam]);
 
   // ?open=projectId → 해당 캠페인 모달 자동 오픈
   useEffect(() => {

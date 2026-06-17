@@ -77,6 +77,13 @@ export async function GET(req: Request) {
       teamMonthMap.get(team)![monthIdx].total += total;
     }
 
+    // KPI 설정된 팀도 revenue 없이 포함 (revenue 0 팀이 빠져 전체 합산 데이터가 표시되는 버그 방지)
+    for (const k of kpiRows) {
+      if (k.team && k.team !== "전체" && !teamMonthMap.has(k.team)) {
+        teamMonthMap.set(k.team, Array.from({ length: 12 }, () => ({ total: 0 })));
+      }
+    }
+
     const rows: { month: string; team: string | null; total: number }[] = [];
     for (const [team, months] of teamMonthMap.entries()) {
       months.forEach((m, i) => {
