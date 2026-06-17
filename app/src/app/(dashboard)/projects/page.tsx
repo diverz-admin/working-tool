@@ -840,6 +840,8 @@ function fetchGroups(): Promise<GroupsData> {
       const data: GroupsData = { groups: d.groups ?? [], workIncompleteCount: d.workIncompleteCount ?? 0 };
       _groupsCache = { data, ts: Date.now() };
       _groupsPending = null;
+      // 그룹 목록 확보 즉시 모든 캠페인 백그라운드 프리패치
+      for (const g of data.groups) fetchGroupCampaigns(g.id);
       return data;
     })
     .catch(() => { _groupsPending = null; return { groups: [], workIncompleteCount: 0 }; });
@@ -849,6 +851,29 @@ fetchGroups(); // 모듈 로드 즉시 선행 fetch (Next.js Link hover prefetch
 
 const _statsCacheMap = new Map<string, { data: RevenueStats; ts: number }>();
 const STATS_TTL = 60_000;
+
+/* ── 그룹별 캠페인 모듈 레벨 캐시 ── */
+const _campaignCacheMap = new Map<string, { data: Campaign[]; ts: number }>();
+const _campaignPendingMap = new Map<string, Promise<Campaign[]>>();
+const CAMPAIGN_TTL = 30_000;
+
+function fetchGroupCampaigns(groupId: string): Promise<Campaign[]> {
+  const hit = _campaignCacheMap.get(groupId);
+  if (hit && Date.now() - hit.ts < CAMPAIGN_TTL) return Promise.resolve(hit.data);
+  const existing = _campaignPendingMap.get(groupId);
+  if (existing) return existing;
+  const p = fetch(`/api/project-groups/${groupId}`)
+    .then(r => r.json())
+    .then((d: { campaigns?: Campaign[] }) => {
+      const campaigns = (d.campaigns ?? []) as Campaign[];
+      _campaignCacheMap.set(groupId, { data: campaigns, ts: Date.now() });
+      _campaignPendingMap.delete(groupId);
+      return campaigns;
+    })
+    .catch(err => { _campaignPendingMap.delete(groupId); throw err; });
+  _campaignPendingMap.set(groupId, p);
+  return p;
+}
 
 function ProjectsInner() {
   const searchParams   = useSearchParams();
@@ -1027,13 +1052,23 @@ function ProjectsInner() {
     if (groupId) setActiveCampGroup(groupId);
   }
 
-  // 그룹 캠페인 로드 (펼칠 때)
-  async function loadCampaigns(groupId: string, force = false) {
-    if (!force && campaignMap.has(groupId)) return;
-    setLoadingGroups((s) => new Set(s).add(groupId));
-    const d = await fetch(`/api/project-groups/${groupId}`).then((r) => r.json());
-    setCampaignMap((m) => new Map(m).set(groupId, d.campaigns ?? []));
-    setLoadingGroups((s) => { const n = new Set(s); n.delete(groupId); return n; });
+  // 그룹 캠페인 로드 (펼칠 때) — 모듈 캐시 히트 시 즉시 반환
+  function loadCampaigns(groupId: string, force = false) {
+    if (force) {
+      _campaignCacheMap.delete(groupId);
+      _campaignPendingMap.delete(groupId);
+    } else {
+      const hit = _campaignCacheMap.get(groupId);
+      if (hit && Date.now() - hit.ts < CAMPAIGN_TTL) {
+        setCampaignMap(m => new Map(m).set(groupId, hit.data));
+        return;
+      }
+    }
+    setLoadingGroups(s => new Set(s).add(groupId));
+    fetchGroupCampaigns(groupId)
+      .then(campaigns => setCampaignMap(m => new Map(m).set(groupId, campaigns)))
+      .catch(() => {})
+      .finally(() => setLoadingGroups(s => { const n = new Set(s); n.delete(groupId); return n; }));
   }
 
   function toggleExpand(groupId: string) {
@@ -1567,7 +1602,7 @@ function ProjectsInner() {
                       key={`group-${g.id}`}
                       className="border-t group cursor-pointer"
                       style={{ borderColor: "#E9EBEF", background: isOpen ? "rgba(49,130,246,0.04)" : "transparent" }}
-                      onMouseEnter={(e) => { if (!isOpen) (e.currentTarget as HTMLElement).style.background = "rgba(49,130,246,0.02)"; }}
+                      onMouseEnter={(e) => { if (!isOpen) (e.currentTarget as HTMLElement).style.background = "rgba(49,130,246,0.02)"; fetchGroupCampaigns(g.id); }}
                       onMouseLeave={(e) => { if (!isOpen) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
                       onClick={() => toggleExpand(g.id)}
                     >
