@@ -979,8 +979,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                 const cs = confirmStatuses[contractKey];
                 const canRequest = Boolean(
                   (isEdit || isFormValid) &&
-                  form.campaignName &&
-                  effectiveTotal > 0
+                  form.campaignName
                 );
 
                 return (
@@ -1079,50 +1078,54 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                               title={(!isPending && !isApproved && !canRequest) ? (
                                 !form.campaignName ? "캠페인명을 입력해주세요." :
                                 !isFormValid && !isEdit ? `기본 정보를 모두 입력해주세요: ${missingFields.filter(f => f.key !== "campaignName").map(f => f.label).join(", ")}` :
-                                "매출(판매) 데이터 또는 계약금액을 입력해주세요."
+                                ""
                               ) : ""}
                               onClick={async () => {
-                                const pid = await ensureSaved();
-                                if (!pid) return;
-                                let clientBusinessNumber = "", clientEmail = "", clientIndustry = "", clientCategory = "";
-                                if (form.clientId) {
-                                  try {
-                                    const res = await fetch(`/api/clients/${form.clientId}`);
-                                    const { client } = await res.json();
-                                    clientBusinessNumber = client?.businessNumber ?? "";
-                                    clientEmail          = client?.contactEmail  ?? "";
-                                    clientIndustry       = client?.industry      ?? "";
-                                    clientCategory       = client?.category      ?? "";
-                                  } catch {}
+                                try {
+                                  const pid = await ensureSaved();
+                                  if (!pid) return;
+                                  let clientBusinessNumber = "", clientEmail = "", clientIndustry = "", clientCategory = "";
+                                  if (form.clientId) {
+                                    try {
+                                      const res = await fetch(`/api/clients/${form.clientId}`);
+                                      const { client } = await res.json();
+                                      clientBusinessNumber = client?.businessNumber ?? "";
+                                      clientEmail          = client?.contactEmail  ?? "";
+                                      clientIndustry       = client?.industry      ?? "";
+                                      clientCategory       = client?.category      ?? "";
+                                    } catch {}
+                                  }
+                                  const clientInfo = clients.find((c) => c.id === form.clientId);
+                                  const newReq = await addConfirmRequest({
+                                    projectId:      pid,
+                                    rowKey:         contractKey,
+                                    clientId:       form.clientId,
+                                    assignedTeam:   form.assignedTeam || null,
+                                    projectName:    form.campaignName || "미지정",
+                                    requester:      form.assignedPerson || "—",
+                                    productName:    "계약금액 일괄",
+                                    description:    form.campaignName || "",
+                                    quantity:       "1",
+                                    amount:         `₩${effectiveTotal.toLocaleString()}`,
+                                    workStartDate:  form.startDate || "",
+                                    workEndDate:    form.endDate || "",
+                                    clientName:     clientInfo?.companyName || form.advertiser || "—",
+                                    clientBusinessNumber,
+                                    clientEmail,
+                                    clientIndustry,
+                                    clientCategory,
+                                    dueDate:        form.startDate || "",
+                                    depositAccount: revenuesRef.current.find(r => r.depositAccount)?.depositAccount || "",
+                                    depositorName:  clientInfo?.advertiserName || "",
+                                  });
+                                  setConfirmStatuses((p) => ({ ...p, [contractKey]: { status: "대기", requestId: newReq.id } }));
+                                  invalidateProjectCache(pid);
+                                  window.dispatchEvent(new Event("approval-request-added"));
+                                  onClose();
+                                  router.push("/approval/confirm");
+                                } catch (err) {
+                                  setError(err instanceof Error ? err.message : "입금확인 요청에 실패했습니다.");
                                 }
-                                const clientInfo = clients.find((c) => c.id === form.clientId);
-                                const newReq = await addConfirmRequest({
-                                  projectId:      pid,
-                                  rowKey:         contractKey,
-                                  clientId:       form.clientId,
-                                  assignedTeam:   form.assignedTeam || null,
-                                  projectName:    form.campaignName || "미지정",
-                                  requester:      form.assignedPerson || "—",
-                                  productName:    "계약금액 일괄",
-                                  description:    form.campaignName || "",
-                                  quantity:       "1",
-                                  amount:         `₩${effectiveTotal.toLocaleString()}`,
-                                  workStartDate:  form.startDate || "",
-                                  workEndDate:    form.endDate || "",
-                                  clientName:     clientInfo?.companyName || form.advertiser || "—",
-                                  clientBusinessNumber,
-                                  clientEmail,
-                                  clientIndustry,
-                                  clientCategory,
-                                  dueDate:        form.startDate || "",
-                                  depositAccount: revenuesRef.current.find(r => r.depositAccount)?.depositAccount || "",
-                                  depositorName:  clientInfo?.advertiserName || "",
-                                });
-                                setConfirmStatuses((p) => ({ ...p, [contractKey]: { status: "대기", requestId: newReq.id } }));
-                                invalidateProjectCache(pid);
-                                window.dispatchEvent(new Event("approval-request-added"));
-                                onClose();
-                                router.push("/approval/confirm");
                               }}
                               className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg whitespace-nowrap transition-all"
                               style={{
