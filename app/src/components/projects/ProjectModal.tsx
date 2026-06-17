@@ -1202,7 +1202,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                     <table className="w-full text-xs" style={{ minWidth: 1200 }}>
                       <thead>
                         <tr style={{ background: "#F8FAFC" }}>
-                          {["#","담당자","품명","개수","공급가","세액","합계","입금계좌","입금날짜","계산서날짜","작업시작일","작업만료일","잔여일","완료",""].map((h, idx) => (
+                          {["#","담당자","품명","개수","공급가","세액","합계","입금계좌","입금날짜","계산서날짜","작업시작일","작업만료일","잔여일",""].map((h, idx) => (
                             <th key={idx} className="px-2 py-2.5 text-left font-semibold whitespace-nowrap" style={{ color: "#64748B", background: "#F8FAFC", borderBottom: "2px solid #E9EBEF" }}>{h}</th>
                           ))}
                         </tr>
@@ -1212,7 +1212,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                           const sectionRows = revenues.filter(r => (r.sectionLabel || "1주") === section);
                           return [
                             <tr key={`sh-${section}`} style={{ background: "#EFF6FF" }}>
-                              <td colSpan={15} className="px-3 py-1">
+                              <td colSpan={14} className="px-3 py-1">
                                 <div className="flex items-center justify-between">
                                   <span className="font-bold text-xs" style={{ color: "#3182F6" }}>{section}</span>
                                   <button
@@ -1306,9 +1306,6 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                               </td>
                               <td className="px-2 py-1.5 font-medium text-center" style={{ color: remDays === null ? "#CBD5E1" : remDays <= 1 ? "#EF4444" : remDays <= 3 ? "#F97316" : remDays <= 7 ? "#EAB308" : "#475569" }}>
                                 {remDays === null ? "—" : remDays < 0 ? `+${Math.abs(remDays)}` : remDays === 0 ? "D-0" : `D-${remDays}`}
-                              </td>
-                              <td className="px-2 py-1.5 text-center">
-                                <input type="checkbox" checked={r.workCompleted} onChange={(e) => updateRev(r.localId,"workCompleted",e.target.checked)} className="w-3.5 h-3.5 rounded accent-[#3182F6]" />
                               </td>
                               <td className="px-1 py-1">
                                 <button
