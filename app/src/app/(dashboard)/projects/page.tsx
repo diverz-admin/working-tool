@@ -1020,9 +1020,9 @@ function ProjectsInner() {
     await fetch(`/api/projects/${campaignId}/copy`, { method: "POST" });
     setCopyingCamp(null);
     invalidateProjectCache(campaignId);
+    setGroups((prev) => prev.map((g) => g.id === groupId ? { ...g, campaignCount: g.campaignCount + 1 } : g));
     setCampaignMap((m) => { const n = new Map(m); n.delete(groupId); return n; });
     loadCampaigns(groupId, true);
-    load();
   }
 
   // 캠페인 삭제

@@ -36,30 +36,31 @@ export async function POST(_req: Request, { params }: Params) {
       extensionCount: 0,
     }).returning();
 
-    if (revenues.length > 0) {
-      await db.insert(projectRevenues).values(
-        revenues.map(({ id: _id, createdAt: _c, workCompleted: _wc, completedAt: _ca, completedQty: _cq, ...r }) => ({
-          ...r,
-          projectId:    copied.id,
-          workCompleted: false,
-          completedAt:  null,
-          completedQty: 0,
-        }))
-      );
-    }
-
-    if (costs.length > 0) {
-      await db.insert(projectCosts).values(
-        costs.map(({ id: _id, createdAt: _c, workCompleted: _wc, isApproved: _ia, invoiceFileUrl: _fu, invoiceFileName: _fn, ...r }) => ({
-          ...r,
-          projectId:      copied.id,
-          workCompleted:  false,
-          isApproved:     false,
-          invoiceFileUrl:  null,
-          invoiceFileName: null,
-        }))
-      );
-    }
+    await Promise.all([
+      revenues.length > 0
+        ? db.insert(projectRevenues).values(
+            revenues.map(({ id: _id, createdAt: _c, workCompleted: _wc, completedAt: _ca, completedQty: _cq, ...r }) => ({
+              ...r,
+              projectId:     copied.id,
+              workCompleted: false,
+              completedAt:   null,
+              completedQty:  0,
+            }))
+          )
+        : Promise.resolve(),
+      costs.length > 0
+        ? db.insert(projectCosts).values(
+            costs.map(({ id: _id, createdAt: _c, workCompleted: _wc, isApproved: _ia, invoiceFileUrl: _fu, invoiceFileName: _fn, ...r }) => ({
+              ...r,
+              projectId:       copied.id,
+              workCompleted:   false,
+              isApproved:      false,
+              invoiceFileUrl:  null,
+              invoiceFileName: null,
+            }))
+          )
+        : Promise.resolve(),
+    ]);
 
     return NextResponse.json({ project: copied });
   } catch (err) {
