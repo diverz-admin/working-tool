@@ -309,7 +309,7 @@ function CampaignRow({ c, index, onEdit, onDelete, onCopy, deleting, copying }: 
           <svg width="8" height="8" viewBox="0 0 8 8" fill="none" style={{ flexShrink: 0, color: "#CBD5E1" }}>
             <path d="M1 1 L1 7 L7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
           </svg>
-          <span className="text-sm font-medium" style={{ color: "#64748B" }}>캠페인 {index + 1}</span>
+          <span className="text-sm font-medium" style={{ color: "#64748B" }}>{c.campaignName || `캠페인 ${index + 1}`}</span>
           {c.isExtended && (
             <span className="text-xs font-bold px-1.5 py-0.5 rounded-md"
               style={{ background: "rgba(99,102,241,0.1)", color: "#6366F1" }}>연장</span>
