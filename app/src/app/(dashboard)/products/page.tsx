@@ -145,11 +145,32 @@ function TableHead() {
   );
 }
 
+/* ── 모듈 레벨 캐시 ── */
+type ProductsCache = { products: Product[]; sections: Section[] };
+let _cache: { data: ProductsCache; ts: number } | null = null;
+let _pending: Promise<ProductsCache> | null = null;
+const CACHE_TTL = 60_000;
+
+function fetchProducts(): Promise<ProductsCache> {
+  if (_pending) return _pending;
+  _pending = Promise.all([
+    fetch("/api/products").then(r => r.json()),
+    fetch("/api/product-sections").then(r => r.json()),
+  ]).then(([pd, sd]) => {
+    const data = { products: pd.products ?? [], sections: sd.sections ?? [] };
+    _cache = { data, ts: Date.now() };
+    _pending = null;
+    return data;
+  }).catch(() => { _pending = null; return { products: [], sections: [] }; });
+  return _pending;
+}
+fetchProducts();
+
 /* ── 메인 ── */
 export default function ProductsPage() {
-  const [all,        setAll]        = useState<Product[]>([]);
-  const [sections,   setSections]   = useState<Section[]>([]);
-  const [loading,    setLoading]    = useState(true);
+  const [all,        setAll]        = useState<Product[]>(_cache?.data.products ?? []);
+  const [sections,   setSections]   = useState<Section[]>(_cache?.data.sections ?? []);
+  const [loading,    setLoading]    = useState(!_cache);
   const [editId,     setEditId]     = useState<string|null>(null);
   const [editForm,   setEditForm]   = useState<RowForm>(emptyForm());
   const [addCat,     setAddCat]     = useState<string|null>(null);
@@ -160,14 +181,15 @@ export default function ProductsPage() {
   const [editSecId,  setEditSecId]  = useState<string|null>(null);
   const [editSecName,setEditSecName]= useState("");
 
-  const load = useCallback(()=>{
+  const load = useCallback((invalidate = false) => {
+    if (!invalidate && _cache && Date.now() - _cache.ts < CACHE_TTL) {
+      setAll(_cache.data.products); setSections(_cache.data.sections); setLoading(false); return;
+    }
+    if (invalidate) _cache = null;
     setLoading(true);
-    Promise.all([
-      fetch("/api/products").then(r=>r.json()),
-      fetch("/api/product-sections").then(r=>r.json()),
-    ]).then(([pd,sd])=>{ setAll(pd.products??[]); setSections(sd.sections??[]); })
-    .finally(()=>setLoading(false));
-  },[]);
+    fetchProducts().then(({ products, sections }) => { setAll(products); setSections(sections); })
+      .finally(() => setLoading(false));
+  }, []);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(()=>{ load(); },[load]);
@@ -183,7 +205,7 @@ export default function ProductsPage() {
   async function saveEdit(id: string) {
     setSaving(true);
     await fetch(`/api/products/${id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:editForm.name,vendor:editForm.vendor,vendorBankAccount:editForm.vendorBankAccount,costPrice:parseWon(editForm.costPrice),salePrice:parseWon(editForm.salePrice),notes:editForm.notes})});
-    setSaving(false); setEditId(null); load();
+    setSaving(false); setEditId(null); load(true);
   }
 
   async function saveAdd(cat: string) {
@@ -191,26 +213,26 @@ export default function ProductsPage() {
     setSaving(true);
     const catProducts = all.filter(p=>p.category===cat);
     await fetch("/api/products",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({category:cat,rowNum:catProducts.length+1,name:addForm.name,vendor:addForm.vendor,vendorBankAccount:addForm.vendorBankAccount,costPrice:parseWon(addForm.costPrice),salePrice:parseWon(addForm.salePrice),notes:addForm.notes})});
-    setSaving(false); setAddCat(null); load();
+    setSaving(false); setAddCat(null); load(true);
   }
 
-  async function handleDelete(id: string) { await fetch(`/api/products/${id}`,{method:"DELETE"}); load(); }
+  async function handleDelete(id: string) { await fetch(`/api/products/${id}`,{method:"DELETE"}); load(true); }
 
   async function handleAddSection(name: string, accent: string) {
     await fetch("/api/product-sections",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name,accent,tabType:"purchase"})});
-    load();
+    load(true);
   }
 
   async function handleRenameSection(id: string, name: string) {
     if(!name.trim()) return;
     await fetch(`/api/product-sections/${id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({name})});
-    setEditSecId(null); load();
+    setEditSecId(null); load(true);
   }
 
   async function handleDeleteSection(sec: Section) {
     if(all.some(p=>p.category===sec.name)){ alert(`"${sec.name}" 섹션에 상품이 있어 삭제할 수 없습니다.\n상품을 먼저 삭제해주세요.`); return; }
     await fetch(`/api/product-sections/${sec.id}`,{method:"DELETE"});
-    setDelSecId(null); load();
+    setDelSecId(null); load(true);
   }
 
   return (

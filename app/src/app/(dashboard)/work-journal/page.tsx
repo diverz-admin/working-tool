@@ -458,6 +458,26 @@ function DayJournalList({
 
 // ─── 메인 페이지 ──────────────────────────────────────────
 
+/* ── 폼 옵션 캐시 (광고주·프로젝트 드롭다운용) ── */
+type FormOptions = { clients: Client[]; projects: Project[] };
+let _formCache: { data: FormOptions; ts: number } | null = null;
+let _formPending: Promise<FormOptions> | null = null;
+
+function fetchFormOptions(): Promise<FormOptions> {
+  if (_formPending) return _formPending;
+  _formPending = fetch("/api/notes-init")
+    .then((r) => r.json())
+    .then((d) => {
+      const data = { clients: d.clients ?? [], projects: d.projects ?? [] };
+      _formCache = { data, ts: Date.now() };
+      _formPending = null;
+      return data;
+    })
+    .catch(() => { _formPending = null; return { clients: [], projects: [] }; });
+  return _formPending;
+}
+fetchFormOptions();
+
 export default function WorkJournalPage() {
   const now = new Date();
   const [year,  setYear]  = useState(now.getFullYear());
@@ -466,8 +486,8 @@ export default function WorkJournalPage() {
 
   const [journals,  setJournals]  = useState<Journal[]>([]);
   const [loading,   setLoading]   = useState(true);
-  const [clients,   setClients]   = useState<Client[]>([]);
-  const [projects,  setProjects]  = useState<Project[]>([]);
+  const [clients,   setClients]   = useState<Client[]>(_formCache?.data.clients ?? []);
+  const [projects,  setProjects]  = useState<Project[]>(_formCache?.data.projects ?? []);
 
   const [selectedDate,    setSelectedDate]    = useState<string | null>(null);
   const [selectedJournal, setSelectedJournal] = useState<Journal | null>(null);
@@ -486,8 +506,8 @@ export default function WorkJournalPage() {
   useEffect(() => { loadJournals(); }, [loadJournals]);
 
   useEffect(() => {
-    fetch("/api/clients").then((r) => r.json()).then((d) => setClients(d.clients ?? []));
-    fetch("/api/projects").then((r) => r.json()).then((d) => setProjects(d.projects ?? []));
+    if (_formCache) { setClients(_formCache.data.clients); setProjects(_formCache.data.projects); return; }
+    fetchFormOptions().then(({ clients: c, projects: p }) => { setClients(c); setProjects(p); });
   }, []);
 
   // 날짜 → 일지 Map

@@ -368,24 +368,41 @@ function AddTrackerModal({
   );
 }
 
+/* ── 광고주 목록 캐시 ── */
+let _clientsCache: { data: Client[]; ts: number } | null = null;
+let _clientsPending: Promise<Client[]> | null = null;
+
+function fetchReportClients(): Promise<Client[]> {
+  if (_clientsPending) return _clientsPending;
+  _clientsPending = fetch("/api/notes-init")
+    .then((r) => r.json())
+    .then((d) => {
+      const data: Client[] = (d.clients ?? []).map((c: { id: string; companyName: string; status: string }) => c);
+      _clientsCache = { data, ts: Date.now() };
+      _clientsPending = null;
+      return data;
+    })
+    .catch(() => { _clientsPending = null; return []; });
+  return _clientsPending;
+}
+fetchReportClients();
+
 function ReportsInner() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const selectedClientId = searchParams.get("clientId");
 
-  const [clients, setClients] = useState<Client[]>([]);
+  const [clients, setClients] = useState<Client[]>(_clientsCache?.data ?? []);
   const [trackers, setTrackers] = useState<Tracker[]>([]);
-  const [loadingClients, setLoadingClients] = useState(true);
+  const [loadingClients, setLoadingClients] = useState(!_clientsCache);
   const [loadingTrackers, setLoadingTrackers] = useState(false);
   const [checkingAll, setCheckingAll] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [historyTracker, setHistoryTracker] = useState<Tracker | null>(null);
 
   useEffect(() => {
-    fetch("/api/clients")
-      .then((r) => r.json())
-      .then((d) => setClients(d.clients ?? []))
-      .finally(() => setLoadingClients(false));
+    if (_clientsCache) { setClients(_clientsCache.data); setLoadingClients(false); return; }
+    fetchReportClients().then((data) => setClients(data)).finally(() => setLoadingClients(false));
   }, []);
 
   const loadTrackers = useCallback(() => {
