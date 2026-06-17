@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { findShoppingRank } from "@/lib/naver/shopping";
 import { findPlaceRank } from "@/lib/naver/place";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function GET(req: NextRequest) {
   // Vercel Cron 요청 인증
