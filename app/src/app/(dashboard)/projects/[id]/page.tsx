@@ -153,6 +153,7 @@ function ProjectGroupPageInner() {
       id: client.id,
       status: client.status as "리드" | "진행" | "종료",
       companyName: client.companyName,
+      storeName: client.storeName ?? "",
       industry: client.industry ?? "",
       advertiserName: client.advertiserName ?? "",
       advertiserContact: client.advertiserContact ?? "",
