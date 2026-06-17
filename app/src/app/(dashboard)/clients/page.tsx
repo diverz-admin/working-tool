@@ -216,6 +216,18 @@ export default function ClientsPage() {
     return isAdmin;
   }
 
+  // 편집 클릭 시 notes·bizRegFileUrl 등 상세 데이터 포함해 fetch (목록 API는 경량화)
+  async function openEdit(c: Client) {
+    const res = await fetch(`/api/clients/${c.id}`);
+    const { client } = await res.json();
+    setEditClient({
+      ...toFormData(c),
+      notes:          client.notes          ?? "",
+      bizRegFileUrl:  client.bizRegFileUrl  ?? null,
+      bizRegFileName: client.bizRegFileName ?? null,
+    });
+  }
+
   const teamBase = teamFilter === "전체"
     ? clients
     : clients.filter((c) => c.assignedTeam === teamFilter);
@@ -393,7 +405,7 @@ export default function ClientsPage() {
                 {teamClients.length === 0 ? (
                   <div className="py-8 text-center text-xs" style={{ color: "#CBD5E1" }}>등록된 광고주가 없습니다.</div>
                 ) : (
-                  <ClientTable clients={teamClients} deleting={deleting} onEdit={(c) => setEditClient(toFormData(c))} onDelete={(c) => setDeleteTarget(c)} canDelete={canDelete} />
+                  <ClientTable clients={teamClients} deleting={deleting} onEdit={(c) => openEdit(c)} onDelete={(c) => setDeleteTarget(c)} canDelete={canDelete} />
                 )}
               </div>
             );
@@ -500,10 +512,10 @@ export default function ClientsPage() {
         {error   && <div className="py-16 text-center text-sm" style={{ color: "#EF4444" }}>데이터 로드 실패: {error}</div>}
         {!loading && !error && (
           <div className="overflow-x-auto">
-            {activeTab === "전체" && <AllTable    data={filtered} onEdit={(c) => setEditClient(toFormData(c))} onDelete={(c) => setDeleteTarget(c)} deleting={deleting} canDelete={canDelete} />}
-            {activeTab === "리드" && <LeadTable   data={filtered} onEdit={(c) => setEditClient(toFormData(c))} onDelete={(c) => setDeleteTarget(c)} deleting={deleting} canDelete={canDelete} />}
-            {activeTab === "진행" && <ActiveTable data={filtered} onEdit={(c) => setEditClient(toFormData(c))} onDelete={(c) => setDeleteTarget(c)} deleting={deleting} canDelete={canDelete} />}
-            {activeTab === "종료" && <EndedTable  data={filtered} onEdit={(c) => setEditClient(toFormData(c))} onDelete={(c) => setDeleteTarget(c)} deleting={deleting} canDelete={canDelete} />}
+            {activeTab === "전체" && <AllTable    data={filtered} onEdit={(c) => openEdit(c)} onDelete={(c) => setDeleteTarget(c)} deleting={deleting} canDelete={canDelete} />}
+            {activeTab === "리드" && <LeadTable   data={filtered} onEdit={(c) => openEdit(c)} onDelete={(c) => setDeleteTarget(c)} deleting={deleting} canDelete={canDelete} />}
+            {activeTab === "진행" && <ActiveTable data={filtered} onEdit={(c) => openEdit(c)} onDelete={(c) => setDeleteTarget(c)} deleting={deleting} canDelete={canDelete} />}
+            {activeTab === "종료" && <EndedTable  data={filtered} onEdit={(c) => openEdit(c)} onDelete={(c) => setDeleteTarget(c)} deleting={deleting} canDelete={canDelete} />}
             {filtered.length === 0 && (
               <div className="py-16 text-center text-sm" style={{ color: "#94A3B8" }}>검색 결과가 없습니다.</div>
             )}
