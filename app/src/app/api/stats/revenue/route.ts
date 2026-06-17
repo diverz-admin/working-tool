@@ -30,10 +30,12 @@ export async function GET(req: Request) {
                 isNotNull(projectRevenues.paymentDate),
                 isNotNull(projectRevenues.invoiceDate),
                 sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`,
+                teamParam ? eq(projects.assignedTeam, teamParam) : undefined,
               )
             : and(
                 isNotNull(projectRevenues.paymentDate),
                 sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`,
+                teamParam ? eq(projects.assignedTeam, teamParam) : undefined,
               )
         )
         .groupBy(projects.id, projects.startDate, projects.assignedTeam, projects.contractAmount),
