@@ -319,7 +319,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
             paymentDate:    String(r.paymentDate ?? ""),
             invoiceDate:    String(r.invoiceDate ?? ""),
             workStartDate:  String(r.workStartDate ?? ""),
-            workEndDate:    completed ? String(r.workEndDate ?? "") : (projectEndDate || String(r.workEndDate ?? "")),
+            workEndDate:    String(r.workEndDate ?? "") || (!completed ? projectEndDate : ""),
             completedQty:   r.completedQty != null ? String(r.completedQty) : "",
             workCompleted:  Boolean(r.workCompleted),
             depositAccount: String(r.depositAccount ?? ""),
@@ -363,14 +363,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
 
   function setField(f: keyof ProjectFormData, v: string) {
     setForm((p) => ({ ...p, [f]: v }));
-    // 관리형/보장형: endDate 변경 시 미완료 매출행 workEndDate 자동 동기화
-    if (f === "endDate" && v && (form.projectType === "관리형" || form.projectType === "보장형")) {
-      setRevenues((p) => p.map((r) => r.workCompleted ? r : { ...r, workEndDate: v }));
-    }
-    // 관리형/보장형으로 유형 전환 시 기존 미완료 매출행 workEndDate 동기화
-    if (f === "projectType" && (v === "관리형" || v === "보장형") && form.endDate) {
-      setRevenues((p) => p.map((r) => r.workCompleted ? r : { ...r, workEndDate: form.endDate }));
-    }
+    // 작업만료일은 계약 종료일과 별개 — 자동 동기화 없음
   }
 
   /* ── 보장형 계약 종료일 콜백 ── */
@@ -378,7 +371,6 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
     setGuaranteeProgress(qualifyingDays);
     if (calcEndDate) {
       setForm((p) => p.projectType === "보장형" ? { ...p, endDate: calcEndDate } : p);
-      setRevenues((p) => p.map((r) => r.workCompleted ? r : { ...r, workEndDate: calcEndDate }));
     }
   }, []);
 
