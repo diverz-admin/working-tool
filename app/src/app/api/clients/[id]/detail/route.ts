@@ -24,6 +24,7 @@ export async function GET(_req: Request, { params }: Params) {
         id: c.id,
         status: c.status,
         companyName: c.companyName,
+        storeName: c.storeName ?? "",
         industry: c.industry ?? "",
         advertiserName: c.contactName ?? "",
         advertiserContact: c.contactPhone ?? "",

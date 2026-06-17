@@ -18,6 +18,7 @@ interface Client {
   status: Status;
   inboundDate: string;
   companyName: string;
+  storeName?: string;
   industry: string;
   advertiserName: string;
   advertiserContact: string;
@@ -103,6 +104,7 @@ function toFormData(c: Client): ClientFormData {
     id: c.id,
     status: c.status,
     companyName: c.companyName,
+    storeName: c.storeName ?? "",
     industry: c.industry ?? "",
     advertiserName: c.advertiserName ?? "",
     advertiserContact: c.advertiserContact ?? "",
@@ -127,7 +129,7 @@ type ViewMode = "team" | "list";
 
 function emptyClientForm(assignedTeam = ""): ClientFormData {
   return {
-    status: "리드", companyName: "", industry: "", advertiserName: "",
+    status: "리드", companyName: "", storeName: "", industry: "", advertiserName: "",
     advertiserContact: "", contactEmail: "", businessNumber: "", category: "",
     products: [], monthlyAvg: "", inboundDate: "", inboundRoute: "",
     endDate: "", endReason: "", assignedTeam, assignedPerson: "", notes: "",

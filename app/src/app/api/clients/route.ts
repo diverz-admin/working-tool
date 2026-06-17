@@ -14,6 +14,7 @@ export async function POST(req: Request) {
       .values({
         status:         body.status ?? "리드",
         companyName:    body.companyName,
+        storeName:      body.storeName || null,
         industry:       body.industry || null,
         contactName:    body.advertiserName || null,
         contactPhone:   body.advertiserContact || null,
@@ -47,6 +48,7 @@ export async function GET() {
         status:         clients.status,
         inboundDate:    clients.inboundDate,
         companyName:    clients.companyName,
+        storeName:      clients.storeName,
         industry:       clients.industry,
         contactName:    clients.contactName,
         contactPhone:   clients.contactPhone,
@@ -79,6 +81,7 @@ export async function GET() {
       status:           c.status as "리드" | "진행" | "종료",
       inboundDate:      c.inboundDate ?? "",
       companyName:      c.companyName,
+      storeName:        c.storeName ?? "",
       industry:         c.industry ?? "",
       advertiserName:   c.contactName ?? "",
       advertiserContact: c.contactPhone ?? "",

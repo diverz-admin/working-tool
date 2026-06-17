@@ -13,6 +13,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         id: c.id,
         status: c.status,
         companyName: c.companyName,
+        storeName: c.storeName ?? "",
         industry: c.industry ?? "",
         advertiserName: c.contactName ?? "",
         advertiserContact: c.contactPhone ?? "",
@@ -48,6 +49,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       .set({
         status:         body.status,
         companyName:    body.companyName,
+        storeName:      body.storeName || null,
         industry:       body.industry || null,
         contactName:    body.advertiserName || null,
         contactPhone:   body.advertiserContact || null,

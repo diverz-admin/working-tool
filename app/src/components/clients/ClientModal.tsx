@@ -9,6 +9,7 @@ export interface ClientFormData {
   id?: string;
   status: Status;
   companyName: string;
+  storeName: string;
   industry: string;
   advertiserName: string;
   advertiserContact: string;
@@ -83,7 +84,7 @@ function emptyUrl(): UrlRow {
 
 function emptyForm(): ClientFormData {
   return {
-    status: "리드", companyName: "", industry: "", advertiserName: "",
+    status: "리드", companyName: "", storeName: "", industry: "", advertiserName: "",
     advertiserContact: "", contactEmail: "", businessNumber: "", category: "",
     products: [], monthlyAvg: "", inboundDate: "", inboundRoute: "",
     endDate: "", endReason: "", assignedTeam: "", assignedPerson: "", notes: "",
@@ -193,14 +194,19 @@ export default function ClientModal({ initial, onClose, onSaved, onDelete, onVie
   }
 
   function validateFields(): boolean {
-    if (form.contactEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.contactEmail.trim())) {
+    if (!form.advertiserContact.trim()) { setError("연락처는 필수입니다."); return false; }
+    if (!form.contactEmail.trim()) { setError("이메일은 필수입니다."); return false; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.contactEmail.trim())) {
       setError("이메일 형식이 올바르지 않습니다. (예: email@example.com)");
       return false;
     }
-    if (form.businessNumber && !/^\d{3}-\d{2}-\d{5}$/.test(form.businessNumber.trim())) {
+    if (!form.businessNumber.trim()) { setError("사업자번호는 필수입니다."); return false; }
+    if (!/^\d{3}-\d{2}-\d{5}$/.test(form.businessNumber.trim())) {
       setError("사업자번호 형식이 올바르지 않습니다. (예: 000-00-00000)");
       return false;
     }
+    if (!form.assignedTeam) { setError("담당팀은 필수입니다."); return false; }
+    if (!form.assignedPerson.trim()) { setError("담당자는 필수입니다."); return false; }
     return true;
   }
 
@@ -305,11 +311,15 @@ export default function ClientModal({ initial, onClose, onSaved, onDelete, onVie
             </div>
           </div>
 
-          {/* 업체명 + 업종 */}
-          <div className="grid grid-cols-2 gap-4">
+          {/* 업체명 + 스토어명 + 업종 */}
+          <div className="grid grid-cols-3 gap-4">
             <div>
               <label className={labelCls} style={labelStyle}>업체명 *</label>
               <input type="text" value={form.companyName} onChange={(e) => setField("companyName", e.target.value)} placeholder="업체명 입력" className={inputCls} style={inputStyle} />
+            </div>
+            <div>
+              <label className={labelCls} style={labelStyle}>스토어명</label>
+              <input type="text" value={form.storeName} onChange={(e) => setField("storeName", e.target.value)} placeholder="스토어명 입력" className={inputCls} style={inputStyle} />
             </div>
             <div>
               <label className={labelCls} style={labelStyle}>업종</label>
@@ -324,15 +334,15 @@ export default function ClientModal({ initial, onClose, onSaved, onDelete, onVie
               <input type="text" value={form.advertiserName} onChange={(e) => setField("advertiserName", e.target.value)} placeholder="광고주명" className={inputCls} style={inputStyle} />
             </div>
             <div>
-              <label className={labelCls} style={labelStyle}>연락처</label>
-              <input type="text" value={form.advertiserContact} onChange={(e) => setField("advertiserContact", e.target.value)} placeholder="010-0000-0000" className={inputCls} style={inputStyle} />
+              <label className={labelCls} style={labelStyle}>연락처 *</label>
+              <input type="text" value={form.advertiserContact} onChange={(e) => { setField("advertiserContact", e.target.value); setError(null); }} placeholder="010-0000-0000" className={inputCls} style={inputStyle} />
             </div>
           </div>
 
           {/* 이메일 + 사업자번호 */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className={labelCls} style={labelStyle}>이메일</label>
+              <label className={labelCls} style={labelStyle}>이메일 *</label>
               <input
                 type="text"
                 value={form.contactEmail}
@@ -346,7 +356,7 @@ export default function ClientModal({ initial, onClose, onSaved, onDelete, onVie
               />
             </div>
             <div>
-              <label className={labelCls} style={labelStyle}>사업자번호</label>
+              <label className={labelCls} style={labelStyle}>사업자번호 *</label>
               <input
                 type="text"
                 value={form.businessNumber}
@@ -396,8 +406,8 @@ export default function ClientModal({ initial, onClose, onSaved, onDelete, onVie
           {/* 담당팀 + 담당자 */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className={labelCls} style={labelStyle}>담당팀</label>
-              <select value={form.assignedTeam} onChange={(e) => setField("assignedTeam", e.target.value)} className={inputCls} style={inputStyle}>
+              <label className={labelCls} style={labelStyle}>담당팀 *</label>
+              <select value={form.assignedTeam} onChange={(e) => { setField("assignedTeam", e.target.value); setError(null); }} className={inputCls} style={inputStyle}>
                 <option value="">선택 안 함</option>
                 <option value="영업 1팀">영업 1팀</option>
                 <option value="영업 2팀">영업 2팀</option>
@@ -405,8 +415,8 @@ export default function ClientModal({ initial, onClose, onSaved, onDelete, onVie
               </select>
             </div>
             <div>
-              <label className={labelCls} style={labelStyle}>담당자</label>
-              <input type="text" value={form.assignedPerson} onChange={(e) => setField("assignedPerson", e.target.value)} placeholder="예: 홍길동" className={inputCls} style={inputStyle} />
+              <label className={labelCls} style={labelStyle}>담당자 *</label>
+              <input type="text" value={form.assignedPerson} onChange={(e) => { setField("assignedPerson", e.target.value); setError(null); }} placeholder="예: 홍길동" className={inputCls} style={inputStyle} />
             </div>
           </div>
 

@@ -23,6 +23,7 @@ export const clients = pgTable("clients", {
   id:             uuid("id").primaryKey().defaultRandom(),
   status:         text("status").notNull().default("리드"),
   companyName:    text("company_name").notNull(),
+  storeName:      text("store_name"),
   industry:       text("industry"),
   contactName:    text("contact_name"),
   contactPhone:   text("contact_phone"),
