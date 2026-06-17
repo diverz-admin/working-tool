@@ -49,6 +49,7 @@ export async function GET(req: Request) {
         .where(and(
           eq(projectCosts.isApproved, true),
           sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`,
+          teamParam ? eq(projects.assignedTeam, teamParam) : undefined,
         ))
         .groupBy(sql`TO_CHAR(${projects.startDate}, 'YYYY-MM')`),
     ]);
