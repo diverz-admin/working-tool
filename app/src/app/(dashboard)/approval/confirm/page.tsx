@@ -209,23 +209,16 @@ export default function ConfirmPage() {
     return Array.from(map.entries()).sort((a, b) => b[0].localeCompare(a[0]));
   }, [filtered]);
 
+  // 계산서 미발행 항목 (대기·확인완료 모두 포함, 반려 제외)
   const pendingInvoice = useMemo(() => {
-    const confirmed = items.filter((i) => i.status === "확인완료" && !i.taxInvoiceDate);
-    if (selectedDate) return confirmed.filter((i) => i.requestedAt.slice(0, 10) === selectedDate);
-    if (selectedMonth) return confirmed.filter((i) => i.requestedAt.startsWith(selectedMonth));
-    return confirmed;
-  }, [items, selectedMonth, selectedDate]);
-
-  // 엑셀 내보내기 대상: 확인완료+미발행 OR 대기+발행완료
-  const invoiceExportItems = useMemo(() => {
-    const base = items.filter((i) =>
-      (i.status === "확인완료" && !i.taxInvoiceDate) ||
-      (i.status === "대기" && Boolean(i.taxInvoiceDate))
-    );
+    const base = items.filter((i) => !i.taxInvoiceDate && i.status !== "반려");
     if (selectedDate) return base.filter((i) => i.requestedAt.slice(0, 10) === selectedDate);
     if (selectedMonth) return base.filter((i) => i.requestedAt.startsWith(selectedMonth));
     return base;
   }, [items, selectedMonth, selectedDate]);
+
+  // 엑셀 내보내기 대상 = 계산서 미발행 항목과 동일
+  const invoiceExportItems = pendingInvoice;
 
   const scopedItems = useMemo(() => items.filter((i) =>
     (selectedMonth === null || i.requestedAt.startsWith(selectedMonth)) &&
@@ -645,10 +638,7 @@ export default function ConfirmPage() {
       ) : (
         <div className="space-y-4">
           {grouped.map(([date, dateItems]) => {
-            const exportItems = dateItems.filter((i) =>
-              (i.status === "확인완료" && !i.taxInvoiceDate) ||
-              (i.status === "대기" && Boolean(i.taxInvoiceDate))
-            );
+            const exportItems = dateItems.filter((i) => !i.taxInvoiceDate && i.status !== "반려");
             return (
               <div key={date} className="rounded-2xl overflow-hidden" style={{ background: "#fff", border: "1px solid #E9EBEF" }}>
                 {/* 날짜 헤더 */}
