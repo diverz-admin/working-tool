@@ -143,7 +143,7 @@ function RequestModal({ onClose, onSubmit }: {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4 max-h-[70vh] overflow-y-auto">
+        <form id="expense-form" onSubmit={handleSubmit} className="px-6 py-5 space-y-4 max-h-[70vh] overflow-y-auto">
           {/* 제목 */}
           <div>
             <label className="block text-xs font-semibold mb-1.5" style={{ color: "#64748B" }}>제목 <span style={{ color: "#EF4444" }}>*</span></label>
@@ -237,7 +237,8 @@ function RequestModal({ onClose, onSubmit }: {
             className="flex-1 py-2.5 rounded-xl text-sm font-semibold hover:opacity-80"
             style={{ background: "#F1F5F9", color: "#64748B" }}>취소</button>
           <button
-            onClick={(e) => { e.preventDefault(); if (!form.title.trim() || !form.requester.trim()) return; handleSubmit(e as unknown as React.FormEvent); }}
+            type="submit"
+            form="expense-form"
             disabled={saving || !form.title.trim() || !form.requester.trim()}
             className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
             style={{ background: "#3182F6" }}>
@@ -422,6 +423,7 @@ export default function ExpensePage() {
           <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>내부 지출 결재 요청을 관리합니다. 대기 {counts["대기"]}건</p>
         </div>
         <button
+          type="button"
           onClick={() => setShowForm(true)}
           className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white hover:opacity-90"
           style={{ background: "#3182F6" }}>
