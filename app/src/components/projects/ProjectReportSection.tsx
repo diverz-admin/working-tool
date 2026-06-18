@@ -120,13 +120,14 @@ function inRange(tracker: Tracker, date: string): boolean {
   return date >= start && date <= end;
 }
 
-/** 보장형: iterStart부터 오늘까지 5위 이내 달성일 25일 계산 */
+/** 보장형: iterStart부터 오늘까지 5위 이내 달성일 25일 계산, 6위 이상 일수도 반환 */
 function calcGuaranteeEndDate(
   iterStart: string,
   trackersData: Tracker[]
-): { endDate: string | null; qualifyingDays: number } {
+): { endDate: string | null; qualifyingDays: number; missedDays: number } {
   const today = toISO(new Date());
   let count = 0;
+  let missed = 0;
   const cur = new Date(iterStart);
   while (true) {
     const dateStr = toISO(cur);
@@ -136,11 +137,21 @@ function calcGuaranteeEndDate(
       const rank = getRankOnDate(t, dateStr);
       return rank !== undefined && rank !== null && rank <= 5;
     });
-    if (qualified) count++;
-    if (count === 25) return { endDate: dateStr, qualifyingDays: 25 };
+    if (qualified) {
+      count++;
+      if (count === 25) return { endDate: dateStr, qualifyingDays: 25, missedDays: missed };
+    } else {
+      // 6위 이상으로 찍힌 날 = 미카운트 → 계약 종료일 연장 대상
+      const hasMissed = trackersData.some((t) => {
+        if (!inRange(t, dateStr)) return false;
+        const rank = getRankOnDate(t, dateStr);
+        return rank !== undefined && rank !== null && rank > 5;
+      });
+      if (hasMissed) missed++;
+    }
     cur.setDate(cur.getDate() + 1);
   }
-  return { endDate: null, qualifyingDays: count };
+  return { endDate: null, qualifyingDays: count, missedDays: missed };
 }
 
 /* ── 순위 셀 ── */
@@ -207,7 +218,7 @@ export default function ProjectReportSection({
 }) {
   const [trackers,    setTrackers]    = useState<Tracker[]>([]);
   const [loading,     setLoading]     = useState(false);
-  const [guaranteeResult, setGuaranteeResult] = useState<{ endDate: string | null; qualifyingDays: number } | null>(null);
+  const [guaranteeResult, setGuaranteeResult] = useState<{ endDate: string | null; qualifyingDays: number; missedDays: number } | null>(null);
   const [checking,    setChecking]    = useState<string | null>(null);
   const [checkingAll, setCheckingAll] = useState(false);
   const [showAdd,     setShowAdd]     = useState(false);
@@ -249,7 +260,7 @@ export default function ProjectReportSection({
     const iterStart = startDate
       || (trackerStarts.length > 0 ? trackerStarts.reduce((a, b) => (a < b ? a : b)) : null);
     if (!iterStart) {
-      const result = { endDate: null, qualifyingDays: 0 };
+      const result = { endDate: null, qualifyingDays: 0, missedDays: 0 };
       setGuaranteeResult(result);
       onGuaranteeEndDate?.(null, 0);
       return;
@@ -259,12 +270,21 @@ export default function ProjectReportSection({
 
     // 계약 종료일 연동:
     // - 25일 달성: 달성일(정확한 날짜)
-    // - 미달성: 키워드 최대 종료 날짜(현재 추적 중인 기간의 끝)
+    // - 미달성: 키워드 최대 종료 날짜 + 6위 이상 미카운트 일수 연장
     const trackerEndDates = trackers.filter((t) => t.endDate).map((t) => t.endDate!);
     const maxTrackerEndDate = trackerEndDates.length > 0
       ? trackerEndDates.reduce((a, b) => (a > b ? a : b))
       : null;
-    const effectiveEndDate = result.endDate ?? maxTrackerEndDate;
+
+    // 6위 이상 찍힌 날만큼 종료일 연장 (DB는 건드리지 않고 UI에만 반영)
+    let adjustedEndDate = maxTrackerEndDate;
+    if (maxTrackerEndDate && result.missedDays > 0) {
+      const d = new Date(maxTrackerEndDate);
+      d.setDate(d.getDate() + result.missedDays);
+      adjustedEndDate = toISO(d);
+    }
+
+    const effectiveEndDate = result.endDate ?? adjustedEndDate;
     onGuaranteeEndDate?.(effectiveEndDate, result.qualifyingDays);
 
     // 25일 달성 시 키워드 종료 날짜 자동 동기화
@@ -459,7 +479,7 @@ export default function ProjectReportSection({
             }}>
               {guaranteeResult.qualifyingDays >= 25
                 ? `달성 완료 (${guaranteeResult.endDate})`
-                : `${guaranteeResult.qualifyingDays}/25일`}
+                : `${guaranteeResult.qualifyingDays}/25일${guaranteeResult.missedDays > 0 ? ` · +${guaranteeResult.missedDays}일 연장` : ""}`}
             </span>
           )}
         </div>
