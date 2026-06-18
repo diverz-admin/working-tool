@@ -17,7 +17,15 @@ export async function PUT(req: Request, { params }: Params) {
 
     if (confirmedRequests.length > 0) {
       const incomingRowIds = new Set((revenues ?? []).map((r: Record<string, unknown>) => r.revenueRowId).filter(Boolean));
-      const removed = confirmedRequests.filter((r) => r.rowKey && r.rowKey !== "__contract__" && !incomingRowIds.has(r.rowKey));
+      // DB에 실제로 존재하는 revenueRowId만 가져와서, 현재 DB에 있는 rowKey가 incoming에서 빠진 경우만 차단
+      const currentRevenues = await db
+        .select({ revenueRowId: projectRevenues.revenueRowId })
+        .from(projectRevenues)
+        .where(eq(projectRevenues.projectId, id));
+      const currentRowIds = new Set(currentRevenues.map((r) => r.revenueRowId).filter(Boolean));
+      const removed = confirmedRequests.filter(
+        (r) => r.rowKey && r.rowKey !== "__contract__" && currentRowIds.has(r.rowKey) && !incomingRowIds.has(r.rowKey)
+      );
       if (removed.length > 0) {
         return NextResponse.json({ error: "확인완료된 매출 항목은 삭제할 수 없습니다." }, { status: 409 });
       }
