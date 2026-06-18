@@ -38,6 +38,7 @@ export async function GET() {
         activeStartDate:      sql<string | null>`MIN(${projects.startDate}) FILTER (WHERE ${projects.status} = '진행')`,
         activeEndDate:        sql<string | null>`MAX(${projects.endDate}) FILTER (WHERE ${projects.status} = '진행')`,
         activeContractAmount: sql<number | null>`SUM(${projects.contractAmount}) FILTER (WHERE ${projects.status} = '진행')`,
+        totalContractAmount:  sql<number | null>`SUM(${projects.contractAmount})`,
       })
       .from(projectGroups)
       .leftJoin(projects, eq(projects.projectGroupId, projectGroups.id))
@@ -119,6 +120,7 @@ export async function GET() {
         campaignCount:           Number(r.campaignCount),
         activeCampaignCount:     Number(r.activeCampaignCount),
         activeContractAmount:    r.activeContractAmount ? Number(r.activeContractAmount) : null,
+        totalContractAmount:     r.totalContractAmount  ? Number(r.totalContractAmount)  : null,
         activeDaysRemaining:     daysRemaining(r.activeEndDate),
         activeWorkDaysRemaining: daysRemaining(workEndMap.get(r.id) ?? null),
         revenueTotal:            revTotalMap.get(r.id) ?? 0,

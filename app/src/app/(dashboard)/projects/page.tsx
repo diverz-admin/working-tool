@@ -60,6 +60,7 @@ interface ProjectGroup {
   activeStartDate: string | null;
   activeEndDate: string | null;
   activeContractAmount: number | null;
+  totalContractAmount:  number | null;
   activeDaysRemaining: number | null;
   activeWorkDaysRemaining: number | null;
   revenueTotal: number;
@@ -1958,9 +1959,14 @@ function ProjectsInner() {
                       </td>
                       {/* 잔여일 */}
                       <td className="px-4 py-3.5"><DaysBadge days={g.activeDaysRemaining} /></td>
-                      {/* 계약금액 */}
+                      {/* 계약금액 — 캠페인 2개 이상이면 전체 누적 합계 표시 */}
                       <td className="px-4 py-3.5 text-xs font-semibold" style={{ color: "#10B981" }}>
-                        {wonFmt(g.activeContractAmount)}
+                        {g.campaignCount > 1
+                          ? wonFmt(g.totalContractAmount)
+                          : wonFmt(g.activeContractAmount)}
+                        {g.campaignCount > 1 && g.totalContractAmount != null && (
+                          <span className="ml-1 font-normal" style={{ color: "#94A3B8", fontSize: 10 }}>누적</span>
+                        )}
                       </td>
                       {/* 매출 */}
                       <td className="px-4 py-3.5">

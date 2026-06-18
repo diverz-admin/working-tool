@@ -270,33 +270,32 @@ export default function ConfirmPage() {
   async function handleIssueComplete(item: ConfirmRequest, date?: string) {
     setIssuing(item.id);
     const dateStr = date || new Date().toISOString().slice(0, 10);
-    const bothDone = item.status === "대기" && Boolean(item.depositConfirmedAt);
+    // 세금계산서 발행만으로 확인완료 전환 (입금 여부 무관)
+    const moveToDone = item.status === "대기";
     const updates: Parameters<typeof updateConfirmRequest>[1] = { taxInvoiceDate: dateStr };
-    if (bothDone) updates.status = "확인완료";
+    if (moveToDone) updates.status = "확인완료";
     await Promise.all([
       updateRevenueField(item.projectId, item.rowKey, "invoiceDate", dateStr),
       updateConfirmRequest(item.id, updates),
     ]);
     setItems((prev) => prev.map((i) => i.id === item.id
-      ? { ...i, taxInvoiceDate: dateStr, ...(bothDone && { status: "확인완료" as ConfirmStatus }) }
+      ? { ...i, taxInvoiceDate: dateStr, ...(moveToDone && { status: "확인완료" as ConfirmStatus }) }
       : i));
-    if (bothDone) { showApprovedToast(); }
+    if (moveToDone) { showApprovedToast(); }
     setSelected(null); setIssuing(null);
   }
 
   async function handlePaymentDone(item: ConfirmRequest, date: string) {
     const dateStr = date || new Date().toISOString().slice(0, 10);
-    const bothDone = Boolean(item.taxInvoiceDate);
+    // 입금완료는 대기 서브 상태 — 세금계산서 발행 전까지 대기 유지
     const updates: Parameters<typeof updateConfirmRequest>[1] = { depositConfirmedAt: dateStr };
-    if (bothDone) updates.status = "확인완료";
     await Promise.all([
       updateRevenueField(item.projectId, item.rowKey, "paymentDate", dateStr),
       updateConfirmRequest(item.id, updates),
     ]);
     setItems((prev) => prev.map((i) => i.id === item.id
-      ? { ...i, depositConfirmedAt: dateStr, ...(bothDone && { status: "확인완료" as ConfirmStatus }) }
+      ? { ...i, depositConfirmedAt: dateStr }
       : i));
-    if (bothDone) showApprovedToast();
     setSelected(null);
   }
 
