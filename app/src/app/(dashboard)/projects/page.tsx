@@ -953,6 +953,7 @@ function ProjectsInner() {
   const [workFilter, setWorkFilter]       = useState<"전체" | "미완료" | "완료">("전체");
   const [workSearch, setWorkSearch]       = useState("");
   const [pendingQty, setPendingQty]       = useState<Map<string, string>>(new Map());
+  const [pendingSettingDate, setPendingSettingDate] = useState<Map<string, string>>(new Map());
 
   const [workIncomplete, setWorkIncomplete] = useState(0);
   const [workMonth, setWorkMonth]           = useState<string>(new Date().toISOString().slice(0, 7));
@@ -1572,13 +1573,28 @@ function ProjectsInner() {
                             <td className="px-4 py-2.5 whitespace-nowrap" style={{ color: "#94A3B8" }}>{period}</td>
                             <td className="px-4 py-2.5 font-semibold" style={{ color: "#3182F6" }}>{qty}</td>
                             <td className="px-3 py-2">
-                              <input
-                                type="date"
-                                value={r.settingDate ?? ""}
-                                onChange={(e) => updateWorkRow(r.id, { settingDate: e.target.value })}
-                                className="px-2 py-1 rounded-lg text-xs outline-none"
-                                style={{ background: "#F8FAFC", border: "1px solid #E9EBEF", color: "#191F28", width: 130 }}
-                              />
+                              <div className="flex items-center gap-1.5">
+                                <input
+                                  type="date"
+                                  value={pendingSettingDate.has(r.id) ? pendingSettingDate.get(r.id)! : (r.settingDate ?? "")}
+                                  onChange={(e) => setPendingSettingDate((prev) => new Map(prev).set(r.id, e.target.value))}
+                                  className="px-2 py-1 rounded-lg text-xs outline-none"
+                                  style={{ background: "#F8FAFC", border: "1px solid #E9EBEF", color: "#191F28", width: 130 }}
+                                />
+                                {pendingSettingDate.has(r.id) && pendingSettingDate.get(r.id) !== (r.settingDate ?? "") && (
+                                  <button
+                                    onClick={() => {
+                                      const val = pendingSettingDate.get(r.id)!;
+                                      updateWorkRow(r.id, { settingDate: val });
+                                      setPendingSettingDate((prev) => { const m = new Map(prev); m.delete(r.id); return m; });
+                                    }}
+                                    className="px-2 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors"
+                                    style={{ background: "#3182F6", color: "#fff" }}
+                                  >
+                                    적용
+                                  </button>
+                                )}
+                              </div>
                             </td>
                             <td className="px-4 py-2.5">
                               <input

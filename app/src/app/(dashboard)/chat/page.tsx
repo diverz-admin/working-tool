@@ -538,10 +538,7 @@ function MessageInput({ channelName, onSend, disabled, users }: {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
   }
 
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
+  function attachFile(file: File) {
     if (file.size > MAX_FILE_SIZE) { setFileError("5MB 이하 파일만 첨부할 수 있습니다."); return; }
     setFileError(null);
     const reader = new FileReader();
@@ -549,6 +546,24 @@ function MessageInput({ channelName, onSend, disabled, users }: {
       setPendingFile({ url: ev.target!.result as string, name: file.name, size: file.size, mimeType: file.type });
     };
     reader.readAsDataURL(file);
+  }
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    attachFile(file);
+  }
+
+  function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const items = Array.from(e.clipboardData.items);
+    const imageItem = items.find((item) => item.kind === "file" && item.type.startsWith("image/"));
+    if (!imageItem) return;
+    e.preventDefault();
+    const file = imageItem.getAsFile();
+    if (!file) return;
+    const name = file.name && file.name !== "image.png" ? file.name : `붙여넣기_${Date.now()}.png`;
+    attachFile(new File([file], name, { type: file.type }));
   }
 
   function send() {
@@ -649,6 +664,7 @@ function MessageInput({ channelName, onSend, disabled, users }: {
           value={value}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           placeholder={pendingFile ? "캡션을 입력하세요 (선택)" : `#${channelName} 채널에 메시지 보내기`}
           rows={1}
           disabled={disabled}
@@ -728,7 +744,7 @@ function MessageInput({ channelName, onSend, disabled, users }: {
         accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.txt,.csv" />
 
       <p className="text-xs mt-1.5 px-1" style={{ color: "#97979C" }}>
-        <span className="font-semibold">Enter</span> 전송 &nbsp;·&nbsp; <span className="font-semibold">Shift+Enter</span> 줄바꿈 &nbsp;·&nbsp; 파일 최대 5MB
+        <span className="font-semibold">Enter</span> 전송 &nbsp;·&nbsp; <span className="font-semibold">Shift+Enter</span> 줄바꿈 &nbsp;·&nbsp; <span className="font-semibold">Ctrl+V</span> 이미지 붙여넣기 &nbsp;·&nbsp; 파일 최대 5MB
       </p>
     </div>
   );
