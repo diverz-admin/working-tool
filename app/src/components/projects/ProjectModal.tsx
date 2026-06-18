@@ -639,7 +639,15 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
 
   // 신규 프로젝트일 때 결재 버튼 클릭 시 자동으로 먼저 저장
   async function ensureSaved(): Promise<string | null> {
-    if (savedIdRef.current) return savedIdRef.current;
+    if (savedIdRef.current) {
+      // 기존 프로젝트: 승인요청 전에 현재 costs/revenues를 DB에 저장
+      const pid = savedIdRef.current;
+      await Promise.all([
+        fetch(`/api/projects/${pid}/revenues`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ revenues }) }),
+        fetch(`/api/projects/${pid}/costs`,    { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ costs }) }),
+      ]);
+      return pid;
+    }
     if (!isFormValid) {
       setError(`먼저 기본 정보를 입력해주세요: ${missingFields.map((f) => f.label).join(", ")}`);
       return null;
