@@ -493,3 +493,20 @@ export const workDailyLogs = pgTable("work_daily_logs", {
 ]);
 
 export type WorkDailyLog = typeof workDailyLogs.$inferSelect;
+
+export const internalExpenseRequests = pgTable("internal_expense_requests", {
+  id:           uuid("id").primaryKey().defaultRandom(),
+  title:        text("title").notNull(),
+  assignedTeam: text("assigned_team"),
+  requester:    text("requester").notNull(),
+  requestedAt:  date("requested_at").notNull(),
+  amount:       integer("amount"),
+  content:      text("content"),
+  attachments:  text("attachments"), // JSON: [{url: string, name: string}]
+  status:       text("status").notNull().default("대기"), // 대기 | 승인 | 반려
+  rejectReason: text("reject_reason"),
+  createdAt:    timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:    timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type InternalExpenseRequest = typeof internalExpenseRequests.$inferSelect;
