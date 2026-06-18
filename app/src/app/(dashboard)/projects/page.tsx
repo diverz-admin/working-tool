@@ -960,6 +960,32 @@ function ProjectsInner() {
   // 신규 프로젝트+캠페인 동시 생성 (GroupId 없이 ProjectModal 오픈)
   const [newProjectModal, setNewProjectModal] = useState(false);
 
+  // 키워드 전체 업데이트
+  const [kwUpdating, setKwUpdating] = useState(false);
+  const [kwToast,    setKwToast]    = useState<{ msg: string; ok: boolean } | null>(null);
+
+  async function updateAllKeywords() {
+    if (kwUpdating) return;
+    setKwUpdating(true);
+    try {
+      const res  = await fetch("/api/reports/rankings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+      const data = await res.json();
+      const succeeded = (data.results ?? []).filter((r: { error?: string }) => !r.error).length;
+      const failed    = (data.results ?? []).filter((r: { error?: string }) => !!r.error).length;
+      const total     = (data.results ?? []).length;
+      if (total === 0) {
+        setKwToast({ msg: "등록된 키워드가 없습니다.", ok: false });
+      } else {
+        setKwToast({ msg: `${succeeded}개 업데이트 완료${failed > 0 ? ` (실패 ${failed}개)` : ""}`, ok: failed === 0 });
+      }
+    } catch {
+      setKwToast({ msg: "업데이트 중 오류가 발생했습니다.", ok: false });
+    } finally {
+      setKwUpdating(false);
+      setTimeout(() => setKwToast(null), 4000);
+    }
+  }
+
   // 작업확인 뷰
   const [viewMode, setViewMode]           = useState<"목록" | "작업확인">("목록");
   const [workRows, setWorkRows]           = useState<WorkCheckRow[]>([]);
@@ -1444,17 +1470,55 @@ function ProjectsInner() {
             </div>
           )}
         </div>
-        <button
-          onClick={() => setNewProjectModal(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
-          style={{ background: "#3182F6" }}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
-          프로젝트 추가
-        </button>
+        <div className="flex items-center gap-2">
+          {/* 키워드 전체 업데이트 */}
+          <div className="relative">
+            <button
+              onClick={updateAllKeywords}
+              disabled={kwUpdating}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-60"
+              style={{ background: "#F1F5F9", color: "#475569", border: "1px solid #E2E8F0" }}
+            >
+              {kwUpdating ? (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
+                  style={{ animation: "spin 1s linear infinite" }}>
+                  <path d="M21 12a9 9 0 1 1-6.22-8.56"/>
+                </svg>
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                  <polyline points="23 4 23 10 17 10"/>
+                  <path d="M20.49 15a9 9 0 1 1-.06-8.64"/>
+                </svg>
+              )}
+              {kwUpdating ? "업데이트 중..." : "키워드 전체 업데이트"}
+            </button>
+            {kwToast && (
+              <div
+                className="absolute right-0 top-full mt-2 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap z-50"
+                style={{
+                  background: kwToast.ok ? "#10B981" : "#F59E0B",
+                  color: "#fff",
+                  boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+                }}
+              >
+                {kwToast.msg}
+              </div>
+            )}
+          </div>
+
+          <button
+            onClick={() => setNewProjectModal(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
+            style={{ background: "#3182F6" }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            프로젝트 추가
+          </button>
+        </div>
       </div>
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
 
       {/* ── 작업확인 뷰 ── */}
       {viewMode === "작업확인" && (
