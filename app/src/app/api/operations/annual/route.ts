@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
       pMap.get(person || "미지정")![month] += amount;
     }
 
-    const TEAM_ORDER = ["영업 1팀", "영업 2팀"];
+    const TEAM_ORDER = ["경영", "영업 1팀", "영업 2팀"];
     const teams = Array.from(teamMap.entries())
       .sort(([a], [b]) => {
         const ia = TEAM_ORDER.indexOf(a), ib = TEAM_ORDER.indexOf(b);

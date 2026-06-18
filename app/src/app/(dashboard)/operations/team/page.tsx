@@ -4,10 +4,11 @@ import { useState, useEffect, useCallback } from "react";
 
 // ─── 상수 ────────────────────────────────────────────────
 
-const TEAMS = ["전체", "영업 1팀", "영업 2팀"] as const;
+const TEAMS = ["전체", "경영", "영업 1팀", "영업 2팀"] as const;
 type Team = typeof TEAMS[number];
 
 const TEAM_COLORS: Record<string, string> = {
+  "경영":    "#F59E0B",
   "영업 1팀": "#6366F1",
   "영업 2팀": "#10B981",
 };

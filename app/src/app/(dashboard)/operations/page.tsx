@@ -19,6 +19,7 @@ const SGA_CATEGORIES = [
 ] as const;
 
 const TEAM_COLORS: Record<string, string> = {
+  "경영":    "#F59E0B",
   "영업 1팀": "#6366F1",
   "영업 2팀": "#10B981",
 };
@@ -185,7 +186,7 @@ export default function OperationsDashboard() {
   const monthlyPieTotal = monthlyPieData.reduce((s, d) => s + d.value, 0);
 
   // ── 팀별 이번달 ──
-  const TEAMS_LIST = ["영업 1팀", "영업 2팀"];
+  const TEAMS_LIST = ["경영", "영업 1팀", "영업 2팀"];
 
   interface TeamStats { rev: number; cost: number; profit: number }
 
