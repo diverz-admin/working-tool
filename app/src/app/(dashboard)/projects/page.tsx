@@ -975,7 +975,7 @@ function ProjectsInner() {
       .finally(() => setWorkLoading(false));
   }
 
-  async function updateWorkRow(id: string, patch: { workCompleted?: boolean; settingDate?: string }) {
+  async function updateWorkRow(id: string, patch: { workCompleted?: boolean; settingDate?: string; assignee?: string | null }) {
     // 낙관적 업데이트: 요청 전에 로컬 상태를 먼저 반영
     let rollback: WorkCheckRow[] | undefined;
     setWorkRows((prev) => {
@@ -1517,6 +1517,7 @@ function ProjectsInner() {
             <div className="py-16 text-center text-sm" style={{ color: "#94A3B8" }}>불러오는 중...</div>
           ) : (() => {
             const allAssignees = [...new Set(workRows.filter(r => (r.workStartDate ?? "").startsWith(workMonth)).map(r => r.assignee).filter(Boolean) as string[])].sort();
+            const allAssigneeOpts = [...new Set(workRows.map(r => r.assignee).filter(Boolean) as string[])].sort();
               return (
             <div className="overflow-x-auto">
             <table className="w-full text-xs" style={{ minWidth: 960 }}>
@@ -1525,7 +1526,7 @@ function ProjectsInner() {
                   <th className="px-3 py-2.5 text-left font-semibold whitespace-nowrap" style={{ color: "#F97316", borderBottom: "2px solid #FED7AA" }}>#</th>
                   <th className="px-3 py-2.5 text-left font-semibold whitespace-nowrap" style={{ color: "#F97316", borderBottom: "2px solid #FED7AA" }}>
                     <div className="flex items-center gap-1.5">
-                      <span>담당자</span>
+                      <span>작업담당자</span>
                       <div className="relative">
                         <select
                           value={workAssignee}
@@ -1611,7 +1612,22 @@ function ProjectsInner() {
                         return (
                           <tr key={r.id} className="border-t" style={{ borderColor: "#F1F5F9", background: r.workCompleted ? "rgba(16,185,129,0.02)" : undefined }}>
                             <td className="px-3 py-2 font-medium" style={{ color: "#94A3B8" }}>{rowIdx}</td>
-                            <td className="px-3 py-2" style={{ color: "#475569" }}>{r.assignee || "—"}</td>
+                            <td className="px-2 py-1.5">
+                              <div className="relative">
+                                <select
+                                  value={r.assignee ?? ""}
+                                  onChange={(e) => updateWorkRow(r.id, { assignee: e.target.value || null })}
+                                  className="appearance-none text-xs pl-2 pr-5 py-1 rounded-lg outline-none transition-all cursor-pointer"
+                                  style={{ background: "#F8FAFC", border: "1px solid #E9EBEF", color: r.assignee ? "#191F28" : "#CBD5E1", minWidth: 72 }}
+                                >
+                                  <option value="">—</option>
+                                  {allAssigneeOpts.map((a) => <option key={a} value={a}>{a}</option>)}
+                                </select>
+                                <svg className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2.5" strokeLinecap="round">
+                                  <polyline points="6 9 12 15 18 9"/>
+                                </svg>
+                              </div>
+                            </td>
                             <td className="px-3 py-2 font-medium" style={{ color: "#191F28" }}>{r.productName || "—"}</td>
                             <td className="px-3 py-2 text-center" style={{ color: "#475569" }}>{r.quantity ?? "—"}</td>
                             <td className="px-3 py-2 text-right" style={{ color: "#475569" }}>{r.supplyPrice ? `₩${r.supplyPrice.toLocaleString()}` : "—"}</td>
