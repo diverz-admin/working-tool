@@ -36,7 +36,9 @@ export default function RequestPage() {
   /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
-    getPaymentRequests().then(setItems);
+    getPaymentRequests().then((data) =>
+      setItems(data.map((i) => ({ ...i, requestedAt: (i.requestedAt ?? "").slice(0, 10) })))
+    );
   }, []);
 
   const months = useMemo(() => {
