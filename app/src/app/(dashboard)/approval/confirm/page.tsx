@@ -289,6 +289,20 @@ export default function ConfirmPage() {
     setSelected(null); setIssuing(null);
   }
 
+  // 확인완료 → 대기 복구 (계산서 발행 기록은 유지)
+  async function handleCancelConfirmation(item: ConfirmRequest) {
+    if (!confirm(`"${item.projectName || item.clientName}" 입금확인을 취소하고 대기 상태로 되돌리겠습니까?\n(세금계산서 발행 기록은 유지됩니다.)`)) return;
+    await Promise.all([
+      updateConfirmRequest(item.id, { status: "대기", depositConfirmedAt: null as unknown as string }),
+      updateRevenueField(item.projectId, item.rowKey, "paymentDate", ""),
+    ]);
+    setItems((prev) => prev.map((i) => i.id === item.id
+      ? { ...i, status: "대기" as ConfirmStatus, depositConfirmedAt: undefined }
+      : i));
+    if (item.projectId) invalidateProjectCache(item.projectId);
+    setSelected(null);
+  }
+
   async function handlePaymentDone(item: ConfirmRequest, date: string) {
     const dateStr = date || new Date().toISOString().slice(0, 10);
     // 입금완료는 대기 서브 상태 — 세금계산서 발행 전까지 대기 유지
@@ -1080,15 +1094,15 @@ export default function ConfirmPage() {
                     <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: "#F1F5F9", color: "#94A3B8" }}>해당없음</span>
                     <span className="text-xs" style={{ color: "#94A3B8" }}>전재민 계좌는 세금계산서 발행 대상이 아닙니다.</span>
                   </div>
-                  <button onClick={() => setCancelTarget(selected)}
+                  <button onClick={() => handleCancelConfirmation(selected)}
                     className="px-4 py-2.5 rounded-xl text-sm font-semibold hover:opacity-90 whitespace-nowrap"
                     style={{ background: "rgba(234,179,8,0.1)", color: "#CA8A04", border: "1px solid rgba(234,179,8,0.2)" }}>
-                    확인 취소
+                    입금확인취소
                   </button>
                 </div>
               )}
 
-              {/* 확인완료 + 계산서 미발행: 발행날짜 + 확인취소 + 발행완료 */}
+              {/* 확인완료 + 계산서 미발행: 발행날짜 + 입금확인취소 + 발행완료 */}
               {selected.status === "확인완료" && !selected.taxInvoiceDate && selected.depositAccount !== "전재민" && (<>
                 <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl" style={{ background: "#F8FAFC", border: "1px solid #E9EBEF" }}>
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2" strokeLinecap="round">
@@ -1099,10 +1113,10 @@ export default function ConfirmPage() {
                     className="flex-1 text-sm bg-transparent outline-none" style={{ color: "#191F28" }} />
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => setCancelTarget(selected)}
+                  <button onClick={() => handleCancelConfirmation(selected)}
                     className="px-4 py-2.5 rounded-xl text-sm font-semibold hover:opacity-90"
                     style={{ background: "rgba(234,179,8,0.1)", color: "#CA8A04", border: "1px solid rgba(234,179,8,0.2)" }}>
-                    확인 취소
+                    입금확인취소
                   </button>
                   <button onClick={() => handleIssueComplete(selected, issueDate)} disabled={issuing === selected.id}
                     className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
@@ -1115,15 +1129,20 @@ export default function ConfirmPage() {
                 </div>
               </>)}
 
-              {/* 계산서 발행완료: 닫기 + 계산서 발행 취소 */}
+              {/* 계산서 발행완료: 닫기 + 입금확인취소 + 계산서 발행 취소 */}
               {selected.status === "확인완료" && selected.taxInvoiceDate && (
                 <div className="flex gap-2">
                   <button onClick={() => setSelected(null)}
                     className="py-2.5 px-5 rounded-xl text-sm font-semibold"
                     style={{ background: "#F1F5F9", color: "#475569" }}>닫기</button>
-                  <button onClick={() => setCancelTarget(selected)}
+                  <button onClick={() => handleCancelConfirmation(selected)}
                     className="flex-1 py-2.5 rounded-xl text-sm font-semibold hover:opacity-90"
                     style={{ background: "rgba(234,179,8,0.1)", color: "#CA8A04", border: "1px solid rgba(234,179,8,0.2)" }}>
+                    입금확인취소
+                  </button>
+                  <button onClick={() => setCancelTarget(selected)}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-semibold hover:opacity-90"
+                    style={{ background: "rgba(239,68,68,0.08)", color: "#EF4444", border: "1px solid rgba(239,68,68,0.2)" }}>
                     계산서 발행 취소
                   </button>
                 </div>
