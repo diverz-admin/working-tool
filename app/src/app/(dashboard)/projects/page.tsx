@@ -1500,34 +1500,34 @@ function ProjectsInner() {
                       );
                     })}
                   </div>
-                  {assignees.length > 0 && (
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-semibold shrink-0" style={{ color: "#94A3B8" }}>작업담당자</span>
-                      <div className="relative">
-                        <select
-                          value={workAssignee}
-                          onChange={(e) => setWorkAssignee(e.target.value)}
-                          className="appearance-none text-xs font-semibold pl-3 pr-7 py-1.5 rounded-lg cursor-pointer outline-none transition-all"
-                          style={{
-                            background: workAssignee === "전체" ? "#F1F5F9" : "rgba(49,130,246,0.1)",
-                            color:      workAssignee === "전체" ? "#94A3B8"  : "#3182F6",
-                            border:     workAssignee === "전체" ? "1px solid transparent" : "1px solid rgba(49,130,246,0.3)",
-                          }}
-                        >
-                          <option value="전체">전체</option>
-                          {assignees.map((a) => (
-                            <option key={a} value={a}>{a}</option>
-                          ))}
-                        </select>
-                        <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2"
-                          width="10" height="10" viewBox="0 0 24 24" fill="none"
-                          stroke={workAssignee === "전체" ? "#94A3B8" : "#3182F6"}
-                          strokeWidth="2.5" strokeLinecap="round">
-                          <polyline points="6 9 12 15 18 9"/>
-                        </svg>
-                      </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-semibold shrink-0" style={{ color: "#94A3B8" }}>작업담당자</span>
+                    <div className="relative">
+                      <select
+                        value={workAssignee}
+                        onChange={(e) => setWorkAssignee(e.target.value)}
+                        disabled={assignees.length === 0}
+                        className="appearance-none text-xs font-semibold pl-3 pr-7 py-1.5 rounded-lg cursor-pointer outline-none transition-all"
+                        style={{
+                          background: workAssignee === "전체" ? "#F1F5F9" : "rgba(49,130,246,0.1)",
+                          color:      workAssignee === "전체" ? "#94A3B8"  : "#3182F6",
+                          border:     workAssignee === "전체" ? "1px solid transparent" : "1px solid rgba(49,130,246,0.3)",
+                          opacity:    assignees.length === 0 ? 0.5 : 1,
+                        }}
+                      >
+                        <option value="전체">전체</option>
+                        {assignees.map((a) => (
+                          <option key={a} value={a}>{a}</option>
+                        ))}
+                      </select>
+                      <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2"
+                        width="10" height="10" viewBox="0 0 24 24" fill="none"
+                        stroke={workAssignee === "전체" ? "#94A3B8" : "#3182F6"}
+                        strokeWidth="2.5" strokeLinecap="round">
+                        <polyline points="6 9 12 15 18 9"/>
+                      </svg>
                     </div>
-                  )}
+                  </div>
                 </div>
                 <div className="relative">
                   <svg className="absolute left-3 top-1/2 -translate-y-1/2" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2" strokeLinecap="round">
