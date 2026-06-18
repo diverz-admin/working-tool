@@ -26,7 +26,15 @@ export async function PUT(req: Request, { params }: Params) {
 
     if (approvedRequests.length > 0) {
       const incomingRowIds = new Set((costs ?? []).map((c: Record<string, unknown>) => c.costRowId).filter(Boolean));
-      const removed = approvedRequests.filter((r) => r.rowKey && !incomingRowIds.has(r.rowKey));
+      // DB에 실제 존재하는 costRowId와 비교 — costRowId가 null이었다가 새 UUID가 생성된 경우 오탐 방지
+      const currentCosts = await db
+        .select({ costRowId: projectCosts.costRowId })
+        .from(projectCosts)
+        .where(eq(projectCosts.projectId, id));
+      const currentRowIds = new Set(currentCosts.map((c) => c.costRowId).filter(Boolean));
+      const removed = approvedRequests.filter(
+        (r) => r.rowKey && currentRowIds.has(r.rowKey) && !incomingRowIds.has(r.rowKey)
+      );
       if (removed.length > 0) {
         return NextResponse.json({ error: "승인된 매입 항목은 삭제할 수 없습니다." }, { status: 409 });
       }
