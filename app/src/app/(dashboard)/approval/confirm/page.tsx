@@ -315,10 +315,16 @@ export default function ConfirmPage() {
     const target = cancelTarget;
     const hadInvoice = Boolean(target.taxInvoiceDate);
 
-    if (hadInvoice) {
-      // 계산서 발행 취소: confirm request 자체를 삭제해 입금확인요청 버튼이 다시 활성화되도록 함
+    if (hadInvoice && target.status === "확인완료") {
+      // 확인완료 + 계산서 발행 취소: confirm request 삭제해 입금확인요청 버튼이 다시 활성화되도록
       setItems((prev) => prev.filter((i) => i.id !== target.id));
       await deleteConfirmRequest(target.id);
+    } else if (hadInvoice && target.status === "대기") {
+      // 대기 + 계산서 발행 취소: taxInvoiceDate만 초기화, 상태·레코드 유지
+      setItems((prev) => prev.map((i) =>
+        i.id === target.id ? { ...i, taxInvoiceDate: undefined } : i
+      ));
+      await updateConfirmRequest(target.id, { taxInvoiceDate: null as unknown as string });
     } else {
       // 일반 확인 취소: 대기 상태로 되돌리기
       setItems((prev) => prev.map((i) =>
@@ -331,9 +337,10 @@ export default function ConfirmPage() {
     setCancelTarget(null);
 
     // 매출행 날짜 역방향 처리
-    const fieldsToClear: ("paymentDate" | "invoiceDate")[] = hadInvoice
-      ? ["paymentDate", "invoiceDate"]
-      : ["paymentDate"];
+    let fieldsToClear: ("paymentDate" | "invoiceDate")[];
+    if (hadInvoice && target.status === "확인완료") fieldsToClear = ["paymentDate", "invoiceDate"];
+    else if (hadInvoice && target.status === "대기")  fieldsToClear = ["invoiceDate"];
+    else                                               fieldsToClear = ["paymentDate"];
     await clearRevenueFields(target, fieldsToClear);
 
     setCancelling(false);
@@ -437,7 +444,9 @@ export default function ConfirmPage() {
                     <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
                   </svg>
                 </div>
-                <h2 className="text-sm font-bold" style={{ color: "#191F28" }}>확인 취소</h2>
+                <h2 className="text-sm font-bold" style={{ color: "#191F28" }}>
+                  {cancelTarget.status === "대기" && cancelTarget.taxInvoiceDate ? "계산서 발행 취소" : "확인 취소"}
+                </h2>
               </div>
               <button onClick={() => { if (!cancelling) setCancelTarget(null); }} className="p-1.5 rounded-lg hover:bg-slate-100">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2.5" strokeLinecap="round">
@@ -452,11 +461,16 @@ export default function ConfirmPage() {
               <div className="p-3 rounded-xl space-y-1.5" style={{ background: "#FFF9EC", border: "1px solid rgba(234,179,8,0.25)" }}>
                 <p className="text-xs font-semibold" style={{ color: "#CA8A04" }}>취소 시 처리 내용</p>
                 <ul className="text-xs space-y-0.5" style={{ color: "#92400E" }}>
-                  <li>· 상태가 <strong>대기</strong>로 돌아갑니다</li>
-                  <li>· 프로젝트 매출행의 <strong>입금날짜</strong>가 초기화됩니다</li>
-                  {cancelTarget.taxInvoiceDate && (
-                    <li>· 계산서 발행 기록(<strong>{cancelTarget.taxInvoiceDate}</strong>)과 <strong>계산서날짜</strong>도 초기화됩니다</li>
-                  )}
+                  {cancelTarget.status === "대기" && cancelTarget.taxInvoiceDate ? (<>
+                    <li>· 계산서 발행 기록(<strong>{cancelTarget.taxInvoiceDate}</strong>)이 초기화됩니다</li>
+                    <li>· 프로젝트 매출행의 <strong>계산서날짜</strong>가 초기화됩니다</li>
+                  </>) : (<>
+                    <li>· 상태가 <strong>대기</strong>로 돌아갑니다</li>
+                    <li>· 프로젝트 매출행의 <strong>입금날짜</strong>가 초기화됩니다</li>
+                    {cancelTarget.taxInvoiceDate && (
+                      <li>· 계산서 발행 기록(<strong>{cancelTarget.taxInvoiceDate}</strong>)과 <strong>계산서날짜</strong>도 초기화됩니다</li>
+                    )}
+                  </>)}
                 </ul>
               </div>
             </div>
@@ -946,7 +960,7 @@ export default function ConfirmPage() {
                 </Link>
               )}
 
-              {/* 대기: 입금확인날짜 + 반려 + 확인완료 */}
+              {/* 대기: 입금확인날짜 + 반려 + 확인완료 + 세금계산서 발행 */}
               {selected.status === "대기" && (<>
                 <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl" style={{ background: "#F8FAFC", border: "1px solid #E9EBEF" }}>
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2" strokeLinecap="round">
@@ -964,6 +978,42 @@ export default function ConfirmPage() {
                     className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white hover:opacity-90"
                     style={{ background: "linear-gradient(135deg, #3182F6 0%, #2462D8 100%)" }}>확인완료</button>
                 </div>
+                {/* 세금계산서 선발행 */}
+                {selected.depositAccount !== "전재민" && (
+                  <div className="pt-3 mt-1" style={{ borderTop: "1px solid #E9EBEF" }}>
+                    <p className="text-xs font-semibold mb-2" style={{ color: "#94A3B8" }}>세금계산서</p>
+                    {selected.taxInvoiceDate ? (
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 flex items-center gap-2 px-3 py-2.5 rounded-xl" style={{ background: "#F0FDF4", border: "1px solid rgba(16,185,129,0.2)" }}>
+                          <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: "rgba(16,185,129,0.1)", color: "#059669" }}>발행완료</span>
+                          <span className="text-xs" style={{ color: "#059669" }}>{selected.taxInvoiceDate}</span>
+                        </div>
+                        <button onClick={() => setCancelTarget(selected)}
+                          className="px-3 py-2.5 rounded-xl text-xs font-semibold hover:opacity-90 whitespace-nowrap"
+                          style={{ background: "rgba(234,179,8,0.1)", color: "#CA8A04", border: "1px solid rgba(234,179,8,0.2)" }}>
+                          발행 취소
+                        </button>
+                      </div>
+                    ) : (<>
+                      <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl mb-2" style={{ background: "#F8FAFC", border: "1px solid #E9EBEF" }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2" strokeLinecap="round">
+                          <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                        </svg>
+                        <label className="text-xs font-semibold whitespace-nowrap" style={{ color: "#64748B" }}>발행날짜</label>
+                        <input type="date" value={issueDate} onChange={e => setIssueDate(e.target.value)}
+                          className="flex-1 text-sm bg-transparent outline-none" style={{ color: "#191F28" }} />
+                      </div>
+                      <button onClick={() => handleIssueComplete(selected, issueDate)} disabled={issuing === selected.id}
+                        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
+                        style={{ background: "linear-gradient(135deg, #059669 0%, #047857 100%)" }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                          <polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+                        </svg>
+                        {issuing === selected.id ? "처리 중..." : "발행완료 처리"}
+                      </button>
+                    </>)}
+                  </div>
+                )}
               </>)}
 
               {/* 확인완료 + 전재민: 세금계산서 해당없음 */}
