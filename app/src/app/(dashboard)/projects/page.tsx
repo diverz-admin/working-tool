@@ -1476,7 +1476,6 @@ function ProjectsInner() {
           {/* 필터 바 */}
           {(() => {
             const monthFiltered = workRows.filter(r => (r.workStartDate ?? "").startsWith(workMonth));
-            const assignees = [...new Set(monthFiltered.map(r => r.assignee).filter(Boolean) as string[])].sort();
             return (
               <div className="flex items-center justify-between px-5 py-3" style={{ borderBottom: "1px solid #F1F5F9", background: "#FAFBFC" }}>
                 <div className="flex items-center gap-3">
@@ -1500,34 +1499,6 @@ function ProjectsInner() {
                       );
                     })}
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-semibold shrink-0" style={{ color: "#94A3B8" }}>작업담당자</span>
-                    <div className="relative">
-                      <select
-                        value={workAssignee}
-                        onChange={(e) => setWorkAssignee(e.target.value)}
-                        disabled={assignees.length === 0}
-                        className="appearance-none text-xs font-semibold pl-3 pr-7 py-1.5 rounded-lg cursor-pointer outline-none transition-all"
-                        style={{
-                          background: workAssignee === "전체" ? "#F1F5F9" : "rgba(49,130,246,0.1)",
-                          color:      workAssignee === "전체" ? "#94A3B8"  : "#3182F6",
-                          border:     workAssignee === "전체" ? "1px solid transparent" : "1px solid rgba(49,130,246,0.3)",
-                          opacity:    assignees.length === 0 ? 0.5 : 1,
-                        }}
-                      >
-                        <option value="전체">전체</option>
-                        {assignees.map((a) => (
-                          <option key={a} value={a}>{a}</option>
-                        ))}
-                      </select>
-                      <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2"
-                        width="10" height="10" viewBox="0 0 24 24" fill="none"
-                        stroke={workAssignee === "전체" ? "#94A3B8" : "#3182F6"}
-                        strokeWidth="2.5" strokeLinecap="round">
-                        <polyline points="6 9 12 15 18 9"/>
-                      </svg>
-                    </div>
-                  </div>
                 </div>
                 <div className="relative">
                   <svg className="absolute left-3 top-1/2 -translate-y-1/2" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2" strokeLinecap="round">
@@ -1544,12 +1515,38 @@ function ProjectsInner() {
 
           {workLoading ? (
             <div className="py-16 text-center text-sm" style={{ color: "#94A3B8" }}>불러오는 중...</div>
-          ) : (
+          ) : (() => {
+            const allAssignees = [...new Set(workRows.filter(r => (r.workStartDate ?? "").startsWith(workMonth)).map(r => r.assignee).filter(Boolean) as string[])].sort();
+              return (
             <div className="overflow-x-auto">
             <table className="w-full text-xs" style={{ minWidth: 960 }}>
               <thead>
                 <tr style={{ background: "#FFF7ED" }}>
-                  {["#", "담당자", "품명", "개수", "공급가", "세액", "합계", "작업시작일", "작업만료일", "셋팅날짜", "잔여일", "완료"].map((h) => (
+                  <th className="px-3 py-2.5 text-left font-semibold whitespace-nowrap" style={{ color: "#F97316", borderBottom: "2px solid #FED7AA" }}>#</th>
+                  <th className="px-3 py-2.5 text-left font-semibold whitespace-nowrap" style={{ color: "#F97316", borderBottom: "2px solid #FED7AA" }}>
+                    <div className="flex items-center gap-1.5">
+                      <span>담당자</span>
+                      <div className="relative">
+                        <select
+                          value={workAssignee}
+                          onChange={(e) => setWorkAssignee(e.target.value)}
+                          className="appearance-none text-xs font-semibold pl-2 pr-5 py-0.5 rounded-md cursor-pointer outline-none transition-all"
+                          style={{
+                            background: workAssignee === "전체" ? "rgba(249,115,22,0.08)" : "rgba(49,130,246,0.12)",
+                            color:      workAssignee === "전체" ? "#F97316" : "#3182F6",
+                            border:     "1px solid " + (workAssignee === "전체" ? "rgba(249,115,22,0.25)" : "rgba(49,130,246,0.35)"),
+                          }}
+                        >
+                          <option value="전체">전체</option>
+                          {allAssignees.map((a) => <option key={a} value={a}>{a}</option>)}
+                        </select>
+                        <svg className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ color: workAssignee === "전체" ? "#F97316" : "#3182F6" }}>
+                          <polyline points="6 9 12 15 18 9"/>
+                        </svg>
+                      </div>
+                    </div>
+                  </th>
+                  {["품명", "개수", "공급가", "세액", "합계", "작업시작일", "작업만료일", "셋팅날짜", "잔여일", "완료"].map((h) => (
                     <th key={h} className="px-3 py-2.5 text-left font-semibold whitespace-nowrap" style={{ color: "#F97316", borderBottom: "2px solid #FED7AA" }}>{h}</th>
                   ))}
                 </tr>
@@ -1672,7 +1669,8 @@ function ProjectsInner() {
               </tbody>
             </table>
             </div>
-          )}
+            );
+          })()}
         </div>
       )}
 
