@@ -20,7 +20,7 @@ interface ExpenseItem {
   createdAt:    string;
 }
 
-const TEAMS = ["영업 1팀", "영업 2팀", "경영팀", "기타"];
+const TEAMS = ["영업 1팀", "영업 2팀", "경영", "기타"];
 
 const STATUS_STYLE: Record<Status, { bg: string; color: string; border: string }> = {
   대기: { bg: "rgba(234,179,8,0.1)",  color: "#CA8A04", border: "rgba(234,179,8,0.25)" },

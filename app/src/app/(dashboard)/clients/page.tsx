@@ -9,9 +9,9 @@ import { useCurrentRole } from "@/lib/useCurrentRole";
 type Status = "리드" | "진행" | "종료";
 type TabKey = "전체" | Status;
 type CategoryFilter = "전체" | "B2B" | "B2C";
-type TeamFilter = "전체" | "영업 1팀" | "영업 2팀" | "경영팀";
-const TEAM_FILTERS: TeamFilter[] = ["전체", "영업 1팀", "영업 2팀", "경영팀"];
-const TEAM_COLOR: Record<string, string> = { "영업 1팀": "#6366F1", "영업 2팀": "#10B981", "경영팀": "#F59E0B" };
+type TeamFilter = "전체" | "영업 1팀" | "영업 2팀" | "경영";
+const TEAM_FILTERS: TeamFilter[] = ["전체", "영업 1팀", "영업 2팀", "경영"];
+const TEAM_COLOR: Record<string, string> = { "영업 1팀": "#6366F1", "영업 2팀": "#10B981", "경영": "#F59E0B" };
 
 interface Client {
   id: string;
@@ -374,10 +374,12 @@ export default function ClientsPage() {
       {/* 팀별 뷰 */}
       {viewMode === "team" && !loading && (
         <div className="space-y-4">
-          {(["영업 1팀", "영업 2팀", "경영팀", ""] as const).map((teamKey) => {
-            const teamClients = filtered.filter(c =>
-              teamKey === "" ? (!c.assignedTeam || !["영업 1팀","영업 2팀","경영팀"].includes(c.assignedTeam)) : c.assignedTeam === teamKey
-            );
+          {(["영업 1팀", "영업 2팀", "경영", ""] as const).map((teamKey) => {
+            const teamClients = filtered.filter(c => {
+              if (teamKey === "") return !c.assignedTeam || !["영업 1팀","영업 2팀","경영","경영팀","경영관리"].includes(c.assignedTeam);
+              if (teamKey === "경영") return ["경영","경영팀","경영관리"].includes(c.assignedTeam ?? "");
+              return c.assignedTeam === teamKey;
+            });
             const color = TEAM_COLOR[teamKey] ?? "#94A3B8";
             const label = teamKey || "미지정";
             if (teamFilter !== "전체" && teamKey !== teamFilter) return null;
