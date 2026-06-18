@@ -1479,7 +1479,7 @@ function ProjectsInner() {
               <div className="flex items-center justify-between px-5 py-3" style={{ borderBottom: "1px solid #F1F5F9", background: "#FAFBFC" }}>
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-1">
-                    {(["전체", "미완료", "완료"] as const).map((f) => {
+                    {(["미완료", "완료", "전체"] as const).map((f) => {
                       const isActive = workFilter === f;
                       return (
                         <button key={f} onClick={() => setWorkFilter(f)}
