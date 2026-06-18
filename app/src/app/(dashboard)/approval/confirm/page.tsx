@@ -970,14 +970,34 @@ export default function ConfirmPage() {
                   <input type="date" value={confirmDate} onChange={e => setConfirmDate(e.target.value)}
                     className="flex-1 text-sm bg-transparent outline-none" style={{ color: "#191F28" }} />
                 </div>
-                <div className="flex gap-2">
-                  <button onClick={() => setRejectTarget(selected)}
-                    className="px-4 py-2.5 rounded-xl text-sm font-semibold hover:opacity-90"
-                    style={{ background: "rgba(239,68,68,0.1)", color: "#DC2626" }}>반려</button>
-                  <button onClick={() => updateStatus([selected.id], "확인완료", confirmDate)}
-                    className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white hover:opacity-90"
-                    style={{ background: "linear-gradient(135deg, #3182F6 0%, #2462D8 100%)" }}>확인완료</button>
-                </div>
+                {/* 입금확인 + 세금계산서 둘 다 완료돼야 확인완료 가능 */}
+                {(() => {
+                  const needsInvoice = selected.depositAccount !== "전재민";
+                  const invoiceDone = Boolean(selected.taxInvoiceDate);
+                  const canConfirm = !needsInvoice || invoiceDone;
+                  return (
+                    <div className="flex gap-2">
+                      <button onClick={() => setRejectTarget(selected)}
+                        className="px-4 py-2.5 rounded-xl text-sm font-semibold hover:opacity-90"
+                        style={{ background: "rgba(239,68,68,0.1)", color: "#DC2626" }}>반려</button>
+                      <button
+                        onClick={() => canConfirm && updateStatus([selected.id], "확인완료", confirmDate)}
+                        disabled={!canConfirm}
+                        title={!canConfirm ? "세금계산서 발행 후 확인완료 처리 가능합니다" : undefined}
+                        className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white transition-opacity"
+                        style={{
+                          background: canConfirm
+                            ? "linear-gradient(135deg, #3182F6 0%, #2462D8 100%)"
+                            : "#CBD5E1",
+                          cursor: canConfirm ? "pointer" : "not-allowed",
+                          opacity: canConfirm ? 1 : 0.6,
+                        }}>확인완료</button>
+                    </div>
+                  );
+                })()}
+                {!selected.taxInvoiceDate && selected.depositAccount !== "전재민" && (
+                  <p className="text-xs text-center" style={{ color: "#94A3B8" }}>세금계산서 발행 후 확인완료 처리 가능합니다</p>
+                )}
                 {/* 세금계산서 선발행 */}
                 {selected.depositAccount !== "전재민" && (
                   <div className="pt-3 mt-1" style={{ borderTop: "1px solid #E9EBEF" }}>
