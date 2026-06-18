@@ -962,7 +962,7 @@ function ProjectsInner() {
   function loadWorkCheck() {
     setWorkLoading(true);
     const url = teamParam ? `/api/work-check?team=${encodeURIComponent(teamParam)}` : "/api/work-check";
-    fetch(url)
+    fetch(url, { cache: "no-store" })
       .then((r) => r.json())
       .then((d) => {
         const rows: WorkCheckRow[] = d.rows ?? [];
@@ -973,19 +973,25 @@ function ProjectsInner() {
   }
 
   async function updateWorkRow(id: string, patch: { workCompleted?: boolean; settingDate?: string }) {
-    await fetch(`/api/costs/${id}`, {
+    // 낙관적 업데이트: 요청 전에 로컬 상태를 먼저 반영
+    let rollback: WorkCheckRow[] | undefined;
+    setWorkRows((prev) => {
+      rollback = prev;
+      return prev.map((r) => {
+        if (r.id !== id) return r;
+        if (editCampaign?.id === r.projectId || activeCampGroup === r.groupId) {
+          loadCampaigns(r.groupId, true);
+        }
+        return { ...r, ...patch };
+      });
+    });
+    const res = await fetch(`/api/costs/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(patch),
     });
-    setWorkRows((prev) => prev.map((r) => {
-      if (r.id !== id) return r;
-      // 모달이 같은 프로젝트를 열고 있으면 캠페인 캐시 갱신
-      if (editCampaign?.id === r.projectId || activeCampGroup === r.groupId) {
-        loadCampaigns(r.groupId, true);
-      }
-      return { ...r, ...patch };
-    }));
+    // 저장 실패 시 이전 상태로 롤백
+    if (!res.ok && rollback) setWorkRows(rollback);
   }
 
   // 그룹 목록 로드
