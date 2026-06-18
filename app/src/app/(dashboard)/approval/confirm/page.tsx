@@ -188,7 +188,7 @@ export default function ConfirmPage() {
     const set = new Set(
       items
         .filter((i) => selectedMonth === null || i.requestedAt.startsWith(selectedMonth))
-        .map((i) => i.requestedAt)
+        .map((i) => i.requestedAt.slice(0, 10))
     );
     return Array.from(set).sort((a, b) => b.localeCompare(a));
   }, [items, selectedMonth]);
@@ -196,14 +196,15 @@ export default function ConfirmPage() {
   const filtered = useMemo(() => items.filter((i) =>
     (filterStatus === "전체" || i.status === filterStatus) &&
     (selectedMonth === null || i.requestedAt.startsWith(selectedMonth)) &&
-    (selectedDate === null || i.requestedAt === selectedDate)
+    (selectedDate === null || i.requestedAt.slice(0, 10) === selectedDate)
   ), [items, filterStatus, selectedMonth, selectedDate]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, ConfirmRequest[]>();
     filtered.forEach((i) => {
-      if (!map.has(i.requestedAt)) map.set(i.requestedAt, []);
-      map.get(i.requestedAt)!.push(i);
+      const key = i.requestedAt.slice(0, 10);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(i);
     });
     return Array.from(map.entries()).sort((a, b) => b[0].localeCompare(a[0]));
   }, [filtered]);
@@ -215,7 +216,7 @@ export default function ConfirmPage() {
 
   const scopedItems = useMemo(() => items.filter((i) =>
     (selectedMonth === null || i.requestedAt.startsWith(selectedMonth)) &&
-    (selectedDate === null || i.requestedAt === selectedDate)
+    (selectedDate === null || i.requestedAt.slice(0, 10) === selectedDate)
   ), [items, selectedMonth, selectedDate]);
 
   const counts = {
@@ -347,7 +348,7 @@ export default function ConfirmPage() {
 
   async function handleDailyExcel() {
     const confirmed = items.filter((i) => i.status === "확인완료" && !i.taxInvoiceDate);
-    const targets = selectedDate ? confirmed.filter((i) => i.requestedAt === selectedDate) : confirmed;
+    const targets = selectedDate ? confirmed.filter((i) => i.requestedAt.slice(0, 10) === selectedDate) : confirmed;
     if (targets.length === 0) {
       alert("확인완료 상태이고 아직 발행되지 않은 세금계산서가 없습니다.\n(대기·반려 항목은 포함되지 않습니다.)");
       return;
@@ -549,7 +550,7 @@ export default function ConfirmPage() {
                 전체
               </button>
               {dates.map((d) => {
-                const count = items.filter((i) => i.requestedAt === d).length;
+                const count = items.filter((i) => i.requestedAt.slice(0, 10) === d).length;
                 const isActive = selectedDate === d;
                 return (
                   <button key={d} onClick={() => setSelectedDate(isActive ? null : d)}
