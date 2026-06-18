@@ -58,7 +58,7 @@ function buildRows(items: ConfirmRequest[], clientMap: Map<string, ClientRow>) {
     const tax    = raw - supply;
     const qty    = parseInt(item.quantity) || 1;
     const unit   = qty > 0 ? Math.round(supply / qty) : supply;
-    const date   = item.dueDate?.replace(/-/g, "") || new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    const date   = (item.taxInvoiceDate || item.dueDate)?.replace(/-/g, "") || new Date().toISOString().slice(0, 10).replace(/-/g, "");
 
     const bizNum    = ((client?.businessNumber  ?? item.clientBusinessNumber ?? "") as string).replace(/-/g, "");
     const corpName  = (client?.companyName       ?? item.clientName)           as string;
@@ -214,6 +214,17 @@ export default function ConfirmPage() {
     if (selectedDate) return confirmed.filter((i) => i.requestedAt.slice(0, 10) === selectedDate);
     if (selectedMonth) return confirmed.filter((i) => i.requestedAt.startsWith(selectedMonth));
     return confirmed;
+  }, [items, selectedMonth, selectedDate]);
+
+  // 엑셀 내보내기 대상: 확인완료+미발행 OR 대기+발행완료
+  const invoiceExportItems = useMemo(() => {
+    const base = items.filter((i) =>
+      (i.status === "확인완료" && !i.taxInvoiceDate) ||
+      (i.status === "대기" && Boolean(i.taxInvoiceDate))
+    );
+    if (selectedDate) return base.filter((i) => i.requestedAt.slice(0, 10) === selectedDate);
+    if (selectedMonth) return base.filter((i) => i.requestedAt.startsWith(selectedMonth));
+    return base;
   }, [items, selectedMonth, selectedDate]);
 
   const scopedItems = useMemo(() => items.filter((i) =>
@@ -377,16 +388,11 @@ export default function ConfirmPage() {
   }
 
   async function handleDailyExcel() {
-    const confirmed = items.filter((i) => i.status === "확인완료" && !i.taxInvoiceDate);
-    let targets = confirmed;
-    if (selectedDate) targets = confirmed.filter((i) => i.requestedAt.slice(0, 10) === selectedDate);
-    else if (selectedMonth) targets = confirmed.filter((i) => i.requestedAt.startsWith(selectedMonth));
-    if (targets.length === 0) {
-      alert("확인완료 상태이고 아직 발행되지 않은 세금계산서가 없습니다.\n(대기·반려 항목은 포함되지 않습니다.)");
+    if (invoiceExportItems.length === 0) {
+      alert("내보낼 세금계산서가 없습니다.\n(확인완료+미발행 또는 대기+발행완료 항목이 없습니다.)");
       return;
     }
-    setFilterStatus("확인완료");
-    await handleExcel(targets, selectedDate ? formatDate(selectedDate) : "일괄");
+    await handleExcel(invoiceExportItems, selectedDate ? formatDate(selectedDate) : "일괄");
   }
 
   const formatDate = (d: string) => { const [y, m, day] = d.split("-"); return `${y}.${m}.${day}`; };
@@ -521,7 +527,7 @@ export default function ConfirmPage() {
         <div className="flex items-center gap-2">
           <button onClick={handleDailyExcel} disabled={exporting}
             className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white hover:opacity-90 transition-opacity disabled:opacity-60"
-            style={{ background: pendingInvoice.length > 0 ? "linear-gradient(135deg, #3182F6 0%, #2462D8 100%)" : "#CBD5E1" }}>
+            style={{ background: invoiceExportItems.length > 0 ? "linear-gradient(135deg, #3182F6 0%, #2462D8 100%)" : "#CBD5E1" }}>
             {exporting ? (
               <svg className="animate-spin" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
             ) : (
@@ -530,9 +536,9 @@ export default function ConfirmPage() {
                 <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
               </svg>
             )}
-            입금완료 계산서 발행
-            {pendingInvoice.length > 0 && (
-              <span className="bg-white rounded-full text-xs font-black px-1.5 py-0.5 leading-none" style={{ color: "#3182F6" }}>{pendingInvoice.length}</span>
+            계산서 발행 엑셀
+            {invoiceExportItems.length > 0 && (
+              <span className="bg-white rounded-full text-xs font-black px-1.5 py-0.5 leading-none" style={{ color: "#3182F6" }}>{invoiceExportItems.length}</span>
             )}
           </button>
         </div>
@@ -639,23 +645,26 @@ export default function ConfirmPage() {
       ) : (
         <div className="space-y-4">
           {grouped.map(([date, dateItems]) => {
-            const confirmedItems = dateItems.filter((i) => i.status === "확인완료" && !i.taxInvoiceDate);
+            const exportItems = dateItems.filter((i) =>
+              (i.status === "확인완료" && !i.taxInvoiceDate) ||
+              (i.status === "대기" && Boolean(i.taxInvoiceDate))
+            );
             return (
               <div key={date} className="rounded-2xl overflow-hidden" style={{ background: "#fff", border: "1px solid #E9EBEF" }}>
                 {/* 날짜 헤더 */}
                 <div className="flex items-center gap-3 px-5 py-3" style={{ background: "#F8FAFC", borderBottom: "1px solid #F1F5F9" }}>
                   <span className="text-sm font-bold" style={{ color: "#191F28" }}>{formatDate(date)}</span>
                   <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: "#E9EBEF", color: "#64748B" }}>{dateItems.length}건</span>
-                  {confirmedItems.length > 0 && (
+                  {exportItems.length > 0 && (
                     <button
-                      onClick={() => handleExcel(confirmedItems, formatDate(date))}
+                      onClick={() => handleExcel(exportItems, formatDate(date))}
                       disabled={exporting}
                       className="ml-auto flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all hover:opacity-80 disabled:opacity-50"
                       style={{ background: "rgba(49,130,246,0.1)", color: "#3182F6", border: "1px solid rgba(49,130,246,0.2)" }}>
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
                       </svg>
-                      확인완료 엑셀 ({confirmedItems.length}건)
+                      계산서 엑셀 ({exportItems.length}건)
                     </button>
                   )}
                 </div>
