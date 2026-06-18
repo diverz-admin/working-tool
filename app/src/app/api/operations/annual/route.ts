@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { projects, projectRevenues, annualCosts, projectCosts } from "@/db/schema";
-import { eq, and, isNotNull, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 export async function GET(req: NextRequest) {
   try {
     const year       = parseInt(req.nextUrl.searchParams.get("year") ?? String(new Date().getFullYear()));
-    const criteria   = req.nextUrl.searchParams.get("criteria") ?? "캠페인 시작날짜";
-    const useInvoice = criteria === "계산서날짜";
-    const useSupply  = criteria === "공급가";
+    const criteria  = req.nextUrl.searchParams.get("criteria") ?? "캠페인 시작날짜";
+    const useSupply = criteria === "공급가";
 
     // 3 쿼리 병렬 (연간매출 + 수동비용 + 직접매입)
     const [projectData, manualRows, directCostRows] = await Promise.all([
@@ -21,14 +20,11 @@ export async function GET(req: NextRequest) {
         kpiSupply:      projects.kpiSupply,
         totalSum:       sql<number>`COALESCE(SUM(${projectRevenues.total}), 0)`,
         supplySum:      sql<number>`COALESCE(SUM(${projectRevenues.supplyPrice}), 0)`,
-        maxInvoiceDate: sql<string>`MAX(${projectRevenues.invoiceDate})`,
       })
       .from(projects)
       .innerJoin(projectRevenues, eq(projectRevenues.projectId, projects.id))
       .where(
-        useInvoice
-          ? and(isNotNull(projectRevenues.paymentDate), isNotNull(projectRevenues.invoiceDate), sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`)
-          : and(isNotNull(projectRevenues.paymentDate), sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`)
+        sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`
       )
       .groupBy(projects.id, projects.assignedTeam, projects.assignedPerson, projects.startDate, projects.contractAmount, projects.kpiSupply),
 
@@ -43,7 +39,7 @@ export async function GET(req: NextRequest) {
     const other   = new Array(12).fill(0);
 
     for (const p of projectData) {
-      const refDate = useInvoice ? p.maxInvoiceDate : p.startDate;
+      const refDate = p.startDate;
       if (!refDate) continue;
       const month  = parseInt(refDate.substring(5, 7)) - 1;
       const amount = useSupply

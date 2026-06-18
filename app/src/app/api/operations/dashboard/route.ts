@@ -26,10 +26,9 @@ export async function GET(req: NextRequest) {
       })
       .from(projects)
       .innerJoin(projectRevenues, eq(projectRevenues.projectId, projects.id))
-      .where(and(
-        isNotNull(projectRevenues.paymentDate),
-        sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`,
-      ))
+      .where(
+        sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`
+      )
       .groupBy(projects.id, projects.assignedTeam, projects.assignedPerson, projects.startDate, projects.contractAmount, projects.kpiSupply),
 
       // 2. 연간 수동 비용
@@ -52,7 +51,6 @@ export async function GET(req: NextRequest) {
       .from(projectRevenues)
       .innerJoin(projects, eq(projectRevenues.projectId, projects.id))
       .where(and(
-        isNotNull(projectRevenues.paymentDate),
         isNotNull(projects.startDate),
         gte(projects.startDate, from),
         lte(projects.startDate, to),

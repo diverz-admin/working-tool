@@ -1,14 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { projects, projectRevenues, projectCosts, notices } from "@/db/schema";
-import { eq, and, isNotNull, sql, desc, inArray, gte, lte } from "drizzle-orm";
+import { eq, and, sql, desc, gte, lte } from "drizzle-orm";
 
 export async function GET(req: NextRequest) {
   try {
     const year     = parseInt(req.nextUrl.searchParams.get("year")     ?? String(new Date().getFullYear()));
-    const criteria = req.nextUrl.searchParams.get("criteria")          ?? "캠페인 시작날짜";
-    const useInvoice = criteria === "계산서날짜";
-
     const startOfYear = `${year}-01-01`;
     const endOfYear = `${year}-12-31`;
 
@@ -40,23 +37,14 @@ export async function GET(req: NextRequest) {
         totalSum:       sql<number>`COALESCE(SUM(${projectRevenues.total}), 0)`,
         supplySum:      sql<number>`COALESCE(SUM(${projectRevenues.supplyPrice}), 0)`,
         taxSum:         sql<number>`COALESCE(SUM(${projectRevenues.tax}), 0)`,
-        refMonth:       sql<string>`TO_CHAR(MAX(${projectRevenues.invoiceDate}), 'YYYY-MM')`,
       })
       .from(projects)
       .innerJoin(projectRevenues, eq(projectRevenues.projectId, projects.id))
       .where(
-        useInvoice
-          ? and(
-              isNotNull(projectRevenues.paymentDate),
-              isNotNull(projectRevenues.invoiceDate),
-              gte(projects.startDate, startOfYear),
-              lte(projects.startDate, endOfYear)
-            )
-          : and(
-              isNotNull(projectRevenues.paymentDate),
-              gte(projects.startDate, startOfYear),
-              lte(projects.startDate, endOfYear)
-            )
+        and(
+          gte(projects.startDate, startOfYear),
+          lte(projects.startDate, endOfYear)
+        )
       )
       .groupBy(projects.id, projects.startDate, projects.contractAmount, projects.kpiSupply, projects.kpiTax),
 
@@ -73,19 +61,6 @@ export async function GET(req: NextRequest) {
       .where(
         and(
           eq(projectCosts.isApproved, true),
-          inArray(
-            projectCosts.projectId,
-            db.select({ projectId: projectRevenues.projectId })
-              .from(projectRevenues)
-              .innerJoin(projects, eq(projects.id, projectRevenues.projectId))
-              .where(
-                and(
-                  isNotNull(projectRevenues.paymentDate),
-                  gte(projects.startDate, startOfYear),
-                  lte(projects.startDate, endOfYear)
-                )
-              )
-          ),
           gte(projects.startDate, startOfYear),
           lte(projects.startDate, endOfYear)
         )
@@ -105,9 +80,7 @@ export async function GET(req: NextRequest) {
     }));
 
     for (const p of revRows) {
-      const mIdx = useInvoice
-        ? (p.refMonth ? parseInt(p.refMonth.substring(5, 7)) - 1 : -1)
-        : (p.startDate ? parseInt(p.startDate.substring(5, 7)) - 1 : -1);
+      const mIdx = p.startDate ? parseInt(p.startDate.substring(5, 7)) - 1 : -1;
       if (mIdx < 0 || mIdx > 11) continue;
       monthly[mIdx].total       += p.contractAmount ?? Number(p.totalSum ?? 0);
       monthly[mIdx].supplyPrice += p.kpiSupply      ?? Number(p.supplySum ?? 0);

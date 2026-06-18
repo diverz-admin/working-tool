@@ -10,8 +10,7 @@ export async function GET(req: NextRequest) {
     const criteria = req.nextUrl.searchParams.get("criteria") ?? "캠페인 시작날짜";
 
     const useInvoice    = criteria === "계산서날짜";
-    const revDateField  = useInvoice ? projectRevenues.invoiceDate : projects.startDate;
-    const costDateField = useInvoice ? projectCosts.invoiceDate    : projects.startDate;
+    const costDateField = useInvoice ? projectCosts.invoiceDate : projects.startDate;
 
     const from = `${year}-${String(month).padStart(2, "0")}-01`;
     const to   = new Date(year, month, 0).toISOString().slice(0, 10);
@@ -34,10 +33,9 @@ export async function GET(req: NextRequest) {
       .innerJoin(projects, eq(projectRevenues.projectId, projects.id))
       .leftJoin(clients, eq(projects.clientId, clients.id))
       .where(and(
-        isNotNull(projectRevenues.paymentDate),
-        isNotNull(revDateField),
-        gte(revDateField, from),
-        lte(revDateField, to),
+        isNotNull(projects.startDate),
+        gte(projects.startDate, from),
+        lte(projects.startDate, to),
       ))
       .groupBy(
         projects.id, projects.assignedTeam, projects.assignedPerson,

@@ -1,14 +1,12 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { projects, projectRevenues, projectCosts, kpiTargets } from "@/db/schema";
-import { eq, sql, isNotNull, and } from "drizzle-orm";
+import { eq, sql, and } from "drizzle-orm";
 
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const year = parseInt(searchParams.get("year") ?? String(new Date().getFullYear()));
-    const criteria = searchParams.get("criteria") ?? "캠페인 시작날짜";
-    const useInvoice = criteria === "계산서날짜";
     const teamParam = searchParams.get("team") ?? "";
 
     // 3개 쿼리 완전 병렬 실행
@@ -20,23 +18,14 @@ export async function GET(req: Request) {
           assignedTeam:   projects.assignedTeam,
           contractAmount: projects.contractAmount,
           totalSum:       sql<number>`COALESCE(SUM(${projectRevenues.total}), 0)`,
-          refMonth:       sql<string>`TO_CHAR(MAX(${useInvoice ? projectRevenues.invoiceDate : projectRevenues.paymentDate}), 'YYYY-MM')`,
         })
         .from(projects)
         .innerJoin(projectRevenues, eq(projectRevenues.projectId, projects.id))
         .where(
-          useInvoice
-            ? and(
-                isNotNull(projectRevenues.paymentDate),
-                isNotNull(projectRevenues.invoiceDate),
-                sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`,
-                teamParam ? eq(projects.assignedTeam, teamParam) : undefined,
-              )
-            : and(
-                isNotNull(projectRevenues.paymentDate),
-                sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`,
-                teamParam ? eq(projects.assignedTeam, teamParam) : undefined,
-              )
+          and(
+            sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`,
+            teamParam ? eq(projects.assignedTeam, teamParam) : undefined,
+          )
         )
         .groupBy(projects.id, projects.startDate, projects.assignedTeam, projects.contractAmount),
 
@@ -66,9 +55,7 @@ export async function GET(req: Request) {
     const teamMonthMap = new Map<string, MonthEntry[]>();
 
     for (const p of projectData) {
-      const monthStr = useInvoice
-        ? (p.refMonth ?? "")
-        : (p.startDate ? `${year}-${p.startDate.substring(5, 7)}` : "");
+      const monthStr = p.startDate ? `${year}-${p.startDate.substring(5, 7)}` : "";
       if (!monthStr || !monthStr.startsWith(`${year}`)) continue;
 
       const monthIdx = parseInt(monthStr.substring(5, 7)) - 1;
