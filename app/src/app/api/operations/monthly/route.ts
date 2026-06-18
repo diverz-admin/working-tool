@@ -72,11 +72,11 @@ export async function GET(req: NextRequest) {
     ]);
 
     const revRows = revData.map(p => ({
-      assignedTeam:   p.assignedTeam,
-      assignedPerson: p.assignedPerson,
-      startDate:      p.startDate,
-      invoiceDate:    null as string | null,
-      clientName:     p.clientName ?? null,
+      assignedTeam: p.assignedTeam,
+      assignee:     p.assignedPerson,
+      startDate:    p.startDate,
+      invoiceDate:  null as string | null,
+      clientName:   p.clientName ?? null,
       total:       p.contractAmount ?? Number(p.totalSum ?? 0),
       supplyPrice: p.kpiSupply      ?? Number(p.supplySum ?? 0),
       tax:         p.kpiTax         ?? Number(p.taxSum    ?? 0),
