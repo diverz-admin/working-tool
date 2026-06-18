@@ -950,7 +950,7 @@ function ProjectsInner() {
   const [viewMode, setViewMode]           = useState<"목록" | "작업확인">("목록");
   const [workRows, setWorkRows]           = useState<WorkCheckRow[]>([]);
   const [workLoading, setWorkLoading]     = useState(false);
-  const [workFilter, setWorkFilter]       = useState<"전체" | "미완료" | "완료">("전체");
+  const [workFilter, setWorkFilter]       = useState<"전체" | "미완료" | "완료">("미완료");
   const [workSearch, setWorkSearch]       = useState("");
   const [workAssignee, setWorkAssignee]   = useState<string>("전체");
   const [pendingQty, setPendingQty]       = useState<Map<string, string>>(new Map());
