@@ -1121,8 +1121,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                                   setConfirmStatuses((p) => ({ ...p, [contractKey]: { status: "대기", requestId: newReq.id } }));
                                   invalidateProjectCache(pid);
                                   window.dispatchEvent(new Event("approval-request-added"));
-                                  onClose();
-                                  router.push("/approval/confirm");
+                                  showToast("요청이 완료되었습니다.");
                                 } catch (err) {
                                   setError(err instanceof Error ? err.message : "입금확인 요청에 실패했습니다.");
                                 }
