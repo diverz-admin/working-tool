@@ -44,10 +44,11 @@ function rowMonth(r: WorkRow) {
 export default function WorkCheckPage() {
   const thisMonth = new Date().toISOString().slice(0, 7);
 
-  const [rows, setRows]         = useState<WorkRow[]>([]);
-  const [loading, setLoading]   = useState(true);
-  const [filterTab, setTab]     = useState<FilterTab>("미완료");
-  const [filterTeam, setTeam]   = useState<string>("전체");
+  const [rows, setRows]           = useState<WorkRow[]>([]);
+  const [loading, setLoading]     = useState(true);
+  const [filterTab, setTab]       = useState<FilterTab>("미완료");
+  const [filterTeam, setTeam]     = useState<string>("전체");
+  const [filterAssignee, setAssignee] = useState<string>("전체");
   const [selectedMonth, setMonth] = useState<string>(thisMonth);
 
   useEffect(() => {
@@ -57,17 +58,20 @@ export default function WorkCheckPage() {
       .catch(() => setLoading(false));
   }, []);
 
-  const { months, teams } = useMemo(() => {
+  const { months, teams, assignees } = useMemo(() => {
     const ms = new Set<string>();
     const ts = new Set<string>();
+    const as = new Set<string>();
     for (const r of rows) {
       const m = rowMonth(r);
       if (m) ms.add(m);
       if (r.assignedTeam) ts.add(r.assignedTeam);
+      if (r.assignee) as.add(r.assignee);
     }
     return {
-      months: Array.from(ms).sort((a, b) => b.localeCompare(a)),
-      teams:  Array.from(ts).sort(),
+      months:    Array.from(ms).sort((a, b) => b.localeCompare(a)),
+      teams:     Array.from(ts).sort(),
+      assignees: Array.from(as).sort(),
     };
   }, [rows]);
 
@@ -83,13 +87,14 @@ export default function WorkCheckPage() {
   const monthRows = useMemo(() => rows.filter((r) => rowMonth(r) === selectedMonth), [rows, selectedMonth]);
 
   const filtered = useMemo(() => monthRows.filter((r) => {
-    const teamOk = filterTeam === "전체" || r.assignedTeam === filterTeam;
-    const tabOk  =
+    const teamOk     = filterTeam === "전체" || r.assignedTeam === filterTeam;
+    const assigneeOk = filterAssignee === "전체" || r.assignee === filterAssignee;
+    const tabOk      =
       filterTab === "전체"   ? true :
       filterTab === "미완료"  ? !r.workCompleted :
       Boolean(r.workCompleted);
-    return teamOk && tabOk;
-  }), [monthRows, filterTab, filterTeam]);
+    return teamOk && assigneeOk && tabOk;
+  }), [monthRows, filterTab, filterTeam, filterAssignee]);
 
   const totals = useMemo(() => {
     const t = { 전체: monthRows.length, 미완료: 0, 완료: 0 };
@@ -214,6 +219,37 @@ export default function WorkCheckPage() {
                 {t}
               </button>
             ))}
+          </div>
+        )}
+
+        {assignees.length > 0 && (
+          <div className="relative flex items-center gap-1.5">
+            <span className="text-xs font-semibold shrink-0" style={{ color: "#94A3B8" }}>작업담당자</span>
+            <div className="relative">
+              <select
+                value={filterAssignee}
+                onChange={(e) => setAssignee(e.target.value)}
+                className="appearance-none text-xs font-semibold pl-3 pr-7 py-1.5 rounded-lg cursor-pointer outline-none transition-all"
+                style={{
+                  background: filterAssignee === "전체" ? "#F1F5F9" : "rgba(249,115,22,0.1)",
+                  color:      filterAssignee === "전체" ? "#94A3B8"  : "#F97316",
+                  border:     filterAssignee === "전체" ? "1px solid transparent" : "1px solid rgba(249,115,22,0.3)",
+                }}
+              >
+                <option value="전체">전체</option>
+                {assignees.map((a) => (
+                  <option key={a} value={a}>{a}</option>
+                ))}
+              </select>
+              <svg
+                className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2"
+                width="10" height="10" viewBox="0 0 24 24" fill="none"
+                stroke={filterAssignee === "전체" ? "#94A3B8" : "#F97316"}
+                strokeWidth="2.5" strokeLinecap="round"
+              >
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+            </div>
           </div>
         )}
       </div>

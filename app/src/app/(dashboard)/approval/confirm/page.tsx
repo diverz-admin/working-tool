@@ -6,8 +6,9 @@ import { useRouter } from "next/navigation";
 import * as XLSX from "xlsx";
 import {
   type ConfirmRequest, type ConfirmStatus,
-  getConfirmRequests, updateConfirmRequest,
+  getConfirmRequests, updateConfirmRequest, deleteConfirmRequest,
 } from "@/lib/approvals";
+import { invalidateProjectCache } from "@/components/projects/ProjectModal";
 
 // ─── 공급자 고정 정보 ─────────────────────────────────────────
 const SUPPLIER = { companyName: "주식회사 다이버즈", businessNumber: "174-88-03266" };
@@ -311,15 +312,22 @@ export default function ConfirmPage() {
     const target = cancelTarget;
     const hadInvoice = Boolean(target.taxInvoiceDate);
 
-    // 1) 상태를 대기로, 계산서날짜 초기화
-    setItems((prev) => prev.map((i) =>
-      i.id === target.id ? { ...i, status: "대기" as ConfirmStatus, taxInvoiceDate: undefined } : i
-    ));
-    await updateConfirmRequest(target.id, { status: "대기", taxInvoiceDate: null as unknown as string });
+    if (hadInvoice) {
+      // 계산서 발행 취소: confirm request 자체를 삭제해 입금확인요청 버튼이 다시 활성화되도록 함
+      setItems((prev) => prev.filter((i) => i.id !== target.id));
+      await deleteConfirmRequest(target.id);
+    } else {
+      // 일반 확인 취소: 대기 상태로 되돌리기
+      setItems((prev) => prev.map((i) =>
+        i.id === target.id ? { ...i, status: "대기" as ConfirmStatus, taxInvoiceDate: undefined } : i
+      ));
+      await updateConfirmRequest(target.id, { status: "대기", taxInvoiceDate: null as unknown as string });
+    }
+    if (target.projectId) invalidateProjectCache(target.projectId);
     setSelected(null);
     setCancelTarget(null);
 
-    // 2) 매출행 날짜 역방향 처리
+    // 매출행 날짜 역방향 처리
     const fieldsToClear: ("paymentDate" | "invoiceDate")[] = hadInvoice
       ? ["paymentDate", "invoiceDate"]
       : ["paymentDate"];

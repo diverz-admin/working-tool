@@ -993,7 +993,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                           <span className="text-sm font-bold" style={{ color: "#3182F6" }}>₩</span>
                           <input type="text"
                             value={form.kpiSupply ? Number(form.kpiSupply.replace(/,/g,"")).toLocaleString() : ""}
-                            onChange={(e) => { const raw = e.target.value.replace(/[^0-9]/g,""); setForm(p=>({ ...p, kpiSupply: raw, contractAmount: String((parseInt(raw)||0) + (parseInt(p.kpiTax)||0)) })); }}
+                            onChange={(e) => { const raw = e.target.value.replace(/[^0-9]/g,""); const supply = parseInt(raw)||0; const tax = Math.round(supply * 0.1); setForm(p=>({ ...p, kpiSupply: raw, kpiTax: String(tax), contractAmount: String(supply + tax) })); }}
                             placeholder="0"
                             className="text-sm font-bold outline-none border-b-2 bg-transparent transition-colors focus:border-[#3182F6]"
                             style={{ color: "#3182F6", borderColor: "#E9EBEF", width: 90 }} />

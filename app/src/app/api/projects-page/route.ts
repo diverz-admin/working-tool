@@ -94,12 +94,14 @@ export async function GET() {
       .where(eq(projects.status, "진행"))
       .groupBy(projects.projectGroupId),
 
-      // 7. 작업확인 미완료 카운트 — 매입(구매) 기준
+      // 7. 작업확인 미완료 카운트 — 진행 중인 프로젝트의 매입(구매) 기준
       db.select({ cnt: sql<number>`COUNT(*)` })
         .from(projectCosts)
-        .where(
+        .innerJoin(projects, eq(projects.id, projectCosts.projectId))
+        .where(and(
+          eq(projects.status, "진행"),
           or(eq(projectCosts.workCompleted, false), isNull(projectCosts.workCompleted))
-        ),
+        )),
     ]);
 
     // ── 그룹 조립 ────────────────────────────────────

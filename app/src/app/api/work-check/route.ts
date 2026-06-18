@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { projectCosts, projects, projectGroups } from "@/db/schema";
-import { and, eq, or, isNull } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 export async function GET(req: Request) {
   try {
@@ -30,11 +30,8 @@ export async function GET(req: Request) {
       .innerJoin(projects, eq(projects.id, projectCosts.projectId))
       .innerJoin(projectGroups, eq(projectGroups.id, projects.projectGroupId))
       .where(and(
+        eq(projects.status, "진행"),
         teamParam ? eq(projects.assignedTeam, teamParam) : undefined,
-        or(
-          eq(projectCosts.workCompleted, false),
-          isNull(projectCosts.workCompleted),
-        )
       ))
       .orderBy(projectGroups.name, projects.campaignName, projectCosts.rowNum);
 
