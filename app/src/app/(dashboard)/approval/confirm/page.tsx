@@ -491,7 +491,7 @@ export default function ConfirmPage() {
                 <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
               </svg>
             )}
-            확인완료 계산서 엑셀
+            입금완료 계산서 발행
             {pendingInvoice.length > 0 && (
               <span className="bg-white rounded-full text-xs font-black px-1.5 py-0.5 leading-none" style={{ color: "#3182F6" }}>{pendingInvoice.length}</span>
             )}
