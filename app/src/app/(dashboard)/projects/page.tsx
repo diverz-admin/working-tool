@@ -952,6 +952,7 @@ function ProjectsInner() {
   const [workLoading, setWorkLoading]     = useState(false);
   const [workFilter, setWorkFilter]       = useState<"전체" | "미완료" | "완료">("전체");
   const [workSearch, setWorkSearch]       = useState("");
+  const [workAssignee, setWorkAssignee]   = useState<string>("전체");
   const [pendingQty, setPendingQty]       = useState<Map<string, string>>(new Map());
   const [pendingSettingDate, setPendingSettingDate] = useState<Map<string, string>>(new Map());
 
@@ -1471,38 +1472,73 @@ function ProjectsInner() {
           })()}
 
           {/* 필터 바 */}
-          <div className="flex items-center justify-between px-5 py-3" style={{ borderBottom: "1px solid #F1F5F9", background: "#FAFBFC" }}>
-            <div className="flex items-center gap-1">
-              {(["전체", "미완료", "완료"] as const).map((f) => {
-                const isActive = workFilter === f;
-                const monthFiltered = workRows.filter(r => (r.workStartDate ?? "").startsWith(workMonth));
-                return (
-                  <button key={f} onClick={() => setWorkFilter(f)}
-                    className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
-                    style={{
-                      background: isActive ? (f === "완료" ? "rgba(16,185,129,0.1)" : f === "미완료" ? "rgba(239,68,68,0.08)" : "rgba(49,130,246,0.1)") : "transparent",
-                      color: isActive ? (f === "완료" ? "#059669" : f === "미완료" ? "#EF4444" : "#3182F6") : "#94A3B8",
-                    }}>
-                    {f}
-                    <span className="ml-1 font-bold">
-                      {f === "전체" ? monthFiltered.length
-                        : f === "완료" ? monthFiltered.filter(r => r.workCompleted).length
-                        : monthFiltered.filter(r => !r.workCompleted).length}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-            <div className="relative">
-              <svg className="absolute left-3 top-1/2 -translate-y-1/2" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2" strokeLinecap="round">
-                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-              </svg>
-              <input type="text" placeholder="캠페인명, 품명, 담당자 검색" value={workSearch}
-                onChange={(e) => setWorkSearch(e.target.value)}
-                className="pl-8 pr-4 py-1.5 text-xs rounded-xl outline-none"
-                style={{ background: "#F1F5F9", border: "1px solid #E9EBEF", color: "#191F28", width: 220 }} />
-            </div>
-          </div>
+          {(() => {
+            const monthFiltered = workRows.filter(r => (r.workStartDate ?? "").startsWith(workMonth));
+            const assignees = [...new Set(monthFiltered.map(r => r.assignee).filter(Boolean) as string[])].sort();
+            return (
+              <div className="flex items-center justify-between px-5 py-3" style={{ borderBottom: "1px solid #F1F5F9", background: "#FAFBFC" }}>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1">
+                    {(["전체", "미완료", "완료"] as const).map((f) => {
+                      const isActive = workFilter === f;
+                      return (
+                        <button key={f} onClick={() => setWorkFilter(f)}
+                          className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                          style={{
+                            background: isActive ? (f === "완료" ? "rgba(16,185,129,0.1)" : f === "미완료" ? "rgba(239,68,68,0.08)" : "rgba(49,130,246,0.1)") : "transparent",
+                            color: isActive ? (f === "완료" ? "#059669" : f === "미완료" ? "#EF4444" : "#3182F6") : "#94A3B8",
+                          }}>
+                          {f}
+                          <span className="ml-1 font-bold">
+                            {f === "전체" ? monthFiltered.length
+                              : f === "완료" ? monthFiltered.filter(r => r.workCompleted).length
+                              : monthFiltered.filter(r => !r.workCompleted).length}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {assignees.length > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-semibold shrink-0" style={{ color: "#94A3B8" }}>작업담당자</span>
+                      <div className="relative">
+                        <select
+                          value={workAssignee}
+                          onChange={(e) => setWorkAssignee(e.target.value)}
+                          className="appearance-none text-xs font-semibold pl-3 pr-7 py-1.5 rounded-lg cursor-pointer outline-none transition-all"
+                          style={{
+                            background: workAssignee === "전체" ? "#F1F5F9" : "rgba(49,130,246,0.1)",
+                            color:      workAssignee === "전체" ? "#94A3B8"  : "#3182F6",
+                            border:     workAssignee === "전체" ? "1px solid transparent" : "1px solid rgba(49,130,246,0.3)",
+                          }}
+                        >
+                          <option value="전체">전체</option>
+                          {assignees.map((a) => (
+                            <option key={a} value={a}>{a}</option>
+                          ))}
+                        </select>
+                        <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2"
+                          width="10" height="10" viewBox="0 0 24 24" fill="none"
+                          stroke={workAssignee === "전체" ? "#94A3B8" : "#3182F6"}
+                          strokeWidth="2.5" strokeLinecap="round">
+                          <polyline points="6 9 12 15 18 9"/>
+                        </svg>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div className="relative">
+                  <svg className="absolute left-3 top-1/2 -translate-y-1/2" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2" strokeLinecap="round">
+                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                  </svg>
+                  <input type="text" placeholder="캠페인명, 품명, 담당자 검색" value={workSearch}
+                    onChange={(e) => setWorkSearch(e.target.value)}
+                    className="pl-8 pr-4 py-1.5 text-xs rounded-xl outline-none"
+                    style={{ background: "#F1F5F9", border: "1px solid #E9EBEF", color: "#191F28", width: 220 }} />
+                </div>
+              </div>
+            );
+          })()}
 
           {workLoading ? (
             <div className="py-16 text-center text-sm" style={{ color: "#94A3B8" }}>불러오는 중...</div>
@@ -1519,6 +1555,7 @@ function ProjectsInner() {
                 {(() => {
                   const filtered = workRows
                     .filter((r) => (r.workStartDate ?? "").startsWith(workMonth))
+                    .filter((r) => workAssignee === "전체" || r.assignee === workAssignee)
                     .filter((r) => {
                       if (workFilter === "완료")   return r.workCompleted;
                       if (workFilter === "미완료") return !r.workCompleted;
