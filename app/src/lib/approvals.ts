@@ -52,6 +52,7 @@ export interface ConfirmRequest {
   requestedAt: string;
   status: ConfirmStatus;
   taxInvoiceDate?: string;
+  depositConfirmedAt?: string;
   rejectReason?: string;
   projectType?: string | null;
   projectProduct?: string | null;
@@ -109,7 +110,7 @@ export async function addConfirmRequest(
 
 export async function updateConfirmRequest(
   id: string,
-  updates: Partial<Pick<ConfirmRequest, "status" | "rejectReason" | "taxInvoiceDate">>
+  updates: Partial<Pick<ConfirmRequest, "status" | "rejectReason" | "taxInvoiceDate" | "depositConfirmedAt">>
 ): Promise<void> {
   const res = await fetch(`/api/approvals/confirm/${id}`, {
     method: "PATCH",

@@ -270,12 +270,34 @@ export default function ConfirmPage() {
   async function handleIssueComplete(item: ConfirmRequest, date?: string) {
     setIssuing(item.id);
     const dateStr = date || new Date().toISOString().slice(0, 10);
+    const bothDone = item.status === "대기" && Boolean(item.depositConfirmedAt);
+    const updates: Parameters<typeof updateConfirmRequest>[1] = { taxInvoiceDate: dateStr };
+    if (bothDone) updates.status = "확인완료";
     await Promise.all([
       updateRevenueField(item.projectId, item.rowKey, "invoiceDate", dateStr),
-      updateConfirmRequest(item.id, { taxInvoiceDate: dateStr }),
+      updateConfirmRequest(item.id, updates),
     ]);
-    setItems((prev) => prev.map((i) => i.id === item.id ? { ...i, taxInvoiceDate: dateStr } : i));
+    setItems((prev) => prev.map((i) => i.id === item.id
+      ? { ...i, taxInvoiceDate: dateStr, ...(bothDone && { status: "확인완료" as ConfirmStatus }) }
+      : i));
+    if (bothDone) { showApprovedToast(); }
     setSelected(null); setIssuing(null);
+  }
+
+  async function handlePaymentDone(item: ConfirmRequest, date: string) {
+    const dateStr = date || new Date().toISOString().slice(0, 10);
+    const bothDone = Boolean(item.taxInvoiceDate);
+    const updates: Parameters<typeof updateConfirmRequest>[1] = { depositConfirmedAt: dateStr };
+    if (bothDone) updates.status = "확인완료";
+    await Promise.all([
+      updateRevenueField(item.projectId, item.rowKey, "paymentDate", dateStr),
+      updateConfirmRequest(item.id, updates),
+    ]);
+    setItems((prev) => prev.map((i) => i.id === item.id
+      ? { ...i, depositConfirmedAt: dateStr, ...(bothDone && { status: "확인완료" as ConfirmStatus }) }
+      : i));
+    if (bothDone) showApprovedToast();
+    setSelected(null);
   }
 
   // 프로젝트 매출행 날짜 필드를 null로 초기화
@@ -326,11 +348,11 @@ export default function ConfirmPage() {
       ));
       await updateConfirmRequest(target.id, { taxInvoiceDate: null as unknown as string });
     } else {
-      // 일반 확인 취소: 대기 상태로 되돌리기
+      // 일반 확인 취소: 대기 상태로 되돌리기 + depositConfirmedAt도 초기화
       setItems((prev) => prev.map((i) =>
-        i.id === target.id ? { ...i, status: "대기" as ConfirmStatus, taxInvoiceDate: undefined } : i
+        i.id === target.id ? { ...i, status: "대기" as ConfirmStatus, taxInvoiceDate: undefined, depositConfirmedAt: undefined } : i
       ));
-      await updateConfirmRequest(target.id, { status: "대기", taxInvoiceDate: null as unknown as string });
+      await updateConfirmRequest(target.id, { status: "대기", taxInvoiceDate: null as unknown as string, depositConfirmedAt: null as unknown as string });
     }
     if (target.projectId) invalidateProjectCache(target.projectId);
     setSelected(null);
@@ -708,10 +730,17 @@ export default function ConfirmPage() {
                               {item.workStartDate && item.workEndDate ? `${item.workStartDate} ~ ${item.workEndDate}` : item.workStartDate || item.workEndDate || "—"}
                             </td>
                             <td className="px-4 py-3">
-                              <span className="text-xs px-2.5 py-1 rounded-full font-semibold"
-                                style={{ background: ss.bg, color: ss.color, border: `1px solid ${ss.border}` }}>
-                                {item.status}
-                              </span>
+                              {item.status === "대기" && item.depositConfirmedAt ? (
+                                <span className="text-xs px-2.5 py-1 rounded-full font-semibold"
+                                  style={{ background: "rgba(49,130,246,0.1)", color: "#3182F6", border: "1px solid rgba(49,130,246,0.2)" }}>
+                                  입금완료
+                                </span>
+                              ) : (
+                                <span className="text-xs px-2.5 py-1 rounded-full font-semibold"
+                                  style={{ background: ss.bg, color: ss.color, border: `1px solid ${ss.border}` }}>
+                                  {item.status}
+                                </span>
+                              )}
                             </td>
                             <td className="px-4 py-3">
                               {item.depositAccount === "전재민" ? (
@@ -721,7 +750,7 @@ export default function ConfirmPage() {
                                   <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: "rgba(5,150,105,0.1)", color: "#059669" }}>발행완료</span>
                                   <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>{item.taxInvoiceDate}</p>
                                 </div>
-                              ) : item.status === "확인완료" ? (
+                              ) : (item.status === "확인완료" || item.status === "대기") ? (
                                 <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: "rgba(234,179,8,0.1)", color: "#CA8A04" }}>미발행</span>
                               ) : <span style={{ color: "#CBD5E1" }}>—</span>}
                             </td>
@@ -960,80 +989,90 @@ export default function ConfirmPage() {
                 </Link>
               )}
 
-              {/* 대기: 입금확인날짜 + 반려 + 확인완료 + 세금계산서 발행 */}
+              {/* 대기: 입금완료 + 세금계산서 발행 — 둘 다 완료 시 자동 확인완료 */}
               {selected.status === "대기" && (<>
-                <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl" style={{ background: "#F8FAFC", border: "1px solid #E9EBEF" }}>
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2" strokeLinecap="round">
-                    <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-                  </svg>
-                  <label className="text-xs font-semibold whitespace-nowrap" style={{ color: "#64748B" }}>입금확인날짜</label>
-                  <input type="date" value={confirmDate} onChange={e => setConfirmDate(e.target.value)}
-                    className="flex-1 text-sm bg-transparent outline-none" style={{ color: "#191F28" }} />
-                </div>
-                {/* 입금확인 + 세금계산서 둘 다 완료돼야 확인완료 가능 */}
-                {(() => {
-                  const needsInvoice = selected.depositAccount !== "전재민";
-                  const invoiceDone = Boolean(selected.taxInvoiceDate);
-                  const canConfirm = !needsInvoice || invoiceDone;
-                  return (
-                    <div className="flex gap-2">
-                      <button onClick={() => setRejectTarget(selected)}
-                        className="px-4 py-2.5 rounded-xl text-sm font-semibold hover:opacity-90"
-                        style={{ background: "rgba(239,68,68,0.1)", color: "#DC2626" }}>반려</button>
+                {/* 반려 버튼 */}
+                <button onClick={() => setRejectTarget(selected)}
+                  className="w-full py-2.5 rounded-xl text-sm font-semibold hover:opacity-90"
+                  style={{ background: "rgba(239,68,68,0.1)", color: "#DC2626" }}>반려</button>
+
+                {/* ① 입금완료 */}
+                <div className="rounded-xl overflow-hidden" style={{ border: "1px solid #E9EBEF" }}>
+                  <div className="px-3 py-2 flex items-center gap-2" style={{ background: "#FAFBFC", borderBottom: "1px solid #E9EBEF" }}>
+                    <span className="text-xs font-semibold" style={{ color: "#64748B" }}>① 입금완료</span>
+                    {selected.depositConfirmedAt && (
+                      <span className="ml-auto text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: "rgba(49,130,246,0.1)", color: "#3182F6" }}>완료 {selected.depositConfirmedAt}</span>
+                    )}
+                  </div>
+                  <div className="p-3">
+                    {selected.depositConfirmedAt ? (
                       <button
-                        onClick={() => canConfirm && updateStatus([selected.id], "확인완료", confirmDate)}
-                        disabled={!canConfirm}
-                        title={!canConfirm ? "세금계산서 발행 후 확인완료 처리 가능합니다" : undefined}
-                        className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white transition-opacity"
-                        style={{
-                          background: canConfirm
-                            ? "linear-gradient(135deg, #3182F6 0%, #2462D8 100%)"
-                            : "#CBD5E1",
-                          cursor: canConfirm ? "pointer" : "not-allowed",
-                          opacity: canConfirm ? 1 : 0.6,
-                        }}>확인완료</button>
-                    </div>
-                  );
-                })()}
-                {!selected.taxInvoiceDate && selected.depositAccount !== "전재민" && (
-                  <p className="text-xs text-center" style={{ color: "#94A3B8" }}>세금계산서 발행 후 확인완료 처리 가능합니다</p>
-                )}
-                {/* 세금계산서 선발행 */}
-                {selected.depositAccount !== "전재민" && (
-                  <div className="pt-3 mt-1" style={{ borderTop: "1px solid #E9EBEF" }}>
-                    <p className="text-xs font-semibold mb-2" style={{ color: "#94A3B8" }}>세금계산서</p>
-                    {selected.taxInvoiceDate ? (
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 flex items-center gap-2 px-3 py-2.5 rounded-xl" style={{ background: "#F0FDF4", border: "1px solid rgba(16,185,129,0.2)" }}>
-                          <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: "rgba(16,185,129,0.1)", color: "#059669" }}>발행완료</span>
-                          <span className="text-xs" style={{ color: "#059669" }}>{selected.taxInvoiceDate}</span>
-                        </div>
-                        <button onClick={() => setCancelTarget(selected)}
-                          className="px-3 py-2.5 rounded-xl text-xs font-semibold hover:opacity-90 whitespace-nowrap"
-                          style={{ background: "rgba(234,179,8,0.1)", color: "#CA8A04", border: "1px solid rgba(234,179,8,0.2)" }}>
-                          발행 취소
-                        </button>
-                      </div>
+                        onClick={async () => {
+                          await updateConfirmRequest(selected.id, { depositConfirmedAt: null as unknown as string });
+                          await updateRevenueField(selected.projectId, selected.rowKey, "paymentDate", "");
+                          setItems((prev) => prev.map((i) => i.id === selected.id ? { ...i, depositConfirmedAt: undefined } : i));
+                          setSelected((s) => s ? { ...s, depositConfirmedAt: undefined } : null);
+                        }}
+                        className="text-xs font-semibold hover:opacity-70" style={{ color: "#94A3B8" }}>
+                        입금완료 취소
+                      </button>
                     ) : (<>
-                      <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl mb-2" style={{ background: "#F8FAFC", border: "1px solid #E9EBEF" }}>
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2" strokeLinecap="round">
+                      <div className="flex items-center gap-3 mb-2.5">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2" strokeLinecap="round">
                           <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
                         </svg>
-                        <label className="text-xs font-semibold whitespace-nowrap" style={{ color: "#64748B" }}>발행날짜</label>
-                        <input type="date" value={issueDate} onChange={e => setIssueDate(e.target.value)}
+                        <input type="date" value={confirmDate} onChange={e => setConfirmDate(e.target.value)}
                           className="flex-1 text-sm bg-transparent outline-none" style={{ color: "#191F28" }} />
                       </div>
-                      <button onClick={() => handleIssueComplete(selected, issueDate)} disabled={issuing === selected.id}
-                        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
-                        style={{ background: "linear-gradient(135deg, #059669 0%, #047857 100%)" }}>
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                          <polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
-                        </svg>
-                        {issuing === selected.id ? "처리 중..." : "발행완료 처리"}
+                      <button
+                        onClick={async () => {
+                          await handlePaymentDone(selected, confirmDate);
+                        }}
+                        className="w-full py-2 rounded-lg text-sm font-semibold text-white hover:opacity-90"
+                        style={{ background: "linear-gradient(135deg, #3182F6 0%, #2462D8 100%)" }}>
+                        입금완료 처리
                       </button>
                     </>)}
                   </div>
+                </div>
+
+                {/* ② 세금계산서 발행 (전재민 제외) */}
+                {selected.depositAccount !== "전재민" && (
+                  <div className="rounded-xl overflow-hidden" style={{ border: "1px solid #E9EBEF" }}>
+                    <div className="px-3 py-2 flex items-center gap-2" style={{ background: "#FAFBFC", borderBottom: "1px solid #E9EBEF" }}>
+                      <span className="text-xs font-semibold" style={{ color: "#64748B" }}>② 세금계산서 발행</span>
+                      {selected.taxInvoiceDate && (
+                        <span className="ml-auto text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: "rgba(5,150,105,0.1)", color: "#059669" }}>완료 {selected.taxInvoiceDate}</span>
+                      )}
+                    </div>
+                    <div className="p-3">
+                      {selected.taxInvoiceDate ? (
+                        <button onClick={() => setCancelTarget(selected)}
+                          className="text-xs font-semibold hover:opacity-70" style={{ color: "#94A3B8" }}>
+                          발행 취소
+                        </button>
+                      ) : (<>
+                        <div className="flex items-center gap-3 mb-2.5">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2" strokeLinecap="round">
+                            <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                          </svg>
+                          <input type="date" value={issueDate} onChange={e => setIssueDate(e.target.value)}
+                            className="flex-1 text-sm bg-transparent outline-none" style={{ color: "#191F28" }} />
+                        </div>
+                        <button onClick={() => handleIssueComplete(selected, issueDate)} disabled={issuing === selected.id}
+                          className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
+                          style={{ background: "linear-gradient(135deg, #059669 0%, #047857 100%)" }}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                            <polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+                          </svg>
+                          {issuing === selected.id ? "처리 중..." : "발행완료 처리"}
+                        </button>
+                      </>)}
+                    </div>
+                  </div>
                 )}
+
+                <p className="text-xs text-center" style={{ color: "#CBD5E1" }}>① ② 모두 완료 시 자동으로 확인완료 처리됩니다</p>
               </>)}
 
               {/* 확인완료 + 전재민: 세금계산서 해당없음 */}

@@ -368,8 +368,9 @@ export const confirmRequests = pgTable("confirm_requests", {
   depositorName:        text("depositor_name"),
   requestedAt:          text("requested_at").notNull(),
   status:               text("status").notNull().default("대기"),
-  taxInvoiceDate:       text("tax_invoice_date"),
-  rejectReason:         text("reject_reason"),
+  taxInvoiceDate:        text("tax_invoice_date"),
+  depositConfirmedAt:    text("deposit_confirmed_at"),
+  rejectReason:          text("reject_reason"),
   createdAt:            timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

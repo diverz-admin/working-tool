@@ -11,7 +11,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const [row] = await db.update(confirmRequests).set({
     ...(body.status          !== undefined && { status:          body.status }),
     ...(body.rejectReason    !== undefined && { rejectReason:    body.rejectReason }),
-    ...(body.taxInvoiceDate  !== undefined && { taxInvoiceDate:  body.taxInvoiceDate }),
+    ...(body.taxInvoiceDate      !== undefined && { taxInvoiceDate:      body.taxInvoiceDate }),
+    ...(body.depositConfirmedAt  !== undefined && { depositConfirmedAt:  body.depositConfirmedAt }),
   }).where(eq(confirmRequests.id, id)).returning();
   if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return NextResponse.json({ item: row });
