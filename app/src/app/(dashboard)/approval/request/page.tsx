@@ -18,7 +18,7 @@ const formatDate = (d: string) => { const [y, m, day] = d.split("-"); return `${
 
 export default function RequestPage() {
   const [items, setItems]               = useState<PaymentRequest[]>([]);
-  const [filter, setFilter]             = useState<PaymentStatus | "전체">("전체");
+  const [filter, setFilter]             = useState<PaymentStatus | "전체">("대기");
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selected, setSelected]         = useState<PaymentRequest | null>(null);
