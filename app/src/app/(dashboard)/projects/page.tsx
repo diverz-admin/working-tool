@@ -670,17 +670,31 @@ function RevenueKpiSection({
                   <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fontSize: 10, fill: "#94A3B8" }} axisLine={false} tickLine={false} width={48} tickFormatter={(v: number) => wonShort(v)} />
                   <Tooltip
-                    contentStyle={{ background: "#191F28", border: "none", borderRadius: 10, fontSize: 12, color: "#fff" }}
-                    formatter={(v: unknown, name: unknown) => {
-                      const n = Number(v);
-                      const key = String(name);
-                      const labelMap: Record<string, string> = { total: "매출", profit: "이익", kpiTotal: "KPI 목표" };
-                      const label = key.startsWith("kpi_")
-                        ? `KPI 목표 (${key.replace("kpi_", "")})`
-                        : (labelMap[key] ?? key);
-                      return [`₩${n.toLocaleString()}`, label];
-                    }}
                     cursor={{ fill: "rgba(49,130,246,0.04)" }}
+                    content={({ active, payload, label: tooltipLabel }) => {
+                      if (!active || !payload?.length) return null;
+                      const kpiItems   = payload.filter((p) => String(p.name).startsWith("kpi_") || p.name === "kpiTotal");
+                      const revItems   = payload.filter((p) => !String(p.name).startsWith("kpi_") && p.name !== "profit" && p.name !== "kpiTotal");
+                      const profItems  = payload.filter((p) => p.name === "profit");
+                      const ordered = [...kpiItems, ...revItems, ...profItems];
+                      const labelFn = (key: string) => {
+                        if (key === "total")    return "매출";
+                        if (key === "profit")   return "영업이익";
+                        if (key === "kpiTotal") return "매출 KPI";
+                        if (key.startsWith("kpi_")) return `매출 KPI (${key.replace("kpi_", "")})`;
+                        return key;
+                      };
+                      return (
+                        <div style={{ background: "#191F28", borderRadius: 10, padding: "10px 14px", fontSize: 12, color: "#fff", minWidth: 180 }}>
+                          <p style={{ color: "rgba(255,255,255,0.55)", fontWeight: 600, marginBottom: 8 }}>{tooltipLabel}</p>
+                          {ordered.map((p, i) => (
+                            <p key={i} style={{ color: String(p.color) ?? "#fff", marginBottom: 4 }}>
+                              {labelFn(String(p.name))} : ₩{Number(p.value).toLocaleString()}
+                            </p>
+                          ))}
+                        </div>
+                      );
+                    }}
                   />
                   <Legend
                     wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
