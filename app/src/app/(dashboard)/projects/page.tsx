@@ -489,6 +489,8 @@ function RevenueKpiSection({
     });
     setSaving(false);
     setEditingKpi(false);
+    // 캐시 무효화 후 재로드 — 캐시가 살아있으면 새 KPI가 반영되지 않음
+    _statsCacheMap.clear();
     onReload();
   }
 
