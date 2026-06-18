@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
+import * as XLSX from "xlsx";
 import {
   type PaymentRequest, type PaymentStatus,
   getPaymentRequests, updatePaymentRequest,
@@ -60,16 +61,36 @@ export default function RequestPage() {
     (selectedDate === null || i.requestedAt === selectedDate)
   ), [items, selectedMonth, selectedDate]);
 
+  // 대기 탭: 입금대기(status=대기) + 입금승인이지만 계산서 미발행(status=승인 && !invoiceFileUrl)
+  const isPending = (i: PaymentRequest) =>
+    i.status === "대기" || (i.status === "승인" && !i.invoiceFileUrl);
+
   const counts = {
     전체: scopedItems.length,
-    대기: scopedItems.filter((i) => i.status === "대기").length,
+    대기: scopedItems.filter(isPending).length,
     승인: scopedItems.filter((i) => i.status === "승인").length,
     반려: scopedItems.filter((i) => i.status === "반려").length,
   };
 
-  const filtered = useMemo(() => scopedItems.filter((i) =>
-    filter === "전체" || i.status === filter
-  ), [scopedItems, filter]);
+  const filtered = useMemo(() => {
+    if (filter === "전체") return scopedItems;
+    if (filter === "대기") return scopedItems.filter(isPending);
+    return scopedItems.filter((i) => i.status === filter);
+  }, [scopedItems, filter]);
+
+  function handleExcel() {
+    const targets = scopedItems.filter((i) => i.status === "승인" && !i.invoiceFileUrl);
+    if (targets.length === 0) { alert("계산서 미발행 승인 항목이 없습니다."); return; }
+    const headers = ["캠페인명", "팀", "담당자", "품명", "매입처", "개수", "합계", "요청일", "승인여부"];
+    const rows = targets.map((i) => [
+      i.projectName, i.assignedTeam ?? "", i.requester, i.productName,
+      i.vendor ?? "", i.quantity, i.amount, i.requestedAt, i.status,
+    ]);
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "계산서미발행");
+    XLSX.writeFile(wb, `계산서미발행_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  }
 
   async function updateStatus(id: string, status: PaymentStatus, date?: string) {
     const target = items.find((i) => i.id === id);
@@ -314,12 +335,26 @@ export default function RequestPage() {
       )}
 
       {/* 헤더 */}
-      <div>
-        <h1 className="text-xl font-bold" style={{ color: "#191F28" }}>입금요청</h1>
-        <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>
-          매입처에 지급해야 할 대금 지불을 요청합니다.
-          {counts["대기"] > 0 && <span style={{ color: "#CA8A04" }}> · 대기 {counts["대기"]}건</span>}
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold" style={{ color: "#191F28" }}>입금요청</h1>
+          <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>
+            매입처에 지급해야 할 대금 지불을 요청합니다.
+            {counts["대기"] > 0 && <span style={{ color: "#CA8A04" }}> · 대기 {counts["대기"]}건</span>}
+          </p>
+        </div>
+        {scopedItems.some((i) => i.status === "승인" && !i.invoiceFileUrl) && (
+          <button
+            onClick={handleExcel}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors hover:opacity-80"
+            style={{ background: "rgba(16,185,129,0.1)", color: "#059669", border: "1px solid rgba(16,185,129,0.25)" }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            계산서 미발행 엑셀
+          </button>
+        )}
       </div>
 
       {/* 월·날짜 필터 카드 */}
