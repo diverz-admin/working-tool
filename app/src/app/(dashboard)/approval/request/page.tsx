@@ -92,6 +92,34 @@ export default function RequestPage() {
     XLSX.writeFile(wb, `계산서미발행_${new Date().toISOString().slice(0, 10)}.xlsx`);
   }
 
+  function handlePendingExcel() {
+    const targets = scopedItems.filter((i) => i.status === "대기");
+    if (targets.length === 0) { alert("입금 대기 항목이 없습니다."); return; }
+    const headers = ["No", "캠페인명", "팀", "담당자", "품명", "매입처", "개수", "합계(원)", "입금계좌", "요청일"];
+    const rows = targets.map((i, idx) => [
+      idx + 1,
+      i.projectName,
+      i.assignedTeam ?? "",
+      i.requester,
+      i.productName,
+      i.vendor ?? "",
+      i.quantity,
+      i.amount,
+      i.vendorBankAccount ?? "",
+      i.requestedAt,
+    ]);
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    // 열 너비 조정
+    ws["!cols"] = [
+      { wch: 4 }, { wch: 24 }, { wch: 10 }, { wch: 10 },
+      { wch: 20 }, { wch: 16 }, { wch: 6 }, { wch: 14 },
+      { wch: 32 }, { wch: 12 },
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "입금대기");
+    XLSX.writeFile(wb, `입금대기_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  }
+
   async function updateStatus(id: string, status: PaymentStatus, date?: string) {
     const target = items.find((i) => i.id === id);
     setItems((prev) => prev.map((i) => i.id === id ? { ...i, status } : i));
@@ -343,18 +371,32 @@ export default function RequestPage() {
             {counts["대기"] > 0 && <span style={{ color: "#CA8A04" }}> · 대기 {counts["대기"]}건</span>}
           </p>
         </div>
-        {scopedItems.some((i) => i.status === "승인" && !i.invoiceFileUrl) && (
-          <button
-            onClick={handleExcel}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors hover:opacity-80"
-            style={{ background: "rgba(16,185,129,0.1)", color: "#059669", border: "1px solid rgba(16,185,129,0.25)" }}
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-            </svg>
-            계산서 미발행 엑셀
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {scopedItems.some((i) => i.status === "대기") && (
+            <button
+              onClick={handlePendingExcel}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors hover:opacity-80"
+              style={{ background: "rgba(234,179,8,0.1)", color: "#CA8A04", border: "1px solid rgba(234,179,8,0.3)" }}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              입금대기 엑셀
+            </button>
+          )}
+          {scopedItems.some((i) => i.status === "승인" && !i.invoiceFileUrl) && (
+            <button
+              onClick={handleExcel}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors hover:opacity-80"
+              style={{ background: "rgba(16,185,129,0.1)", color: "#059669", border: "1px solid rgba(16,185,129,0.25)" }}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              계산서 미발행 엑셀
+            </button>
+          )}
+        </div>
       </div>
 
       {/* 월·날짜 필터 카드 */}
