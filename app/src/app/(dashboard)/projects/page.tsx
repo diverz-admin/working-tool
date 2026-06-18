@@ -18,11 +18,13 @@ interface WorkCheckRow {
   productName: string | null;
   quantity: number | null;
   completedQty: number | null;
+  supplyPrice: number | null;
+  tax: number | null;
+  total: number | null;
   workCompleted: boolean | null;
   workStartDate: string | null;
   workEndDate: string | null;
   settingDate: string | null;
-  total: number | null;
   campaignName: string | null;
   groupName: string;
   groupId: string;
@@ -1543,11 +1545,12 @@ function ProjectsInner() {
           {workLoading ? (
             <div className="py-16 text-center text-sm" style={{ color: "#94A3B8" }}>불러오는 중...</div>
           ) : (
-            <table className="w-full text-xs">
+            <div className="overflow-x-auto">
+            <table className="w-full text-xs" style={{ minWidth: 960 }}>
               <thead>
-                <tr style={{ background: "#F8FAFC" }}>
-                  {["#", "담당자", "품명", "작업기간", "수량", "셋팅날짜", "작업완료"].map((h) => (
-                    <th key={h} className="px-4 py-2.5 text-left font-semibold whitespace-nowrap" style={{ color: "#64748B", borderBottom: "2px solid #E9EBEF" }}>{h}</th>
+                <tr style={{ background: "#FFF7ED" }}>
+                  {["#", "담당자", "품명", "개수", "공급가", "세액", "합계", "작업시작일", "작업만료일", "셋팅날짜", "잔여일", "완료"].map((h) => (
+                    <th key={h} className="px-3 py-2.5 text-left font-semibold whitespace-nowrap" style={{ color: "#F97316", borderBottom: "2px solid #FED7AA" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -1571,7 +1574,7 @@ function ProjectsInner() {
                     });
 
                   if (filtered.length === 0) {
-                    return <tr><td colSpan={7} className="py-16 text-center text-sm" style={{ color: "#94A3B8" }}>해당 월의 작업 데이터가 없습니다.</td></tr>;
+                    return <tr><td colSpan={12} className="py-16 text-center text-sm" style={{ color: "#94A3B8" }}>해당 월의 작업 데이터가 없습니다.</td></tr>;
                   }
 
                   // 캠페인별 그룹핑 (projectId 기준, 순서 유지)
@@ -1583,7 +1586,7 @@ function ProjectsInner() {
                     const allDone = groupRows.every(r => r.workCompleted);
                     return [
                       <tr key={`gh-${projectId}`} style={{ background: allDone ? "#F0FDF4" : "#F8FAFC", borderTop: "2px solid #E9EBEF" }}>
-                        <td colSpan={7} className="px-4 py-2">
+                        <td colSpan={12} className="px-4 py-2">
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
@@ -1604,25 +1607,33 @@ function ProjectsInner() {
                       </tr>,
                       ...groupRows.map((r) => {
                         rowIdx++;
-                        const qty    = r.quantity ?? 0;
-                        const period = r.workStartDate && r.workEndDate
-                          ? `${r.workStartDate} ~ ${r.workEndDate}`
-                          : r.workStartDate || r.workEndDate || "—";
+                        const remDiff = r.workEndDate
+                          ? new Date(r.workEndDate).setHours(0,0,0,0) - new Date().setHours(0,0,0,0)
+                          : null;
+                        const remDays = remDiff !== null ? Math.ceil(remDiff / 86400000) : null;
                         return (
                           <tr key={r.id} className="border-t" style={{ borderColor: "#F1F5F9", background: r.workCompleted ? "rgba(16,185,129,0.02)" : undefined }}>
-                            <td className="px-4 py-2.5 font-medium" style={{ color: "#94A3B8" }}>{rowIdx}</td>
-                            <td className="px-4 py-2.5" style={{ color: "#475569" }}>{r.assignee || "—"}</td>
-                            <td className="px-4 py-2.5 font-medium" style={{ color: "#191F28" }}>{r.productName || "—"}</td>
-                            <td className="px-4 py-2.5 whitespace-nowrap" style={{ color: "#94A3B8" }}>{period}</td>
-                            <td className="px-4 py-2.5 font-semibold" style={{ color: "#3182F6" }}>{qty}</td>
-                            <td className="px-3 py-2">
+                            <td className="px-3 py-2 font-medium" style={{ color: "#94A3B8" }}>{rowIdx}</td>
+                            <td className="px-3 py-2" style={{ color: "#475569" }}>{r.assignee || "—"}</td>
+                            <td className="px-3 py-2 font-medium" style={{ color: "#191F28" }}>{r.productName || "—"}</td>
+                            <td className="px-3 py-2 text-center" style={{ color: "#475569" }}>{r.quantity ?? "—"}</td>
+                            <td className="px-3 py-2 text-right" style={{ color: "#475569" }}>{r.supplyPrice ? `₩${r.supplyPrice.toLocaleString()}` : "—"}</td>
+                            <td className="px-3 py-2 text-right" style={{ color: "#475569" }}>{r.tax ? `₩${r.tax.toLocaleString()}` : "—"}</td>
+                            <td className="px-3 py-2 text-right font-semibold" style={{ color: "#191F28" }}>{r.total ? `₩${r.total.toLocaleString()}` : "—"}</td>
+                            <td className="px-3 py-2 whitespace-nowrap" style={{ color: r.workStartDate ? "#475569" : "#CBD5E1" }}>
+                              {r.workStartDate ? r.workStartDate.replace(/-/g, ". ") : "—"}
+                            </td>
+                            <td className="px-3 py-2 whitespace-nowrap" style={{ color: r.workEndDate ? "#475569" : "#CBD5E1" }}>
+                              {r.workEndDate ? r.workEndDate.replace(/-/g, ". ") : "—"}
+                            </td>
+                            <td className="px-2 py-1.5">
                               <div className="flex items-center gap-1.5">
                                 <input
                                   type="date"
                                   value={pendingSettingDate.has(r.id) ? pendingSettingDate.get(r.id)! : (r.settingDate ?? "")}
                                   onChange={(e) => setPendingSettingDate((prev) => new Map(prev).set(r.id, e.target.value))}
                                   className="px-2 py-1 rounded-lg text-xs outline-none"
-                                  style={{ background: "#F8FAFC", border: "1px solid #E9EBEF", color: "#191F28", width: 130 }}
+                                  style={{ background: "#F8FAFC", border: "1px solid #E9EBEF", color: "#191F28", width: 115 }}
                                 />
                                 {pendingSettingDate.has(r.id) && pendingSettingDate.get(r.id) !== (r.settingDate ?? "") && (
                                   <button
@@ -1639,12 +1650,17 @@ function ProjectsInner() {
                                 )}
                               </div>
                             </td>
-                            <td className="px-4 py-2.5">
+                            <td className="px-3 py-2 font-medium text-center" style={{
+                              color: remDays === null ? "#CBD5E1" : remDays <= 1 ? "#EF4444" : remDays <= 3 ? "#F97316" : remDays <= 7 ? "#EAB308" : "#475569"
+                            }}>
+                              {remDays === null ? "—" : remDays < 0 ? `+${Math.abs(remDays)}` : remDays === 0 ? "D-0" : `D-${remDays}`}
+                            </td>
+                            <td className="px-3 py-2">
                               <input
                                 type="checkbox"
                                 checked={!!r.workCompleted}
                                 onChange={(e) => updateWorkRow(r.id, { workCompleted: e.target.checked })}
-                                className="w-4 h-4 rounded accent-emerald-500"
+                                className="w-3.5 h-3.5 rounded accent-[#F97316]"
                               />
                             </td>
                           </tr>
@@ -1655,6 +1671,7 @@ function ProjectsInner() {
                 })()}
               </tbody>
             </table>
+            </div>
           )}
         </div>
       )}
