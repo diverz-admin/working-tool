@@ -143,15 +143,39 @@ function NavItem({ href, label, icon }: { href: string; label: string; icon: Rea
   );
 }
 
+let _workBadgeCache: { data: Record<string, number>; ts: number } | null = null;
+const WORK_BADGE_TTL = 60_000;
+
 function ProjectsNavSection() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const activeTeam = searchParams.get("team");
   const isActive = pathname.startsWith("/projects");
   const [open, setOpen] = useState(isActive);
+  const [teamBadges, setTeamBadges] = useState<Record<string, number>>({});
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { if (isActive) setOpen(true); }, [isActive]);
+
+  useEffect(() => {
+    function fetchBadges(force = false) {
+      if (!force && _workBadgeCache && Date.now() - _workBadgeCache.ts < WORK_BADGE_TTL) {
+        setTeamBadges(_workBadgeCache.data);
+        return;
+      }
+      fetch("/api/projects-page/work-badge")
+        .then((r) => r.json())
+        .then((d) => {
+          _workBadgeCache = { data: d, ts: Date.now() };
+          setTeamBadges(d);
+        })
+        .catch(() => {});
+    }
+    fetchBadges();
+    const forceRefetch = () => { _workBadgeCache = null; fetchBadges(true); };
+    window.addEventListener("work-badge-refresh", forceRefetch);
+    return () => window.removeEventListener("work-badge-refresh", forceRefetch);
+  }, [pathname]);
 
   return (
     <div>
@@ -180,6 +204,7 @@ function ProjectsNavSection() {
         <div className="mt-0.5 ml-4">
           {TEAMS.map((team) => {
             const isTeamActive = isActive && activeTeam === team;
+            const badgeCount = teamBadges[team] ?? 0;
             return (
               <Link
                 key={team}
@@ -192,6 +217,7 @@ function ProjectsNavSection() {
               >
                 <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: isTeamActive ? "#3182F6" : "#D1D5DB" }} />
                 {team}
+                <PendingBadge count={badgeCount} />
               </Link>
             );
           })}

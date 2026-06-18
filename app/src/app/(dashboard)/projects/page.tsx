@@ -994,6 +994,9 @@ function ProjectsInner() {
     });
     // 저장 실패 시 이전 상태로 롤백
     if (!res.ok && rollback) setWorkRows(rollback);
+    else if (res.ok && patch.workCompleted !== undefined) {
+      window.dispatchEvent(new Event("work-badge-refresh"));
+    }
   }
 
   // 그룹 목록 로드
