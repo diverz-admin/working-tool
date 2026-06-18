@@ -35,7 +35,7 @@ export async function GET() {
       const enriched = (confirmRows as unknown as Record<string, unknown>[]).map(r => ({
         ...r, projectType: null, projectProduct: null, revenueLines: [], campaignNumber: null,
       }));
-      return NextResponse.json({ confirms: enriched, payments: paymentRows });
+      return NextResponse.json({ confirms: enriched, payments: paymentRows.map((r) => ({ ...r, requestedAt: r.requestedAt ? r.requestedAt.slice(0, 10) : r.requestedAt })) });
     }
 
     const [projectRows, revenueRows] = await Promise.all([
@@ -88,7 +88,11 @@ export async function GET() {
       campaignNumber: r.projectId ? (campaignNumberMap.get(r.projectId as string) ?? null) : null,
     }));
 
-    return NextResponse.json({ confirms: enriched, payments: paymentRows });
+    const normalizedPayments = paymentRows.map((r) => ({
+      ...r,
+      requestedAt: r.requestedAt ? r.requestedAt.slice(0, 10) : r.requestedAt,
+    }));
+    return NextResponse.json({ confirms: enriched, payments: normalizedPayments });
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: String(err) }, { status: 500 });
