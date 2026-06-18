@@ -365,7 +365,7 @@ function DetailModal({ item, onClose, onUpdateStatus }: {
 // ── 메인 페이지 ───────────────────────────────────────────
 export default function ExpensePage() {
   const [items, setItems]         = useState<ExpenseItem[]>([]);
-  const [filterStatus, setStatus] = useState<Status | "전체">("전체");
+  const [filterStatus, setStatus] = useState<Status | "전체">("대기");
   const [selected, setSelected]   = useState<ExpenseItem | null>(null);
   const [showForm, setShowForm]   = useState(false);
   const [loading, setLoading]     = useState(true);
@@ -435,7 +435,7 @@ export default function ExpensePage() {
       </div>
 
       <div className="flex items-center gap-1 p-0.5 rounded-xl self-start" style={{ background: "#F1F5F9" }}>
-        {(["전체", "대기", "승인", "반려"] as const).map((s) => {
+        {(["대기", "승인", "반려", "전체"] as const).map((s) => {
           const isActive = filterStatus === s;
           const style = s !== "전체" ? STATUS_STYLE[s] : null;
           return (
