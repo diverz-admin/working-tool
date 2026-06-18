@@ -61,20 +61,15 @@ export default function RequestPage() {
     (selectedDate === null || i.requestedAt === selectedDate)
   ), [items, selectedMonth, selectedDate]);
 
-  // 대기 탭: 입금대기(status=대기) + 입금승인이지만 계산서 미발행(status=승인 && !invoiceFileUrl)
-  const isPending = (i: PaymentRequest) =>
-    i.status === "대기" || (i.status === "승인" && !i.invoiceFileUrl);
-
   const counts = {
     전체: scopedItems.length,
-    대기: scopedItems.filter(isPending).length,
+    대기: scopedItems.filter((i) => i.status === "대기").length,
     승인: scopedItems.filter((i) => i.status === "승인").length,
     반려: scopedItems.filter((i) => i.status === "반려").length,
   };
 
   const filtered = useMemo(() => {
     if (filter === "전체") return scopedItems;
-    if (filter === "대기") return scopedItems.filter(isPending);
     return scopedItems.filter((i) => i.status === filter);
   }, [scopedItems, filter]);
 
