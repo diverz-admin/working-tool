@@ -12,6 +12,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
     const updates: Record<string, unknown> = {};
     if (body.workCompleted !== undefined) updates.workCompleted = Boolean(body.workCompleted);
+    if (body.settingDate !== undefined) updates.settingDate = body.settingDate || null;
 
     const [row] = await db.update(projectCosts).set(updates).where(eq(projectCosts.id, id)).returning();
     if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
