@@ -30,8 +30,6 @@ function sumN(arr: (number | null | undefined)[]) {
 }
 function wonFmt(n: number) {
   if (n === 0) return "₩0";
-  if (Math.abs(n) >= 100_000_000) return `₩${(n / 100_000_000).toFixed(1)}억`;
-  if (Math.abs(n) >= 10_000)      return `₩${Math.round(n / 10_000).toLocaleString()}만`;
   return "₩" + n.toLocaleString();
 }
 function wonFull(n: number) {
@@ -264,7 +262,7 @@ export default function OperationsDashboard() {
                   <BarChart data={barData} barGap={2} barCategoryGap="25%">
                     <XAxis dataKey="label" tick={{ fontSize:10, fill:"#94A3B8" }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fontSize:9, fill:"#94A3B8" }} axisLine={false} tickLine={false} width={48}
-                      tickFormatter={v => v >= 10000 ? `${Math.round(v/10000)}만` : String(v)} />
+                      tickFormatter={v => `₩${Number(v).toLocaleString()}`} />
                     <Tooltip content={<ChartTooltip />} cursor={{ fill:"rgba(49,130,246,0.04)" }} />
                     <ReferenceLine y={0} stroke="#E9EBEF" />
                     <Bar dataKey="매출" fill="#3182F6" radius={[3,3,0,0]} maxBarSize={28} />

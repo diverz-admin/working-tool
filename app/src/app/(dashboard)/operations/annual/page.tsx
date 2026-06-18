@@ -209,7 +209,7 @@ export default function AnnualProfitPage() {
               {rev!==null && (
                 <span className="text-xs font-bold px-1.5 py-0.5 rounded-md"
                   style={{ background:isActive?`${color}18`:"transparent", color:isActive?color:"#CBD5E1" }}>
-                  ₩{Math.round(rev/10000).toLocaleString()}만
+                  ₩{rev.toLocaleString()}
                 </span>
               )}
             </button>

@@ -113,9 +113,7 @@ interface GroupFormData {
 
 function wonFmt(n: number | null | undefined) {
   if (!n) return "—";
-  if (n >= 100000000) return `${(n / 100000000).toFixed(1)}억`;
-  if (n >= 10000)     return `${(n / 10000).toFixed(0)}만원`;
-  return `${n.toLocaleString()}원`;
+  return `₩${n.toLocaleString()}`;
 }
 
 function toCampaignFormData(c: Campaign): ProjectFormData {
@@ -408,9 +406,7 @@ const TEAM_COLORS: Record<string, string> = {
 function teamColor(t: string) { return TEAM_COLORS[t] ?? "#8B5CF6"; }
 
 function wonShort(n: number) {
-  if (n >= 100000000) return `${(n / 100000000).toFixed(1)}억`;
-  if (n >= 10000)     return `${Math.round(n / 10000)}만`;
-  return `${n.toLocaleString()}`;
+  return `₩${n.toLocaleString()}`;
 }
 
 // ── 달성률 링 ────────────────────────────────────────────────────────────────
