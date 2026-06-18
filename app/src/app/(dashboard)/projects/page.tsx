@@ -1572,6 +1572,12 @@ function ProjectsInner() {
                         || (r.groupName ?? "").toLowerCase().includes(q)
                         || (r.productName ?? "").toLowerCase().includes(q)
                         || (r.assignee ?? "").toLowerCase().includes(q);
+                    })
+                    .sort((a, b) => {
+                      if (!a.workEndDate && !b.workEndDate) return 0;
+                      if (!a.workEndDate) return 1;
+                      if (!b.workEndDate) return -1;
+                      return a.workEndDate.localeCompare(b.workEndDate);
                     });
 
                   if (filtered.length === 0) {
