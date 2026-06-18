@@ -957,6 +957,7 @@ function ProjectsInner() {
   const [workAssignee, setWorkAssignee]   = useState<string>("전체");
   const [pendingQty, setPendingQty]       = useState<Map<string, string>>(new Map());
   const [pendingSettingDate, setPendingSettingDate] = useState<Map<string, string>>(new Map());
+  const [pendingAssignee, setPendingAssignee] = useState<Map<string, string>>(new Map());
 
   const [workIncomplete, setWorkIncomplete] = useState(0);
   const [workMonth, setWorkMonth]           = useState<string>(new Date().toISOString().slice(0, 7));
@@ -1526,7 +1527,7 @@ function ProjectsInner() {
                   <th className="px-3 py-2.5 text-left font-semibold whitespace-nowrap" style={{ color: "#F97316", borderBottom: "2px solid #FED7AA" }}>#</th>
                   <th className="px-3 py-2.5 text-left font-semibold whitespace-nowrap" style={{ color: "#F97316", borderBottom: "2px solid #FED7AA" }}>
                     <div className="flex items-center gap-1.5">
-                      <span>작업담당자</span>
+                      <span>담당자</span>
                       <div className="relative">
                         <select
                           value={workAssignee}
@@ -1547,6 +1548,7 @@ function ProjectsInner() {
                       </div>
                     </div>
                   </th>
+                  <th className="px-3 py-2.5 text-left font-semibold whitespace-nowrap" style={{ color: "#F97316", borderBottom: "2px solid #FED7AA" }}>작업담당자</th>
                   {["품명", "개수", "공급가", "세액", "합계", "작업시작일", "작업만료일", "셋팅날짜", "잔여일", "완료"].map((h) => (
                     <th key={h} className="px-3 py-2.5 text-left font-semibold whitespace-nowrap" style={{ color: "#F97316", borderBottom: "2px solid #FED7AA" }}>{h}</th>
                   ))}
@@ -1572,7 +1574,7 @@ function ProjectsInner() {
                     });
 
                   if (filtered.length === 0) {
-                    return <tr><td colSpan={12} className="py-16 text-center text-sm" style={{ color: "#94A3B8" }}>해당 월의 작업 데이터가 없습니다.</td></tr>;
+                    return <tr><td colSpan={13} className="py-16 text-center text-sm" style={{ color: "#94A3B8" }}>해당 월의 작업 데이터가 없습니다.</td></tr>;
                   }
 
                   // 캠페인별 그룹핑 (projectId 기준, 순서 유지)
@@ -1584,7 +1586,7 @@ function ProjectsInner() {
                     const allDone = groupRows.every(r => r.workCompleted);
                     return [
                       <tr key={`gh-${projectId}`} style={{ background: allDone ? "#F0FDF4" : "#F8FAFC", borderTop: "2px solid #E9EBEF" }}>
-                        <td colSpan={12} className="px-4 py-2">
+                        <td colSpan={13} className="px-4 py-2">
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
@@ -1612,20 +1614,36 @@ function ProjectsInner() {
                         return (
                           <tr key={r.id} className="border-t" style={{ borderColor: "#F1F5F9", background: r.workCompleted ? "rgba(16,185,129,0.02)" : undefined }}>
                             <td className="px-3 py-2 font-medium" style={{ color: "#94A3B8" }}>{rowIdx}</td>
+                            <td className="px-3 py-2" style={{ color: r.assignee ? "#475569" : "#CBD5E1" }}>{r.assignee || "—"}</td>
                             <td className="px-2 py-1.5">
-                              <div className="relative">
-                                <select
-                                  value={r.assignee ?? ""}
-                                  onChange={(e) => updateWorkRow(r.id, { assignee: e.target.value || null })}
-                                  className="appearance-none text-xs pl-2 pr-5 py-1 rounded-lg outline-none transition-all cursor-pointer"
-                                  style={{ background: "#F8FAFC", border: "1px solid #E9EBEF", color: r.assignee ? "#191F28" : "#CBD5E1", minWidth: 72 }}
-                                >
-                                  <option value="">—</option>
-                                  {allAssigneeOpts.map((a) => <option key={a} value={a}>{a}</option>)}
-                                </select>
-                                <svg className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2.5" strokeLinecap="round">
-                                  <polyline points="6 9 12 15 18 9"/>
-                                </svg>
+                              <div className="flex items-center gap-1.5">
+                                <div className="relative">
+                                  <select
+                                    value={pendingAssignee.has(r.id) ? pendingAssignee.get(r.id)! : (r.assignee ?? "")}
+                                    onChange={(e) => setPendingAssignee((prev) => new Map(prev).set(r.id, e.target.value))}
+                                    className="appearance-none text-xs pl-2 pr-5 py-1 rounded-lg outline-none transition-all cursor-pointer"
+                                    style={{ background: "#F8FAFC", border: "1px solid #E9EBEF", color: (pendingAssignee.has(r.id) ? pendingAssignee.get(r.id) : r.assignee) ? "#191F28" : "#CBD5E1", minWidth: 72 }}
+                                  >
+                                    <option value="">—</option>
+                                    {allAssigneeOpts.map((a) => <option key={a} value={a}>{a}</option>)}
+                                  </select>
+                                  <svg className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2.5" strokeLinecap="round">
+                                    <polyline points="6 9 12 15 18 9"/>
+                                  </svg>
+                                </div>
+                                {pendingAssignee.has(r.id) && pendingAssignee.get(r.id) !== (r.assignee ?? "") && (
+                                  <button
+                                    onClick={() => {
+                                      const val = pendingAssignee.get(r.id)!;
+                                      updateWorkRow(r.id, { assignee: val || null });
+                                      setPendingAssignee((prev) => { const m = new Map(prev); m.delete(r.id); return m; });
+                                    }}
+                                    className="px-2 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors"
+                                    style={{ background: "#3182F6", color: "#fff" }}
+                                  >
+                                    적용
+                                  </button>
+                                )}
                               </div>
                             </td>
                             <td className="px-3 py-2 font-medium" style={{ color: "#191F28" }}>{r.productName || "—"}</td>
