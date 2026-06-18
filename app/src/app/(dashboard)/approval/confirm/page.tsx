@@ -209,10 +209,12 @@ export default function ConfirmPage() {
     return Array.from(map.entries()).sort((a, b) => b[0].localeCompare(a[0]));
   }, [filtered]);
 
-  const pendingInvoice = useMemo(
-    () => items.filter((i) => i.status === "확인완료" && !i.taxInvoiceDate && i.depositAccount !== "전재민"),
-    [items]
-  );
+  const pendingInvoice = useMemo(() => {
+    const confirmed = items.filter((i) => i.status === "확인완료" && !i.taxInvoiceDate);
+    if (selectedDate) return confirmed.filter((i) => i.requestedAt.slice(0, 10) === selectedDate);
+    if (selectedMonth) return confirmed.filter((i) => i.requestedAt.startsWith(selectedMonth));
+    return confirmed;
+  }, [items, selectedMonth, selectedDate]);
 
   const scopedItems = useMemo(() => items.filter((i) =>
     (selectedMonth === null || i.requestedAt.startsWith(selectedMonth)) &&
@@ -348,7 +350,9 @@ export default function ConfirmPage() {
 
   async function handleDailyExcel() {
     const confirmed = items.filter((i) => i.status === "확인완료" && !i.taxInvoiceDate);
-    const targets = selectedDate ? confirmed.filter((i) => i.requestedAt.slice(0, 10) === selectedDate) : confirmed;
+    let targets = confirmed;
+    if (selectedDate) targets = confirmed.filter((i) => i.requestedAt.slice(0, 10) === selectedDate);
+    else if (selectedMonth) targets = confirmed.filter((i) => i.requestedAt.startsWith(selectedMonth));
     if (targets.length === 0) {
       alert("확인완료 상태이고 아직 발행되지 않은 세금계산서가 없습니다.\n(대기·반려 항목은 포함되지 않습니다.)");
       return;
