@@ -188,36 +188,35 @@ function RevenueSection({ rows, criteria }: { rows: RevenueRow[]; criteria: stri
         </p>
       </div>
       <div className="overflow-x-auto rounded-xl" style={{ border:"1px solid #E9EBEF" }}>
-        <table className="w-full border-collapse" style={{ minWidth:760 }}>
+        <table className="w-full border-collapse" style={{ minWidth:720 }}>
           <colgroup>
             <col style={{ width:36 }} />
             <col style={{ width:76 }} />
+            <col style={{ width:76 }} />
             <col style={{ width:80 }} />
-            <col /><col />
-            <col style={{ width:56 }} />
+            <col />
             <col style={{ width:96 }} />
             <col style={{ width:84 }} />
             <col style={{ width:96 }} />
             <col style={{ width:88 }} />
           </colgroup>
           <thead>
-            <tr>{["#","담당자",dateLabel,"업체명","품명","개수","공급가","부가세","합계","계산서날짜"].map(h => (
+            <tr>{["#","팀","담당자",dateLabel,"업체명","공급가","부가세","합계","계산서날짜"].map(h => (
               <th key={h} style={S.thBlue}>{h}</th>
             ))}</tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td colSpan={10} style={{ ...S.tdData, textAlign:"center", padding:"40px", color:"#CBD5E1" }}>
+              <tr><td colSpan={9} style={{ ...S.tdData, textAlign:"center", padding:"40px", color:"#CBD5E1" }}>
                 이 달의 매출 내역이 없습니다. 프로젝트 관리에서 매출을 입력해주세요.
               </td></tr>
             ) : rows.map((r, i) => (
               <tr key={r.id} style={{ background: i % 2 === 0 ? "#FFFFFF" : "#FAFBFC" }}>
                 <td style={S.tdLabel}>{i+1}</td>
+                <td style={S.tdLabel}>{r.assignedTeam || <span style={{color:"#CBD5E1"}}>—</span>}</td>
                 <td style={S.tdLabel}>{r.assignee || <span style={{color:"#CBD5E1"}}>—</span>}</td>
                 <td style={{ ...S.tdData, textAlign:"center" }}>{dateFmt(criteria==="계산서날짜" ? r.invoiceDate : r.startDate)}</td>
                 <td style={{ ...S.tdData, textAlign:"left" }}>{r.clientName || <span style={{color:"#CBD5E1"}}>—</span>}</td>
-                <td style={{ ...S.tdData, textAlign:"left" }}>{r.productName || <span style={{color:"#CBD5E1"}}>—</span>}</td>
-                <td style={{ ...S.tdData, textAlign:"center" }}>{r.quantity ? `${r.quantity}개` : <span style={{color:"#CBD5E1"}}>—</span>}</td>
                 <td style={S.tdData}>{won(r.supplyPrice)}</td>
                 <td style={S.tdData}>{won(r.tax)}</td>
                 <td style={{ ...S.tdData, fontWeight:600 }}>{won(r.total)}</td>
@@ -226,7 +225,7 @@ function RevenueSection({ rows, criteria }: { rows: RevenueRow[]; criteria: stri
             ))}
             {rows.length > 0 && (
               <tr style={S.trTotal}>
-                <td colSpan={6} style={S.tdTotalLabel}>TOTAL</td>
+                <td colSpan={5} style={S.tdTotalLabel}>TOTAL</td>
                 <td style={S.tdTotal}>{wonNum(totalSupply)}</td>
                 <td style={S.tdTotal}>{wonNum(totalTax)}</td>
                 <td style={{ ...S.tdTotal, background:"rgba(49,130,246,0.14)" }}>{wonNum(totalAmount)}</td>
@@ -330,29 +329,29 @@ function ExpenseSection({
                         <table className="w-full border-collapse" style={{ tableLayout:"fixed" }}>
                           <colgroup>
                             <col style={{ width:36 }} /><col style={{ width:76 }} />
-                            <col style={{ width:80 }} /><col /><col /><col />
-                            <col style={{ width:60 }} /><col style={{ width:96 }} />
-                            <col style={{ width:84 }} /><col style={{ width:96 }} />
+                            <col style={{ width:76 }} /><col style={{ width:80 }} />
+                            <col /><col />
+                            <col style={{ width:96 }} /><col style={{ width:84 }} />
+                            <col style={{ width:96 }} />
                           </colgroup>
                           <thead>
-                            <tr>{["#","담당자",dateLabel,"캠페인명","매입처","품명","개수","공급가","부가세","합계"].map(h => (
+                            <tr>{["#","팀","담당자",dateLabel,"캠페인명","매입처","공급가","부가세","합계"].map(h => (
                               <th key={h} style={thDark}>{h}</th>
                             ))}</tr>
                           </thead>
                           <tbody>
                             {costRows.length === 0 ? (
-                              <tr><td colSpan={10} style={{ ...S.tdData, textAlign:"center", padding:"20px", color:"#CBD5E1", fontSize:12 }}>
+                              <tr><td colSpan={9} style={{ ...S.tdData, textAlign:"center", padding:"20px", color:"#CBD5E1", fontSize:12 }}>
                                 이 달의 매입 내역이 없습니다. 프로젝트 관리에서 입력해주세요.
                               </td></tr>
                             ) : costRows.map((r, i) => (
                               <tr key={r.id} style={{ background: i%2===0?"#FFFFFF":"#FAFBFC" }}>
                                 <td style={{ ...S.tdLabel, fontSize:11 }}>{i+1}</td>
+                                <td style={{ ...S.tdLabel, fontSize:11 }}>{r.assignedTeam||<span style={{color:"#CBD5E1"}}>—</span>}</td>
                                 <td style={{ ...S.tdLabel, fontSize:11 }}>{r.assignee||<span style={{color:"#CBD5E1"}}>—</span>}</td>
                                 <td style={{ ...S.tdData, textAlign:"center", fontSize:11 }}>{dateFmt(criteria==="계산서날짜"?r.invoiceDate:r.startDate)}</td>
                                 <td style={{ ...S.tdData, textAlign:"left", fontSize:11, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{r.campaignName||<span style={{color:"#CBD5E1"}}>—</span>}</td>
                                 <td style={{ ...S.tdData, textAlign:"left", fontSize:11, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{r.vendor||<span style={{color:"#CBD5E1"}}>—</span>}</td>
-                                <td style={{ ...S.tdData, textAlign:"left", fontSize:11, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{r.productName||<span style={{color:"#CBD5E1"}}>—</span>}</td>
-                                <td style={{ ...S.tdData, textAlign:"center", fontSize:11 }}>{r.quantity?`${r.quantity}개`:<span style={{color:"#CBD5E1"}}>—</span>}</td>
                                 <td style={{ ...S.tdData, fontSize:11 }}>{won(r.supplyPrice)}</td>
                                 <td style={{ ...S.tdData, fontSize:11 }}>{won(r.tax)}</td>
                                 <td style={{ ...S.tdData, fontWeight:600, fontSize:11 }}>{won(r.total)}</td>
@@ -360,7 +359,7 @@ function ExpenseSection({
                             ))}
                             {costRows.length > 0 && (
                               <tr style={S.trTotal}>
-                                <td colSpan={7} style={{ ...S.tdLabel, textAlign:"right" as const, fontWeight:700, fontSize:12, color:"#475569" }}>소계</td>
+                                <td colSpan={6} style={{ ...S.tdLabel, textAlign:"right" as const, fontWeight:700, fontSize:12, color:"#475569" }}>소계</td>
                                 <td style={{ ...S.tdTotal, fontSize:12 }}>{wonFmt(sumN(costRows.map(r=>r.supplyPrice)))}</td>
                                 <td style={{ ...S.tdTotal, fontSize:12 }}>{wonFmt(sumN(costRows.map(r=>r.tax)))}</td>
                                 <td style={{ ...S.tdTotal, fontSize:12, background:"rgba(49,130,246,0.14)" }}>{wonFmt(directTotal)}</td>
