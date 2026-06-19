@@ -1020,13 +1020,7 @@ function ProjectsInner() {
     let rollback: WorkCheckRow[] | undefined;
     setWorkRows((prev) => {
       rollback = prev;
-      return prev.map((r) => {
-        if (r.id !== id) return r;
-        if (editCampaign?.id === r.projectId || activeCampGroup === r.groupId) {
-          loadCampaigns(r.groupId, true);
-        }
-        return { ...r, ...patch };
-      });
+      return prev.map((r) => r.id !== id ? r : { ...r, ...patch });
     });
     // workCompleted 토글은 Staff 접근 가능한 전용 엔드포인트 사용 (/api/costs는 Manager 전용)
     const endpoint = patch.workCompleted !== undefined ? `/api/work-check/${id}` : `/api/costs/${id}`;
@@ -1035,10 +1029,29 @@ function ProjectsInner() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(patch),
     });
-    // 저장 실패 시 이전 상태로 롤백
-    if (!res.ok && rollback) setWorkRows(rollback);
-    else if (res.ok && patch.workCompleted !== undefined) {
+    if (!res.ok) {
+      // 저장 실패 시 이전 상태로 롤백
+      if (rollback) setWorkRows(rollback);
+      return;
+    }
+    if (patch.workCompleted !== undefined) {
+      // 서버 응답의 row.id로 정확히 한 행만 업데이트 (낙관적 업데이트가 잘못된 행을 변경한 경우 교정)
+      const data = await res.json().catch(() => null);
+      const confirmedId = data?.row?.id as string | undefined;
+      if (confirmedId && rollback) {
+        setWorkRows(rollback.map((r) => r.id === confirmedId ? { ...r, workCompleted: Boolean(data.row.workCompleted) } : r));
+      }
       window.dispatchEvent(new Event("work-badge-refresh"));
+      // 서버 데이터로 조용히 재동기화 (낙관적 업데이트 오류를 최종 교정)
+      const refreshUrl = teamParam ? `/api/work-check?team=${encodeURIComponent(teamParam)}` : "/api/work-check";
+      fetch(refreshUrl, { cache: "no-store" })
+        .then((r) => r.json())
+        .then((d) => {
+          const rows: WorkCheckRow[] = d.rows ?? [];
+          setWorkRows(rows);
+          setWorkIncomplete(rows.filter((r) => !r.workCompleted).length);
+        })
+        .catch(() => {});
     }
   }
 
