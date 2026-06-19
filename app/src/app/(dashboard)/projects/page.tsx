@@ -148,9 +148,9 @@ function DaysBadge({ days }: { days: number | null }) {
   return <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: `${color}18`, color }}>{label}</span>;
 }
 
-function RevenueSalesBadge({ total, confirmed, pending }: { total: number; confirmed: number; pending: number }) {
+function RevenueSalesBadge({ total, confirmed, pending, invoiced }: { total: number; confirmed: number; pending: number; invoiced: number }) {
   if (total === 0) return <span className="text-xs" style={{ color: "#CBD5E1" }}>—</span>;
-  if (confirmed === 0 && pending === 0) {
+  if (confirmed === 0 && pending === 0 && invoiced === 0) {
     return (
       <span className="text-xs font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap" style={{ background: "#F1F5F9", color: "#94A3B8" }}>
         미요청 {total}
@@ -358,7 +358,7 @@ function CampaignRow({ c, index, onEdit, onDelete, onCopy, deleting, copying }: 
       {/* 계약금액 */}
       <td className="px-4 py-3 text-xs font-semibold" style={{ color: "#10B981" }}>{wonFmt(c.contractAmount)}</td>
       {/* 매출 */}
-      <td className="px-4 py-3"><RevenueSalesBadge total={c.revenueTotal} confirmed={c.revenueConfirmed} pending={c.revenuePending} /></td>
+      <td className="px-4 py-3"><RevenueSalesBadge total={c.revenueTotal} confirmed={c.revenueConfirmed} pending={c.revenuePending} invoiced={c.revenueInvoiced} /></td>
       {/* 세금계산서 */}
       <td className="px-4 py-3"><TaxInvoiceBadge invoiced={c.revenueInvoiced} /></td>
       {/* 매입 */}
@@ -1994,7 +1994,7 @@ function ProjectsInner() {
                       </td>
                       {/* 매출 */}
                       <td className="px-4 py-3.5">
-                        <RevenueSalesBadge total={g.revenueTotal} confirmed={g.revenueConfirmed} pending={g.revenuePending} />
+                        <RevenueSalesBadge total={g.revenueTotal} confirmed={g.revenueConfirmed} pending={g.revenuePending} invoiced={g.revenueInvoiced} />
                       </td>
                       {/* 세금계산서 */}
                       <td className="px-4 py-3.5">
