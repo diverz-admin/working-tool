@@ -118,17 +118,25 @@ function RequestModal({ onClose, onSubmit }: {
     content:      "",
     attachments:  [],
   });
-  const [saving, setSaving]       = useState(false);
-  const [userNames, setUserNames] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [allUsers, setAllUsers] = useState<{ name: string; team: string | null }[]>([]);
 
   useEffect(() => {
     fetch("/api/users")
       .then((r) => r.json())
-      .then((d) => setUserNames((d.users ?? []).map((u: { name: string }) => u.name)))
+      .then((d) => setAllUsers((d.users ?? []).map((u: { name: string; team: string | null }) => ({ name: u.name, team: u.team }))))
       .catch(() => {});
   }, []);
 
+  const filteredUsers = form.assignedTeam
+    ? allUsers.filter((u) => u.team === form.assignedTeam)
+    : allUsers;
+
   function set(k: keyof RequestForm, v: string) {
+    if (k === "assignedTeam") {
+      setForm((p) => ({ ...p, assignedTeam: v, requester: "" }));
+      return;
+    }
     setForm((p) => ({ ...p, [k]: v }));
   }
 
@@ -189,7 +197,7 @@ function RequestModal({ onClose, onSubmit }: {
                 style={{ background: "#F8FAFC", border: "1px solid #E9EBEF", color: form.requester ? "#191F28" : "#94A3B8" }}
               >
                 <option value="">선택</option>
-                {userNames.map((name) => <option key={name} value={name}>{name}</option>)}
+                {filteredUsers.map((u) => <option key={u.name} value={u.name}>{u.name}</option>)}
               </select>
             </div>
           </div>
