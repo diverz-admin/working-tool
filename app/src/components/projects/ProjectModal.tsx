@@ -401,6 +401,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
   /* ── 매입 입금요청 반려 → 재요청 허용 ── */
   async function resetPaymentRequest(requestId: string, _productName: string, _amount: string) {
     await deletePaymentRequest(requestId);
+    if (savedIdRef.current) invalidateProjectCache(savedIdRef.current);
     setPaymentStatuses((prev) => {
       const next = { ...prev };
       Object.keys(next).forEach((k) => {
@@ -1450,6 +1451,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                                           vendorBankAccount: matchedProduct?.vendorBankAccount || c.vendor || "",
                                         });
                                         setPaymentStatuses((p) => ({ ...p, [rowKey]: { status: "대기", requestId: newReq.id } }));
+                                        invalidateProjectCache(pid);
                                         showToast("입금요청이 전송되었습니다.");
                                         window.dispatchEvent(new Event("approval-request-added"));
                                       } finally {
