@@ -990,6 +990,10 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                   (isEdit || isFormValid) &&
                   form.campaignName
                 );
+                const effectiveTax = form.kpiTax !== "" && form.kpiTax !== undefined
+                  ? (parseInt(form.kpiTax) || 0)
+                  : totalTax;
+                const isTaxExempt = effectiveTax === 0;
 
                 return (
                   <div className="mb-4 p-4 rounded-2xl" style={{ background: "#F8FAFC", border: "1px solid #E9EBEF" }}>
@@ -1063,6 +1067,9 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
 
                       {/* 입금확인요청 버튼 — 우측 정렬 */}
                       <div className="ml-auto flex items-center gap-2">
+                        {isTaxExempt && (
+                          <span className="text-xs font-semibold px-2.5 py-1 rounded-lg" style={{ background: "rgba(148,163,184,0.1)", color: "#94A3B8", border: "1px solid rgba(148,163,184,0.25)" }}>세금계산서 발행 불필요</span>
+                        )}
                         {cs?.status === "발행완료" && (
                           <span className="text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ background: "rgba(5,150,105,0.1)", color: "#059669", border: "1px solid rgba(5,150,105,0.2)" }}>계산서 발행완료</span>
                         )}
@@ -1105,9 +1112,6 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                                     } catch {}
                                   }
                                   const clientInfo = clients.find((c) => c.id === form.clientId);
-                                  const effectiveTax = form.kpiTax !== "" && form.kpiTax !== undefined
-                                    ? (parseInt(form.kpiTax) || 0)
-                                    : totalTax;
                                   const newReq = await addConfirmRequest({
                                     projectId:      pid,
                                     rowKey:         contractKey,
