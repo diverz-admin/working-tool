@@ -238,7 +238,7 @@ export default function ClientModal({ initial, onClose, onSaved, onDelete, onVie
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.companyName.trim()) { setError("업체명은 필수입니다."); return; }
+    if (!form.companyName.trim()) { setError("플레이스/스토어명은 필수입니다."); return; }
     if (!validateFields()) return;
     setSaving(true);
     setError(null);
@@ -337,15 +337,15 @@ export default function ClientModal({ initial, onClose, onSaved, onDelete, onVie
             </div>
           </div>
 
-          {/* 업체명 + 스토어명 + 업종 */}
+          {/* 플레이스/스토어명 + 상호명 + 업종 */}
           <div className="grid grid-cols-3 gap-4">
             <div>
-              <label className={labelCls} style={labelStyle}>업체명 *</label>
-              <input type="text" value={form.companyName} onChange={(e) => setField("companyName", e.target.value)} placeholder="업체명 입력" className={inputCls} style={inputStyle} />
+              <label className={labelCls} style={labelStyle}>플레이스/스토어명 *</label>
+              <input type="text" value={form.companyName} onChange={(e) => setField("companyName", e.target.value)} placeholder="플레이스/스토어명 입력" className={inputCls} style={inputStyle} />
             </div>
             <div>
-              <label className={labelCls} style={labelStyle}>스토어명</label>
-              <input type="text" value={form.storeName} onChange={(e) => setField("storeName", e.target.value)} placeholder="스토어명 입력" className={inputCls} style={inputStyle} />
+              <label className={labelCls} style={labelStyle}>상호명 (사업자등록기준)</label>
+              <input type="text" value={form.storeName} onChange={(e) => setField("storeName", e.target.value)} placeholder="상호명 입력" className={inputCls} style={inputStyle} />
             </div>
             <div>
               <label className={labelCls} style={labelStyle}>업종</label>

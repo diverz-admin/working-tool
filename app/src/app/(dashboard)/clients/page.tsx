@@ -498,7 +498,7 @@ export default function ClientsPage() {
                 </svg>
                 <input
                   type="text"
-                  placeholder="업체명, 담당자, 업종 검색"
+                  placeholder="플레이스/스토어명, 담당자, 업종 검색"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="pl-8 pr-4 py-2 text-sm rounded-xl outline-none transition-all"
@@ -537,7 +537,7 @@ function ClientTable({ clients, deleting, onEdit, onDelete, canDelete }: ClientT
     <table className="w-full text-sm">
       <thead>
         <tr style={{ background: "#F8FAFC" }}>
-          {["구분","업체명","업종","담당자","업체담당자","연락처","상품종류","상태",""].map(h => (
+          {["구분","플레이스/스토어명","업종","담당자","업체담당자","연락처","상품종류","상태",""].map(h => (
             <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold" style={{ color: "#64748B" }}>{h}</th>
           ))}
         </tr>
@@ -667,7 +667,7 @@ interface TableProps { data: Client[]; onEdit: (c: Client) => void; onDelete: (c
 function AllTable({ data, onEdit, onDelete, deleting, canDelete }: TableProps) {
   return (
     <table className="w-full text-sm">
-      <THead headers={["상태", "구분", "업체명", "업종", "담당팀", "담당자", "업체담당자", "연락처", "상품종류"]} />
+      <THead headers={["상태", "구분", "플레이스/스토어명", "업종", "담당팀", "담당자", "업체담당자", "연락처", "상품종류"]} />
       <tbody>
         {data.map((c) => {
           const s = STATUS_STYLE[c.status];
@@ -696,7 +696,7 @@ function AllTable({ data, onEdit, onDelete, deleting, canDelete }: TableProps) {
 function LeadTable({ data, onEdit, onDelete, deleting, canDelete }: TableProps) {
   return (
     <table className="w-full text-sm">
-      <THead headers={["구분", "업체명", "업종", "담당팀", "담당자", "업체담당자", "연락처", "상품종류", "인입 날짜", "인입 경로"]} />
+      <THead headers={["구분", "플레이스/스토어명", "업종", "담당팀", "담당자", "업체담당자", "연락처", "상품종류", "인입 날짜", "인입 경로"]} />
       <tbody>
         {data.map((c) => (
           <TR key={c.id} status={c.status} onClick={() => onEdit(c)}>
@@ -723,7 +723,7 @@ function LeadTable({ data, onEdit, onDelete, deleting, canDelete }: TableProps) 
 function ActiveTable({ data, onEdit, onDelete, deleting, canDelete }: TableProps) {
   return (
     <table className="w-full text-sm">
-      <THead headers={["구분", "업체명", "업종", "담당팀", "담당자", "업체담당자", "연락처", "상품종류", "인입 경로"]} />
+      <THead headers={["구분", "플레이스/스토어명", "업종", "담당팀", "담당자", "업체담당자", "연락처", "상품종류", "인입 경로"]} />
       <tbody>
         {data.map((c) => (
           <TR key={c.id} status={c.status} onClick={() => onEdit(c)}>
@@ -749,7 +749,7 @@ function ActiveTable({ data, onEdit, onDelete, deleting, canDelete }: TableProps
 function EndedTable({ data, onEdit, onDelete, deleting, canDelete }: TableProps) {
   return (
     <table className="w-full text-sm">
-      <THead headers={["구분", "업체명", "업종", "담당팀", "담당자", "업체담당자", "연락처", "상품종류", "종료 날짜", "종료 사유"]} />
+      <THead headers={["구분", "플레이스/스토어명", "업종", "담당팀", "담당자", "업체담당자", "연락처", "상품종류", "종료 날짜", "종료 사유"]} />
       <tbody>
         {data.map((c) => (
           <TR key={c.id} status={c.status} onClick={() => onEdit(c)}>

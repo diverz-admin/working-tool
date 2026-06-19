@@ -840,7 +840,7 @@ export default function ConfirmPage() {
                 <p className="px-4 pt-3 pb-1 text-xs font-bold" style={{ color: "#94A3B8" }}>기본 정보</p>
                 <div className="grid grid-cols-2 gap-px px-4 pb-3 pt-1">
                   <div>
-                    <p className="text-xs mb-0.5" style={{ color: "#94A3B8" }}>업체명</p>
+                    <p className="text-xs mb-0.5" style={{ color: "#94A3B8" }}>플레이스/스토어명</p>
                     <p className="text-sm font-semibold" style={{ color: "#191F28" }}>{selected.clientName || "—"}</p>
                   </div>
                   <div>

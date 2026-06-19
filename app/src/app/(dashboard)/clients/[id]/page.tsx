@@ -121,7 +121,7 @@ export default function ClientDetailPage() {
   }
 
   async function handleSave() {
-    if (!form.companyName.trim()) { setError("업체명은 필수입니다."); return; }
+    if (!form.companyName.trim()) { setError("플레이스/스토어명은 필수입니다."); return; }
     setSaving(true); setError(null);
     const body = { ...form, monthlyAvg: form.monthlyAvg ? parseInt(form.monthlyAvg.replace(/,/g, ""), 10) : undefined };
     const res = await fetch(`/api/clients/${id}`, {
@@ -228,8 +228,8 @@ export default function ClientDetailPage() {
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className={labelCls} style={labelStyle}>업체명 *</label>
-            <input type="text" value={form.companyName} onChange={(e) => setField("companyName", e.target.value)} placeholder="업체명 입력" className={inputCls} style={inputStyle} />
+            <label className={labelCls} style={labelStyle}>플레이스/스토어명 *</label>
+            <input type="text" value={form.companyName} onChange={(e) => setField("companyName", e.target.value)} placeholder="플레이스/스토어명 입력" className={inputCls} style={inputStyle} />
           </div>
           <div>
             <label className={labelCls} style={labelStyle}>업종</label>
