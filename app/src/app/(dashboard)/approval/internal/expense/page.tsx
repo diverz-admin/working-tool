@@ -118,7 +118,15 @@ function RequestModal({ onClose, onSubmit }: {
     content:      "",
     attachments:  [],
   });
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving]       = useState(false);
+  const [userNames, setUserNames] = useState<string[]>([]);
+
+  useEffect(() => {
+    fetch("/api/users")
+      .then((r) => r.json())
+      .then((d) => setUserNames((d.users ?? []).map((u: { name: string }) => u.name)))
+      .catch(() => {});
+  }, []);
 
   function set(k: keyof RequestForm, v: string) {
     setForm((p) => ({ ...p, [k]: v }));
@@ -173,14 +181,16 @@ function RequestModal({ onClose, onSubmit }: {
             </div>
             <div>
               <label className="block text-xs font-semibold mb-1.5" style={{ color: "#64748B" }}>요청자 <span style={{ color: "#EF4444" }}>*</span></label>
-              <input
+              <select
                 value={form.requester}
                 onChange={(e) => set("requester", e.target.value)}
-                placeholder="이름"
                 required
-                className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
-                style={{ background: "#F8FAFC", border: "1px solid #E9EBEF", color: "#191F28" }}
-              />
+                className="w-full px-3 py-2.5 rounded-xl text-sm outline-none appearance-none"
+                style={{ background: "#F8FAFC", border: "1px solid #E9EBEF", color: form.requester ? "#191F28" : "#94A3B8" }}
+              >
+                <option value="">선택</option>
+                {userNames.map((name) => <option key={name} value={name}>{name}</option>)}
+              </select>
             </div>
           </div>
 
