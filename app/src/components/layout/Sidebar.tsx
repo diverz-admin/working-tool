@@ -16,8 +16,8 @@ const MARKETING_SUB = [
 ];
 
 const APPROVAL_SUB = [
-  { href: "/approval/confirm",                label: "프로젝트 입금확인요청" },
-  { href: "/approval/request",                label: "프로젝트 입금요청" },
+  { href: "/approval/confirm",                label: "프로젝트 매출" },
+  { href: "/approval/request",                label: "프로젝트 매입" },
   { href: "/approval/internal/confirm",       label: "내부지출",   managerOnly: true },
   { href: "/approval/internal/leave-confirm", label: "휴가",       managerOnly: true },
 ];
