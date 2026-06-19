@@ -512,3 +512,17 @@ export const internalExpenseRequests = pgTable("internal_expense_requests", {
 });
 
 export type InternalExpenseRequest = typeof internalExpenseRequests.$inferSelect;
+
+export const appNotifications = pgTable("app_notifications", {
+  id:            uuid("id").primaryKey().defaultRandom(),
+  recipientName: text("recipient_name").notNull(),
+  fromName:      text("from_name").notNull(),
+  type:          text("type").notNull(), // expense_approved | expense_rejected
+  title:         text("title").notNull(),
+  body:          text("body").notNull(),
+  link:          text("link"),
+  isRead:        boolean("is_read").notNull().default(false),
+  createdAt:     timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type AppNotification = typeof appNotifications.$inferSelect;

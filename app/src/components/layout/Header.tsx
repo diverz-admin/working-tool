@@ -37,6 +37,18 @@ interface Mention {
   createdAt: string;
 }
 
+interface AppNotif {
+  id: string;
+  recipientName: string;
+  fromName: string;
+  type: string;
+  title: string;
+  body: string;
+  link: string | null;
+  isRead: boolean;
+  createdAt: string;
+}
+
 function formatTime(iso: string) {
   const d = new Date(iso);
   const now = new Date();
@@ -63,12 +75,14 @@ export default function Header() {
   const title = getTitle(pathname);
 
   const [mentions, setMentions]       = useState<Mention[]>([]);
+  const [appNotifs, setAppNotifs]     = useState<AppNotif[]>([]);
   const [showDrop, setShowDrop]       = useState(false);
   const [toastList, setToastList]     = useState<Mention[]>([]);
-  const dropRef   = useRef<HTMLDivElement>(null);
-  const prevCount = useRef(0);
+  const dropRef    = useRef<HTMLDivElement>(null);
+  const prevCount  = useRef(0);
+  const prevNotifs = useRef(0);
 
-  const unreadCount = mentions.filter((m) => !m.isRead).length;
+  const unreadCount = mentions.filter((m) => !m.isRead).length + appNotifs.filter((n) => !n.isRead).length;
 
   const loadMentions = useCallback(async (name: string) => {
     try {
@@ -91,13 +105,26 @@ export default function Header() {
     } catch { /* ignore */ }
   }, []);
 
+  const loadAppNotifs = useCallback(async (name: string) => {
+    try {
+      const res = await fetch(`/api/notifications?name=${encodeURIComponent(name)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const fetched: AppNotif[] = data.notifications ?? [];
+      setAppNotifs(fetched);
+      const newCount = fetched.filter((n) => !n.isRead).length;
+      prevNotifs.current = newCount;
+    } catch { /* ignore */ }
+  }, []);
+
   // 초기 로드 + 30초 폴링
   useEffect(() => {
     if (!userName) return;
     loadMentions(userName);
-    const t = setInterval(() => loadMentions(userName), 30000);
+    loadAppNotifs(userName);
+    const t = setInterval(() => { loadMentions(userName); loadAppNotifs(userName); }, 30000);
     return () => clearInterval(t);
-  }, [userName, loadMentions]);
+  }, [userName, loadMentions, loadAppNotifs]);
 
   // 채팅 페이지에서 멘션 발생 시 즉시 갱신
   useEffect(() => {
@@ -122,13 +149,22 @@ export default function Header() {
   async function handleOpenDrop() {
     setShowDrop((v) => !v);
     if (!showDrop && unreadCount > 0 && userName) {
-      await fetch("/api/chat/notifications", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: userName }),
-      });
+      await Promise.all([
+        fetch("/api/chat/notifications", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: userName }),
+        }),
+        fetch("/api/notifications", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: userName }),
+        }),
+      ]);
       setMentions((p) => p.map((m) => ({ ...m, isRead: true })));
+      setAppNotifs((p) => p.map((n) => ({ ...n, isRead: true })));
       prevCount.current = 0;
+      prevNotifs.current = 0;
     }
   }
 
@@ -177,21 +213,51 @@ export default function Header() {
             {showDrop && (
               <div className="absolute right-0 top-11 w-80 rounded-2xl border shadow-xl z-50 overflow-hidden"
                 style={{ background: "#FFFFFF", borderColor: "#E9EBEF" }}>
-                <div className="px-4 py-3 border-b flex items-center justify-between"
-                  style={{ borderColor: "#F1F5F9", background: "#F8FAFC" }}>
-                  <span className="text-sm font-bold" style={{ color: "#191F28" }}>채팅 멘션 알림</span>
-                  <button onClick={() => { router.push("/chat"); setShowDrop(false); }}
-                    className="text-xs font-medium transition-colors hover:opacity-70"
-                    style={{ color: "#3182F6" }}>채팅으로 이동</button>
+                <div className="px-4 py-3 border-b" style={{ borderColor: "#F1F5F9", background: "#F8FAFC" }}>
+                  <span className="text-sm font-bold" style={{ color: "#191F28" }}>알림</span>
                 </div>
-                <div className="overflow-y-auto" style={{ maxHeight: 360 }}>
+                <div className="overflow-y-auto" style={{ maxHeight: 400 }}>
+
+                  {/* 결재 알림 */}
+                  {appNotifs.length > 0 && (
+                    <>
+                      <div className="px-4 py-2 text-xs font-semibold" style={{ color: "#94A3B8", background: "#F8FAFC" }}>결재</div>
+                      {appNotifs.map((n) => {
+                        const isApproved = n.type === "expense_approved";
+                        return (
+                          <button key={n.id}
+                            onClick={() => { if (n.link) router.push(n.link); setShowDrop(false); }}
+                            className="w-full px-4 py-3 text-left border-b transition-colors hover:bg-slate-50 last:border-0"
+                            style={{ borderColor: "#F1F5F9", background: n.isRead ? "transparent" : "rgba(49,130,246,0.04)" }}>
+                            <div className="flex items-start gap-2.5">
+                              <div className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-xs font-bold shrink-0 mt-0.5"
+                                style={{ background: isApproved ? "#10B981" : "#EF4444" }}>
+                                {isApproved ? "✓" : "✕"}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-semibold" style={{ color: isApproved ? "#059669" : "#DC2626" }}>{n.title}</p>
+                                <p className="text-xs mt-0.5" style={{ color: "#64748B" }}>{n.body}</p>
+                                <p className="text-xs mt-0.5" style={{ color: "#B0B8C1" }}>{formatTime(n.createdAt)}</p>
+                              </div>
+                              {!n.isRead && (
+                                <div className="w-2 h-2 rounded-full shrink-0 mt-1.5" style={{ background: "#3182F6" }} />
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </>
+                  )}
+
+                  {/* 채팅 멘션 */}
+                  <div className="px-4 py-2 text-xs font-semibold flex items-center justify-between" style={{ color: "#94A3B8", background: "#F8FAFC" }}>
+                    채팅 멘션
+                    <button onClick={() => { router.push("/chat"); setShowDrop(false); }}
+                      className="text-xs font-medium hover:opacity-70" style={{ color: "#3182F6" }}>이동</button>
+                  </div>
                   {mentions.length === 0 ? (
-                    <div className="py-10 text-center">
-                      <svg className="mx-auto mb-2" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#B0B8C1" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-                        <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-                      </svg>
-                      <p className="text-sm" style={{ color: "#94A3B8" }}>멘션 알림이 없습니다</p>
+                    <div className="py-8 text-center">
+                      <p className="text-xs" style={{ color: "#94A3B8" }}>멘션 알림이 없습니다</p>
                     </div>
                   ) : (
                     mentions.map((n) => (
@@ -218,6 +284,16 @@ export default function Header() {
                         </div>
                       </button>
                     ))
+                  )}
+
+                  {appNotifs.length === 0 && mentions.length === 0 && (
+                    <div className="py-10 text-center">
+                      <svg className="mx-auto mb-2" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#B0B8C1" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                        <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                      </svg>
+                      <p className="text-sm" style={{ color: "#94A3B8" }}>알림이 없습니다</p>
+                    </div>
                   )}
                 </div>
               </div>
