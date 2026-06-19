@@ -118,7 +118,7 @@ export default function WorkCheckPage() {
   async function toggleComplete(row: WorkRow) {
     const next = !row.workCompleted;
     setRows(prev => prev.map(r => r.id === row.id ? { ...r, workCompleted: next } : r));
-    const res = await fetch(`/api/costs/${row.id}`, {
+    const res = await fetch(`/api/work-check/${row.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ workCompleted: next }),
