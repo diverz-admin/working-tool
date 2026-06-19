@@ -16,16 +16,14 @@ const MARKETING_SUB = [
 ];
 
 const APPROVAL_SUB = [
-  { href: "/approval/confirm",  label: "입금확인요청" },
-  { href: "/approval/request",  label: "입금요청" },
+  { href: "/approval/confirm",          label: "입금확인요청" },
+  { href: "/approval/request",          label: "입금요청" },
+  { href: "/approval/internal/confirm", label: "내부결재확인", managerOnly: true },
 ];
 
 const INTERNAL_SUB = [
   { href: "/approval/internal/expense", label: "내부지출" },
   { href: "/approval/internal/leave",   label: "휴가" },
-];
-const INTERNAL_MANAGER_SUB = [
-  { href: "/approval/internal/confirm", label: "내부결재확인" },
 ];
 
 const OPERATIONS_SUB = [
@@ -267,7 +265,8 @@ function PendingBadge({ count }: { count: number }) {
 
 function ApprovalNavSection() {
   const pathname = usePathname();
-  const isActive = pathname.startsWith("/approval") && !pathname.startsWith("/approval/internal");
+  const isActive = pathname.startsWith("/approval") &&
+    (!pathname.startsWith("/approval/internal") || pathname.startsWith("/approval/internal/confirm"));
   const [open, setOpen] = useState(isActive);
   const [counts, setCounts] = useState<{ confirm: number; payment: number }>({ confirm: 0, payment: 0 });
   const { role } = useUser();
@@ -314,7 +313,7 @@ function ApprovalNavSection() {
           style={{ color: locked ? "#B0B8C1" : isActive ? "#3182F6" : "#4E5968", opacity: locked ? 0.6 : 1 }}
         >
           <span style={{ color: locked ? "#CBD5E1" : isActive ? "#3182F6" : "#8B95A1" }}>{IC.approval}</span>
-          프로젝트 결재요청
+          결재확인
           {!locked && <PendingBadge count={counts.confirm + counts.payment} />}
           {locked && <span className="ml-auto text-xs" style={{ color: "#CBD5E1" }}>🔒</span>}
         </Link>
@@ -329,7 +328,7 @@ function ApprovalNavSection() {
 
       {open && (
         <div className="mt-0.5 ml-4">
-          {APPROVAL_SUB.map((item) => {
+          {APPROVAL_SUB.filter((item) => !item.managerOnly || !locked).map((item) => {
             const isSubActive = pathname === item.href || pathname.startsWith(item.href + "/");
             const badgeCount = badgeCounts[item.href] ?? 0;
             return (
@@ -357,7 +356,7 @@ function ApprovalNavSection() {
 function InternalNavSection() {
   const pathname = usePathname();
   const { role } = useUser();
-  const isActive = pathname.startsWith("/approval/internal");
+  const isActive = pathname.startsWith("/approval/internal") && !pathname.startsWith("/approval/internal/confirm");
   const [open, setOpen] = useState(isActive);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -392,7 +391,7 @@ function InternalNavSection() {
 
       {open && (
         <div className="mt-0.5 ml-4">
-          {[...INTERNAL_SUB, ...(role !== "Staff" ? INTERNAL_MANAGER_SUB : [])].map((item) => {
+          {INTERNAL_SUB.map((item) => {
             const isSubActive = pathname === item.href || pathname.startsWith(item.href + "/");
             return (
               <Link
