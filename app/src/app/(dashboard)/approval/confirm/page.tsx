@@ -209,9 +209,9 @@ export default function ConfirmPage() {
     return Array.from(map.entries()).sort((a, b) => b[0].localeCompare(a[0]));
   }, [filtered]);
 
-  // 계산서 미발행 항목 (대기·확인완료 모두 포함, 반려 제외)
+  // 계산서 미발행 항목 (대기·확인완료 모두 포함, 반려·taxExempt 제외)
   const pendingInvoice = useMemo(() => {
-    const base = items.filter((i) => !i.taxInvoiceDate && i.status !== "반려");
+    const base = items.filter((i) => !i.taxInvoiceDate && i.status !== "반려" && !i.taxExempt);
     if (selectedDate) return base.filter((i) => i.requestedAt.slice(0, 10) === selectedDate);
     if (selectedMonth) return base.filter((i) => i.requestedAt.startsWith(selectedMonth));
     return base;
@@ -305,8 +305,8 @@ export default function ConfirmPage() {
 
   async function handlePaymentDone(item: ConfirmRequest, date: string) {
     const dateStr = date || new Date().toISOString().slice(0, 10);
-    // 계산서까지 이미 발행된 경우 확인완료로 전환, 아니면 대기 유지
-    const moveToDone = Boolean(item.taxInvoiceDate);
+    // 세금계산서 불필요(taxExempt)하거나 계산서가 이미 발행된 경우 확인완료로 전환
+    const moveToDone = item.taxExempt || Boolean(item.taxInvoiceDate);
     const updates: Parameters<typeof updateConfirmRequest>[1] = { depositConfirmedAt: dateStr };
     if (moveToDone) updates.status = "확인완료";
     await Promise.all([
@@ -758,7 +758,7 @@ export default function ConfirmPage() {
                               )}
                             </td>
                             <td className="px-4 py-3">
-                              {item.depositAccount === "전재민" ? (
+                              {(item.depositAccount === "전재민" || item.taxExempt) ? (
                                 <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: "#F1F5F9", color: "#94A3B8" }}>해당없음</span>
                               ) : invoiceDone ? (
                                 <div>
@@ -771,7 +771,7 @@ export default function ConfirmPage() {
                             </td>
                             <td className="px-3 py-3">
                               <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                                {item.status === "확인완료" && !invoiceDone && item.depositAccount !== "전재민" && (
+                                {item.status === "확인완료" && !invoiceDone && item.depositAccount !== "전재민" && !item.taxExempt && (
                                   <button onClick={(e) => { e.stopPropagation(); setSelected(item); }}
                                     className="text-xs font-semibold px-2 py-1 rounded-lg whitespace-nowrap"
                                     style={{ background: "rgba(5,150,105,0.1)", color: "#059669", border: "1px solid rgba(5,150,105,0.25)" }}>
@@ -1051,8 +1051,8 @@ export default function ConfirmPage() {
                   </div>
                 </div>
 
-                {/* ② 세금계산서 발행 (전재민 제외) */}
-                {selected.depositAccount !== "전재민" && (
+                {/* ② 세금계산서 발행 (전재민·부가세0 제외) */}
+                {selected.depositAccount !== "전재민" && !selected.taxExempt && (
                   <div className="rounded-xl overflow-hidden" style={{ border: "1px solid #E9EBEF" }}>
                     <div className="px-3 py-2 flex items-center gap-2" style={{ background: "#FAFBFC", borderBottom: "1px solid #E9EBEF" }}>
                       <span className="text-xs font-semibold" style={{ color: "#64748B" }}>② 세금계산서 발행</span>
@@ -1087,15 +1087,27 @@ export default function ConfirmPage() {
                   </div>
                 )}
 
-                <p className="text-xs text-center" style={{ color: "#CBD5E1" }}>① ② 모두 완료 시 자동으로 확인완료 처리됩니다</p>
+                {/* 부가세 0 — 세금계산서 해당없음 안내 */}
+                {selected.taxExempt && (
+                  <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl" style={{ background: "#F8FAFC", border: "1px solid #E9EBEF" }}>
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: "#F1F5F9", color: "#94A3B8" }}>해당없음</span>
+                    <span className="text-xs" style={{ color: "#94A3B8" }}>부가세 0원 캠페인은 세금계산서 발행 대상이 아닙니다.</span>
+                  </div>
+                )}
+
+                {!selected.taxExempt && (
+                  <p className="text-xs text-center" style={{ color: "#CBD5E1" }}>① ② 모두 완료 시 자동으로 확인완료 처리됩니다</p>
+                )}
               </>)}
 
-              {/* 확인완료 + 전재민: 세금계산서 해당없음 */}
-              {selected.status === "확인완료" && selected.depositAccount === "전재민" && (
+              {/* 확인완료 + 전재민·부가세0: 세금계산서 해당없음 */}
+              {selected.status === "확인완료" && (selected.depositAccount === "전재민" || selected.taxExempt) && (
                 <div className="flex gap-2">
                   <div className="flex-1 flex items-center gap-2 px-3 py-2.5 rounded-xl" style={{ background: "#F8FAFC", border: "1px solid #E9EBEF" }}>
                     <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: "#F1F5F9", color: "#94A3B8" }}>해당없음</span>
-                    <span className="text-xs" style={{ color: "#94A3B8" }}>전재민 계좌는 세금계산서 발행 대상이 아닙니다.</span>
+                    <span className="text-xs" style={{ color: "#94A3B8" }}>
+                      {selected.taxExempt ? "부가세 0원 캠페인은 세금계산서 발행 대상이 아닙니다." : "전재민 계좌는 세금계산서 발행 대상이 아닙니다."}
+                    </span>
                   </div>
                   <button onClick={() => handleCancelConfirmation(selected)}
                     className="px-4 py-2.5 rounded-xl text-sm font-semibold hover:opacity-90 whitespace-nowrap"
@@ -1106,7 +1118,7 @@ export default function ConfirmPage() {
               )}
 
               {/* 확인완료 + 계산서 미발행: 발행날짜 + 입금확인취소 + 발행완료 */}
-              {selected.status === "확인완료" && !selected.taxInvoiceDate && selected.depositAccount !== "전재민" && (<>
+              {selected.status === "확인완료" && !selected.taxInvoiceDate && selected.depositAccount !== "전재민" && !selected.taxExempt && (<>
                 <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl" style={{ background: "#F8FAFC", border: "1px solid #E9EBEF" }}>
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2" strokeLinecap="round">
                     <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>

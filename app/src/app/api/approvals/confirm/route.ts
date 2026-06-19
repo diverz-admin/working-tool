@@ -150,6 +150,7 @@ export async function POST(req: NextRequest) {
     depositorName:        body.depositorName        || null,
     requestedAt:          body.requestedAt          ?? new Date().toISOString().slice(0, 10),
     status:               "대기",
+    taxExempt:            body.taxExempt            ?? false,
   }).returning();
   return NextResponse.json({ item: row }, { status: 201 });
 }

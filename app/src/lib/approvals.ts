@@ -58,6 +58,7 @@ export interface ConfirmRequest {
   projectProduct?: string | null;
   campaignNumber?: number | null;
   revenueLines?: { productName: string | null; quantity: number | null; total: number | null; depositAccount: string | null }[];
+  taxExempt?: boolean;
 }
 
 export interface PaymentRequest {

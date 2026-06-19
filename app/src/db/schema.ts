@@ -371,6 +371,7 @@ export const confirmRequests = pgTable("confirm_requests", {
   taxInvoiceDate:        text("tax_invoice_date"),
   depositConfirmedAt:    text("deposit_confirmed_at"),
   rejectReason:          text("reject_reason"),
+  taxExempt:             boolean("tax_exempt").default(false),
   createdAt:            timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

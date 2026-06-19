@@ -235,7 +235,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
   const [guaranteeProgress, setGuaranteeProgress] = useState<number>(0);
   const [activeSection, setActiveSection] = useState<"매출" | "매입" | "작업확인">("매출");
   const [toast, setToast]           = useState<string | null>(null);
-  const [confirmStatuses, setConfirmStatuses] = useState<Record<string, { status: ConfirmStatus | "발행완료"; rejectReason?: string; requestId?: string; amount?: string }>>({});
+  const [confirmStatuses, setConfirmStatuses] = useState<Record<string, { status: ConfirmStatus | "발행완료"; rejectReason?: string; requestId?: string; amount?: string; depositConfirmedAt?: string }>>({});
   const [rejectInfo, setRejectInfo]           = useState<{ reason?: string; projectName: string; rowKey: string; requestId: string } | null>(null);
   const [paymentStatuses, setPaymentStatuses] = useState<Record<string, { status: PaymentStatus; rejectReason?: string; requestId?: string }>>({});
   const [payRejectInfo, setPayRejectInfo]     = useState<{ reason?: string; projectName: string; rowKey: string; requestId: string } | null>(null);
@@ -279,7 +279,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
         .then(({ revenues: rv, costs: cs, confirmRequests: confirms, paymentRequests: payments }) => {
           // 결재 상태 — 별도 API 호출 없이 여기서 함께 처리
           if (confirms) {
-            const m: Record<string, { status: ConfirmStatus | "발행완료"; rejectReason?: string; requestId?: string; amount?: string }> = {};
+            const m: Record<string, { status: ConfirmStatus | "발행완료"; rejectReason?: string; requestId?: string; amount?: string; depositConfirmedAt?: string }> = {};
             (confirms as Record<string, unknown>[]).forEach((r) => {
               if (!r.rowKey) return;
               m[r.rowKey as string] = {
@@ -287,6 +287,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                 rejectReason: r.rejectReason as string | undefined,
                 requestId: r.id as string,
                 amount: r.amount as string | undefined,
+                depositConfirmedAt: r.depositConfirmedAt as string | undefined,
               };
             });
             setConfirmStatuses(m);
@@ -1076,8 +1077,8 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                           </div>
                         )}
                         {cs?.status !== "반려" && cs?.status !== "발행완료" && (() => {
-                          const isPending  = cs?.status === "대기";
-                          const isApproved = cs?.status === "확인완료";
+                          const isPending  = cs?.status === "대기" && !cs?.depositConfirmedAt;
+                          const isApproved = cs?.status === "확인완료" || Boolean(cs?.depositConfirmedAt);
                           const isActive   = !isPending && !isApproved && canRequest;
                           return (
                             <button
@@ -1104,6 +1105,9 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                                     } catch {}
                                   }
                                   const clientInfo = clients.find((c) => c.id === form.clientId);
+                                  const effectiveTax = form.kpiTax !== "" && form.kpiTax !== undefined
+                                    ? (parseInt(form.kpiTax) || 0)
+                                    : totalTax;
                                   const newReq = await addConfirmRequest({
                                     projectId:      pid,
                                     rowKey:         contractKey,
@@ -1125,6 +1129,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                                     dueDate:        form.startDate || "",
                                     depositAccount: revenuesRef.current.find(r => r.depositAccount)?.depositAccount || "",
                                     depositorName:  clientInfo?.advertiserName || "",
+                                    taxExempt:      effectiveTax === 0,
                                   });
                                   setConfirmStatuses((p) => ({ ...p, [contractKey]: { status: "대기", requestId: newReq.id } }));
                                   invalidateProjectCache(pid);
