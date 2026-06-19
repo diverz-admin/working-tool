@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useUser } from "@/lib/UserContext";
 
 type Status = "대기" | "승인" | "반려";
 
@@ -14,7 +15,7 @@ interface ExpenseItem {
   requestedAt:  string;
   amount:       number | null;
   content:      string | null;
-  attachments:  string | null; // JSON string
+  attachments:  string | null;
   status:       Status;
   rejectReason: string | null;
   createdAt:    string;
@@ -59,10 +60,6 @@ function AttachmentUploader({ attachments, onChange }: {
     e.target.value = "";
   }
 
-  function remove(idx: number) {
-    onChange(attachments.filter((_, i) => i !== idx));
-  }
-
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
@@ -73,7 +70,7 @@ function AttachmentUploader({ attachments, onChange }: {
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
             </svg>
             <span className="max-w-[120px] truncate">{a.name}</span>
-            <button type="button" onClick={() => remove(i)} className="ml-0.5 hover:opacity-70">
+            <button type="button" onClick={() => onChange(attachments.filter((_, j) => j !== i))} className="ml-0.5 hover:opacity-70">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2.5" strokeLinecap="round">
                 <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
               </svg>
@@ -90,6 +87,7 @@ function AttachmentUploader({ attachments, onChange }: {
         파일 첨부
         <input ref={inputRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.png" className="hidden" onChange={handleFile} />
       </label>
+      <p className="text-xs" style={{ color: "#CBD5E1" }}>PDF, JPG, PNG 형식 지원</p>
     </div>
   );
 }
@@ -105,14 +103,15 @@ interface RequestForm {
   attachments:  Attachment[];
 }
 
-function RequestModal({ onClose, onSubmit }: {
+function RequestModal({ defaultRequester, onClose, onSubmit }: {
+  defaultRequester: string;
   onClose:  () => void;
   onSubmit: (form: RequestForm) => Promise<void>;
 }) {
   const [form, setForm] = useState<RequestForm>({
     title:        "",
     assignedTeam: "",
-    requester:    "",
+    requester:    defaultRequester,
     requestedAt:  new Date().toISOString().slice(0, 10),
     amount:       "",
     content:      "",
@@ -160,7 +159,6 @@ function RequestModal({ onClose, onSubmit }: {
         </div>
 
         <form id="expense-form" onSubmit={handleSubmit} className="px-6 py-5 space-y-4 max-h-[70vh] overflow-y-auto">
-          {/* 제목 */}
           <div>
             <label className="block text-xs font-semibold mb-1.5" style={{ color: "#64748B" }}>제목 <span style={{ color: "#EF4444" }}>*</span></label>
             <input
@@ -173,7 +171,6 @@ function RequestModal({ onClose, onSubmit }: {
             />
           </div>
 
-          {/* 담당팀 / 요청자 */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold mb-1.5" style={{ color: "#64748B" }}>담당팀</label>
@@ -202,7 +199,6 @@ function RequestModal({ onClose, onSubmit }: {
             </div>
           </div>
 
-          {/* 요청일 / 금액 */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold mb-1.5" style={{ color: "#64748B" }}>요청일</label>
@@ -226,7 +222,6 @@ function RequestModal({ onClose, onSubmit }: {
             </div>
           </div>
 
-          {/* 내용 */}
           <div>
             <label className="block text-xs font-semibold mb-1.5" style={{ color: "#64748B" }}>내용</label>
             <textarea
@@ -239,14 +234,12 @@ function RequestModal({ onClose, onSubmit }: {
             />
           </div>
 
-          {/* 영수증 및 계산서 첨부 */}
           <div>
             <label className="block text-xs font-semibold mb-1.5" style={{ color: "#64748B" }}>영수증 및 계산서 첨부</label>
             <AttachmentUploader
               attachments={form.attachments}
               onChange={(next) => setForm((p) => ({ ...p, attachments: next }))}
             />
-            <p className="text-xs mt-1" style={{ color: "#CBD5E1" }}>PDF, JPG, PNG 형식 지원</p>
           </div>
         </form>
 
@@ -268,28 +261,34 @@ function RequestModal({ onClose, onSubmit }: {
   );
 }
 
-// ── 상세 모달 ─────────────────────────────────────────────
-function DetailModal({ item, onClose, onUpdateStatus }: {
-  item:           ExpenseItem;
-  onClose:        () => void;
-  onUpdateStatus: (id: string, status: Status) => Promise<void>;
+// ── 상세 모달 (조회 전용) ──────────────────────────────────
+function DetailModal({ item, onClose, onDelete }: {
+  item:     ExpenseItem;
+  onClose:  () => void;
+  onDelete: (id: string) => Promise<void>;
 }) {
   const attachments = parseAttachments(item.attachments);
-  const [loading, setLoading] = useState(false);
-
-  async function handleStatus(status: Status) {
-    setLoading(true);
-    try { await onUpdateStatus(item.id, status); } finally { setLoading(false); }
-  }
+  const [deleting, setDeleting] = useState(false);
+  const ss = STATUS_STYLE[item.status];
 
   function openAttachment(a: Attachment) {
     const link = document.createElement("a");
     link.href = a.url;
     link.download = a.name;
+    link.target = "_blank";
+    document.body.appendChild(link);
     link.click();
+    document.body.removeChild(link);
   }
 
-  const ss = STATUS_STYLE[item.status];
+  async function handleDelete() {
+    if (!confirm("요청을 취소하시겠습니까?")) return;
+    setDeleting(true);
+    try { await onDelete(item.id); } finally { setDeleting(false); }
+  }
+
+  const isImage = (name: string, url: string) =>
+    /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(name) || url.startsWith("data:image/");
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(25,31,40,0.45)" }} onClick={onClose}>
@@ -311,7 +310,7 @@ function DetailModal({ item, onClose, onUpdateStatus }: {
         <div className="px-6 py-5 space-y-4 max-h-[60vh] overflow-y-auto">
           <h3 className="text-base font-bold" style={{ color: "#191F28" }}>{item.title}</h3>
 
-          <div className="grid grid-cols-2 gap-3 text-sm">
+          <div className="grid grid-cols-2 gap-4 text-sm">
             {item.assignedTeam && (
               <div>
                 <p className="text-xs mb-1" style={{ color: "#94A3B8" }}>담당팀</p>
@@ -343,17 +342,30 @@ function DetailModal({ item, onClose, onUpdateStatus }: {
           {attachments.length > 0 && (
             <div>
               <p className="text-xs font-semibold mb-2" style={{ color: "#64748B" }}>첨부파일</p>
-              <div className="flex flex-wrap gap-2">
-                {attachments.map((a, i) => (
-                  <button key={i} onClick={() => openAttachment(a)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium hover:opacity-80 transition-opacity"
-                    style={{ background: "#F1F5F9", border: "1px solid #E9EBEF", color: "#475569" }}>
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
-                    </svg>
-                    <span className="max-w-[120px] truncate">{a.name}</span>
-                  </button>
-                ))}
+              <div className="space-y-2">
+                {attachments.map((a, i) =>
+                  isImage(a.name, a.url) ? (
+                    <div key={i} className="rounded-xl overflow-hidden border" style={{ borderColor: "#E9EBEF" }}>
+                      <img src={a.url} alt={a.name} className="w-full object-contain max-h-64" />
+                      <div className="flex items-center justify-between px-3 py-2" style={{ background: "#F8FAFC" }}>
+                        <span className="text-xs truncate max-w-[200px]" style={{ color: "#64748B" }}>{a.name}</span>
+                        <button onClick={() => openAttachment(a)} className="text-xs font-semibold hover:opacity-70" style={{ color: "#3182F6" }}>다운로드</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button key={i} onClick={() => openAttachment(a)}
+                      className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-medium hover:opacity-80 transition-opacity text-left"
+                      style={{ background: "#F1F5F9", border: "1px solid #E9EBEF", color: "#475569" }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                      </svg>
+                      <span className="truncate flex-1">{a.name}</span>
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#3182F6" strokeWidth="2.5" strokeLinecap="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                      </svg>
+                    </button>
+                  )
+                )}
               </div>
             </div>
           )}
@@ -366,13 +378,14 @@ function DetailModal({ item, onClose, onUpdateStatus }: {
         </div>
 
         {item.status === "대기" && (
-          <div className="flex gap-2 px-6 py-4" style={{ borderTop: "1px solid #F1F5F9" }}>
-            <button onClick={() => handleStatus("반려")} disabled={loading}
-              className="flex-1 py-2.5 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-50"
-              style={{ background: "rgba(239,68,68,0.1)", color: "#DC2626" }}>반려</button>
-            <button onClick={() => handleStatus("승인")} disabled={loading}
-              className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
-              style={{ background: "#3182F6" }}>승인</button>
+          <div className="px-6 py-4" style={{ borderTop: "1px solid #F1F5F9" }}>
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="w-full py-2.5 rounded-xl text-sm font-semibold hover:opacity-80 disabled:opacity-50"
+              style={{ background: "rgba(239,68,68,0.08)", color: "#DC2626" }}>
+              {deleting ? "취소 중..." : "요청 취소"}
+            </button>
           </div>
         )}
       </div>
@@ -382,8 +395,9 @@ function DetailModal({ item, onClose, onUpdateStatus }: {
 
 // ── 메인 페이지 ───────────────────────────────────────────
 export default function ExpensePage() {
+  const { name: currentUser } = useUser();
   const [items, setItems]         = useState<ExpenseItem[]>([]);
-  const [filterStatus, setStatus] = useState<Status | "전체">("대기");
+  const [filterStatus, setStatus] = useState<Status | "전체">("전체");
   const [selected, setSelected]   = useState<ExpenseItem | null>(null);
   const [showForm, setShowForm]   = useState(false);
   const [loading, setLoading]     = useState(true);
@@ -405,7 +419,7 @@ export default function ExpensePage() {
 
   const filtered = filterStatus === "전체" ? items : items.filter((i) => i.status === filterStatus);
 
-  async function handleSubmit(form: RequestForm) {
+  async function handleSubmit(form: { title: string; assignedTeam: string; requester: string; requestedAt: string; amount: string; content: string; attachments: Attachment[] }) {
     const res = await fetch("/api/approvals/expense", {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
@@ -423,13 +437,9 @@ export default function ExpensePage() {
     setShowForm(false);
   }
 
-  async function handleUpdateStatus(id: string, status: Status) {
-    const res = await fetch(`/api/approvals/expense/${id}`, {
-      method:  "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ status }),
-    }).then((r) => r.json());
-    setItems((p) => p.map((i) => i.id === id ? res.item : i));
+  async function handleDelete(id: string) {
+    await fetch(`/api/approvals/expense/${id}`, { method: "DELETE" });
+    setItems((p) => p.filter((i) => i.id !== id));
     setSelected(null);
   }
 
@@ -438,7 +448,7 @@ export default function ExpensePage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold" style={{ color: "#191F28" }}>내부지출</h1>
-          <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>내부 지출 결재 요청을 관리합니다. 대기 {counts["대기"]}건</p>
+          <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>내부 지출 결재를 요청합니다.</p>
         </div>
         <button
           type="button"
@@ -453,7 +463,7 @@ export default function ExpensePage() {
       </div>
 
       <div className="flex items-center gap-1 p-0.5 rounded-xl self-start" style={{ background: "#F1F5F9" }}>
-        {(["대기", "승인", "반려", "전체"] as const).map((s) => {
+        {(["전체", "대기", "승인", "반려"] as const).map((s) => {
           const isActive = filterStatus === s;
           const style = s !== "전체" ? STATUS_STYLE[s] : null;
           return (
@@ -473,22 +483,22 @@ export default function ExpensePage() {
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: "#F8FAFC" }}>
-              {["제목", "담당팀", "요청자", "요청일", "금액", "상태", ""].map((h) => (
+              {["제목", "담당팀", "요청자", "요청일", "금액", "상태"].map((h) => (
                 <th key={h} className="px-5 py-3 text-left text-xs font-semibold whitespace-nowrap" style={{ color: "#64748B" }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={7} className="py-16 text-center text-sm" style={{ color: "#94A3B8" }}>불러오는 중...</td></tr>
+              <tr><td colSpan={6} className="py-16 text-center text-sm" style={{ color: "#94A3B8" }}>불러오는 중...</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={7} className="py-16 text-center text-sm" style={{ color: "#94A3B8" }}>요청 내역이 없습니다.</td></tr>
+              <tr><td colSpan={6} className="py-16 text-center text-sm" style={{ color: "#94A3B8" }}>요청 내역이 없습니다.</td></tr>
             ) : filtered.map((item) => {
               const ss = STATUS_STYLE[item.status];
               const attCount = parseAttachments(item.attachments).length;
               return (
                 <tr key={item.id}
-                  className="border-t cursor-pointer group"
+                  className="border-t cursor-pointer"
                   style={{ borderColor: "#F1F5F9" }}
                   onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = "rgba(49,130,246,0.03)")}
                   onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = "transparent")}
@@ -514,18 +524,6 @@ export default function ExpensePage() {
                       {item.status}
                     </span>
                   </td>
-                  <td className="px-3 py-3.5">
-                    {item.status === "대기" && (
-                      <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={(e) => { e.stopPropagation(); handleUpdateStatus(item.id, "반려"); }}
-                          className="text-xs font-semibold px-2 py-1 rounded-lg"
-                          style={{ background: "rgba(239,68,68,0.1)", color: "#DC2626" }}>반려</button>
-                        <button onClick={(e) => { e.stopPropagation(); handleUpdateStatus(item.id, "승인"); }}
-                          className="text-xs font-semibold px-2 py-1 rounded-lg text-white"
-                          style={{ background: "#3182F6" }}>승인</button>
-                      </div>
-                    )}
-                  </td>
                 </tr>
               );
             })}
@@ -534,14 +532,18 @@ export default function ExpensePage() {
       </div>
 
       {showForm && (
-        <RequestModal onClose={() => setShowForm(false)} onSubmit={handleSubmit} />
+        <RequestModal
+          defaultRequester={currentUser}
+          onClose={() => setShowForm(false)}
+          onSubmit={handleSubmit}
+        />
       )}
 
       {selected && (
         <DetailModal
           item={selected}
           onClose={() => setSelected(null)}
-          onUpdateStatus={handleUpdateStatus}
+          onDelete={handleDelete}
         />
       )}
     </div>
