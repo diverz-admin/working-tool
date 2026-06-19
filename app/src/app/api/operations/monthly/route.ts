@@ -105,7 +105,7 @@ export async function GET(req: NextRequest) {
       if (sgaMap.has(r.expenseCategory)) {
         sgaMap.get(r.expenseCategory)!.amount += r.amount;
       } else {
-        sgaMap.set(r.expenseCategory, { id: "", year, month, category: r.expenseCategory, item: "합계", amount: r.amount });
+        sgaMap.set(r.expenseCategory, { id: "", year, month, category: r.expenseCategory, item: "합계", amount: r.amount, createdAt: new Date(), updatedAt: new Date() });
       }
     }
 
