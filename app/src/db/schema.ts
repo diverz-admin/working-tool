@@ -505,6 +505,7 @@ export const internalExpenseRequests = pgTable("internal_expense_requests", {
   amount:       integer("amount"),
   content:      text("content"),
   attachments:  text("attachments"), // JSON: [{url: string, name: string}]
+  expenseCategory: text("expense_category"), // 소모품비 | 외주용역비 | 기타 영업비용
   status:       text("status").notNull().default("대기"), // 대기 | 승인 | 반려
   rejectReason: text("reject_reason"),
   createdAt:    timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

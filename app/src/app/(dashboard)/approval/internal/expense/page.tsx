@@ -8,18 +8,21 @@ type Status = "대기" | "승인" | "반려";
 interface Attachment { url: string; name: string; }
 
 interface ExpenseItem {
-  id:           string;
-  title:        string;
-  assignedTeam: string | null;
-  requester:    string;
-  requestedAt:  string;
-  amount:       number | null;
-  content:      string | null;
-  attachments:  string | null;
-  status:       Status;
-  rejectReason: string | null;
-  createdAt:    string;
+  id:              string;
+  title:           string;
+  assignedTeam:    string | null;
+  requester:       string;
+  requestedAt:     string;
+  amount:          number | null;
+  content:         string | null;
+  attachments:     string | null;
+  expenseCategory: string | null;
+  status:          Status;
+  rejectReason:    string | null;
+  createdAt:       string;
 }
+
+const EXPENSE_CATEGORIES = ["소모품비", "외주용역비", "기타 영업비용"];
 
 const TEAMS = ["영업 1팀", "영업 2팀", "경영", "기타"];
 
@@ -94,28 +97,32 @@ function AttachmentUploader({ attachments, onChange }: {
 
 // ── 요청 모달 ─────────────────────────────────────────────
 interface RequestForm {
-  title:        string;
-  assignedTeam: string;
-  requester:    string;
-  requestedAt:  string;
-  amount:       string;
-  content:      string;
-  attachments:  Attachment[];
+  title:           string;
+  assignedTeam:    string;
+  requester:       string;
+  requestedAt:     string;
+  amount:          string;
+  content:         string;
+  attachments:     Attachment[];
+  expenseCategory: string;
 }
 
-function RequestModal({ defaultRequester, onClose, onSubmit }: {
+function RequestModal({ defaultRequester, initial, onClose, onSubmit }: {
   defaultRequester: string;
+  initial?:  ExpenseItem;
   onClose:  () => void;
   onSubmit: (form: RequestForm) => Promise<void>;
 }) {
+  const isEdit = Boolean(initial);
   const [form, setForm] = useState<RequestForm>({
-    title:        "",
-    assignedTeam: "",
-    requester:    defaultRequester,
-    requestedAt:  new Date().toISOString().slice(0, 10),
-    amount:       "",
-    content:      "",
-    attachments:  [],
+    title:           initial?.title           ?? "",
+    assignedTeam:    initial?.assignedTeam    ?? "",
+    requester:       initial?.requester       ?? defaultRequester,
+    requestedAt:     initial?.requestedAt     ?? new Date().toISOString().slice(0, 10),
+    amount:          initial?.amount != null ? String(initial.amount) : "",
+    content:         initial?.content         ?? "",
+    attachments:     parseAttachments(initial?.attachments ?? null),
+    expenseCategory: initial?.expenseCategory ?? "",
   });
   const [saving, setSaving] = useState(false);
   const [allUsers, setAllUsers] = useState<{ name: string; team: string | null }[]>([]);
@@ -150,7 +157,7 @@ function RequestModal({ defaultRequester, onClose, onSubmit }: {
     <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(25,31,40,0.45)" }} onClick={onClose}>
       <div className="rounded-2xl w-full max-w-lg mx-4 overflow-hidden" style={{ background: "#fff", boxShadow: "0 20px 60px rgba(22,31,51,0.18)" }} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: "1px solid #F1F5F9" }}>
-          <h2 className="text-sm font-bold" style={{ color: "#191F28" }}>내부지출 결재 요청</h2>
+          <h2 className="text-sm font-bold" style={{ color: "#191F28" }}>{isEdit ? "내부지출 수정 후 재요청" : "내부지출 결재 요청"}</h2>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2.5" strokeLinecap="round">
               <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -223,6 +230,19 @@ function RequestModal({ defaultRequester, onClose, onSubmit }: {
           </div>
 
           <div>
+            <label className="block text-xs font-semibold mb-1.5" style={{ color: "#64748B" }}>지출카테고리</label>
+            <select
+              value={form.expenseCategory}
+              onChange={(e) => set("expenseCategory", e.target.value)}
+              className="w-full px-3 py-2.5 rounded-xl text-sm outline-none appearance-none"
+              style={{ background: "#F8FAFC", border: "1px solid #E9EBEF", color: form.expenseCategory ? "#191F28" : "#94A3B8" }}
+            >
+              <option value="">선택 (선택사항)</option>
+              {EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+
+          <div>
             <label className="block text-xs font-semibold mb-1.5" style={{ color: "#64748B" }}>내용</label>
             <textarea
               value={form.content}
@@ -253,7 +273,7 @@ function RequestModal({ defaultRequester, onClose, onSubmit }: {
             disabled={saving || !form.title.trim() || !form.requester.trim()}
             className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
             style={{ background: "#3182F6" }}>
-            {saving ? "요청 중..." : "결재 요청"}
+            {saving ? "요청 중..." : isEdit ? "재요청" : "결재 요청"}
           </button>
         </div>
       </div>
@@ -262,10 +282,11 @@ function RequestModal({ defaultRequester, onClose, onSubmit }: {
 }
 
 // ── 상세 모달 (조회 전용) ──────────────────────────────────
-function DetailModal({ item, onClose, onDelete }: {
-  item:     ExpenseItem;
-  onClose:  () => void;
-  onDelete: (id: string) => Promise<void>;
+function DetailModal({ item, onClose, onDelete, onResubmit }: {
+  item:        ExpenseItem;
+  onClose:     () => void;
+  onDelete:    (id: string) => Promise<void>;
+  onResubmit?: () => void;
 }) {
   const attachments = parseAttachments(item.attachments);
   const [deleting, setDeleting] = useState(false);
@@ -331,6 +352,12 @@ function DetailModal({ item, onClose, onDelete }: {
                 <p className="font-bold" style={{ color: "#3182F6" }}>{fmtAmount(item.amount)}</p>
               </div>
             )}
+            {item.expenseCategory && (
+              <div>
+                <p className="text-xs mb-1" style={{ color: "#94A3B8" }}>지출카테고리</p>
+                <p className="font-semibold" style={{ color: "#191F28" }}>{item.expenseCategory}</p>
+              </div>
+            )}
           </div>
 
           {item.content && (
@@ -377,15 +404,25 @@ function DetailModal({ item, onClose, onDelete }: {
           )}
         </div>
 
-        {item.status === "대기" && (
-          <div className="px-6 py-4" style={{ borderTop: "1px solid #F1F5F9" }}>
-            <button
-              onClick={handleDelete}
-              disabled={deleting}
-              className="w-full py-2.5 rounded-xl text-sm font-semibold hover:opacity-80 disabled:opacity-50"
-              style={{ background: "rgba(239,68,68,0.08)", color: "#DC2626" }}>
-              {deleting ? "취소 중..." : "요청 취소"}
-            </button>
+        {(item.status === "대기" || item.status === "반려") && (
+          <div className="flex gap-2 px-6 py-4" style={{ borderTop: "1px solid #F1F5F9" }}>
+            {item.status === "반려" && onResubmit && (
+              <button
+                onClick={onResubmit}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold hover:opacity-80"
+                style={{ background: "rgba(49,130,246,0.1)", color: "#3182F6" }}>
+                수정 후 재요청
+              </button>
+            )}
+            {item.status === "대기" && (
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold hover:opacity-80 disabled:opacity-50"
+                style={{ background: "rgba(239,68,68,0.08)", color: "#DC2626" }}>
+                {deleting ? "취소 중..." : "요청 취소"}
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -399,6 +436,7 @@ export default function ExpensePage() {
   const [items, setItems]         = useState<ExpenseItem[]>([]);
   const [filterStatus, setStatus] = useState<Status | "전체">("전체");
   const [selected, setSelected]   = useState<ExpenseItem | null>(null);
+  const [editItem, setEditItem]   = useState<ExpenseItem | null>(null);
   const [showForm, setShowForm]   = useState(false);
   const [loading, setLoading]     = useState(true);
 
@@ -419,22 +457,45 @@ export default function ExpensePage() {
 
   const filtered = filterStatus === "전체" ? items : items.filter((i) => i.status === filterStatus);
 
-  async function handleSubmit(form: { title: string; assignedTeam: string; requester: string; requestedAt: string; amount: string; content: string; attachments: Attachment[] }) {
+  async function handleSubmit(form: RequestForm) {
     const res = await fetch("/api/approvals/expense", {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({
-        title:        form.title,
-        assignedTeam: form.assignedTeam || null,
-        requester:    form.requester,
-        requestedAt:  form.requestedAt,
-        amount:       form.amount ? parseInt(form.amount) : null,
-        content:      form.content || null,
-        attachments:  form.attachments.length ? JSON.stringify(form.attachments) : null,
+        title:           form.title,
+        assignedTeam:    form.assignedTeam || null,
+        requester:       form.requester,
+        requestedAt:     form.requestedAt,
+        amount:          form.amount ? parseInt(form.amount) : null,
+        content:         form.content || null,
+        attachments:     form.attachments.length ? JSON.stringify(form.attachments) : null,
+        expenseCategory: form.expenseCategory || null,
       }),
     }).then((r) => r.json());
     setItems((p) => [res.item, ...p]);
     setShowForm(false);
+  }
+
+  async function handleResubmit(form: RequestForm) {
+    if (!editItem) return;
+    const res = await fetch(`/api/approvals/expense/${editItem.id}`, {
+      method:  "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({
+        title:           form.title,
+        assignedTeam:    form.assignedTeam || null,
+        requester:       form.requester,
+        requestedAt:     form.requestedAt,
+        amount:          form.amount ? parseInt(form.amount) : null,
+        content:         form.content || null,
+        attachments:     form.attachments.length ? JSON.stringify(form.attachments) : null,
+        expenseCategory: form.expenseCategory || null,
+        status:          "대기",
+        rejectReason:    null,
+      }),
+    }).then((r) => r.json());
+    setItems((p) => p.map((i) => i.id === editItem.id ? res.item : i));
+    setEditItem(null);
   }
 
   async function handleDelete(id: string) {
@@ -539,11 +600,21 @@ export default function ExpensePage() {
         />
       )}
 
+      {editItem && (
+        <RequestModal
+          defaultRequester={currentUser}
+          initial={editItem}
+          onClose={() => setEditItem(null)}
+          onSubmit={handleResubmit}
+        />
+      )}
+
       {selected && (
         <DetailModal
           item={selected}
           onClose={() => setSelected(null)}
           onDelete={handleDelete}
+          onResubmit={() => { setEditItem(selected); setSelected(null); }}
         />
       )}
     </div>

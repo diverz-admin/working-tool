@@ -643,11 +643,17 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
   async function ensureSaved(): Promise<string | null> {
     if (savedIdRef.current) {
       // 기존 프로젝트: 승인요청 전에 현재 costs/revenues를 DB에 저장
+      // invoiceFileUrl(base64)은 제외 — body 크기 초과 방지; API가 기존 DB 값으로 보존
       const pid = savedIdRef.current;
-      await Promise.all([
+      const costsWithoutFiles = costs.map((c) => ({ ...c, invoiceFileUrl: "" }));
+      const [, costRes] = await Promise.all([
         fetch(`/api/projects/${pid}/revenues`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ revenues }) }),
-        fetch(`/api/projects/${pid}/costs`,    { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ costs }) }),
+        fetch(`/api/projects/${pid}/costs`,    { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ costs: costsWithoutFiles }) }),
       ]);
+      if (!costRes.ok) {
+        setError("매입 데이터 저장에 실패했습니다. 먼저 저장해주세요.");
+        return null;
+      }
       return pid;
     }
     if (!isFormValid) {

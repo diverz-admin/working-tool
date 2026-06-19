@@ -4,6 +4,13 @@ import { internalExpenseRequests, appNotifications } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 
+async function ensureExpenseCategoryColumn() {
+  await db.execute(sql`
+    ALTER TABLE internal_expense_requests
+    ADD COLUMN IF NOT EXISTS expense_category TEXT
+  `);
+}
+
 async function ensureNotificationsTable() {
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS app_notifications (
@@ -24,12 +31,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   const body = await req.json();
 
+  await ensureExpenseCategoryColumn();
+
   const [item] = await db
     .update(internalExpenseRequests)
     .set({
-      status:       body.status       ?? undefined,
-      rejectReason: body.rejectReason ?? null,
-      updatedAt:    new Date(),
+      ...(body.status          !== undefined && { status:          body.status }),
+      ...(body.rejectReason    !== undefined && { rejectReason:    body.rejectReason }),
+      ...(body.title           !== undefined && { title:           body.title }),
+      ...(body.assignedTeam    !== undefined && { assignedTeam:    body.assignedTeam }),
+      ...(body.requestedAt     !== undefined && { requestedAt:     body.requestedAt }),
+      ...(body.amount          !== undefined && { amount:          body.amount }),
+      ...(body.content         !== undefined && { content:         body.content }),
+      ...(body.attachments     !== undefined && { attachments:     body.attachments }),
+      ...(body.expenseCategory !== undefined && { expenseCategory: body.expenseCategory }),
+      updatedAt: new Date(),
     })
     .where(eq(internalExpenseRequests.id, id))
     .returning();

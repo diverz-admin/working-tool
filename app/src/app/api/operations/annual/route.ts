@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { projects, projectRevenues, annualCosts, projectCosts } from "@/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { projects, projectRevenues, annualCosts, projectCosts, internalExpenseRequests } from "@/db/schema";
+import { eq, and, isNotNull, sql } from "drizzle-orm";
 
 export async function GET(req: NextRequest) {
   try {
@@ -79,7 +79,31 @@ export async function GET(req: NextRequest) {
       .map((amount, i) => ({ year, month: i + 1, category: "직접매입(상품)", item: "합계", amount }))
       .filter(r => r.amount > 0);
 
-    return NextResponse.json({ teams, other, costs: [...filtered, ...directRows] });
+    // ── 승인된 내부지출 → SGA 카테고리별 합산 ──
+    let expenseRows: { requestedAt: string | null; amount: number | null; expenseCategory: string | null }[] = [];
+    try {
+      expenseRows = await db.select({
+        requestedAt:     internalExpenseRequests.requestedAt,
+        amount:          internalExpenseRequests.amount,
+        expenseCategory: internalExpenseRequests.expenseCategory,
+      }).from(internalExpenseRequests)
+        .where(and(eq(internalExpenseRequests.status, "승인"), isNotNull(internalExpenseRequests.expenseCategory)));
+    } catch { /* expense_category 컬럼 없으면 무시 */ }
+
+    const allCosts = [...filtered, ...directRows];
+    for (const r of expenseRows) {
+      if (!r.requestedAt || !r.amount || !r.expenseCategory) continue;
+      if (parseInt(r.requestedAt.substring(0, 4)) !== year) continue;
+      const month = parseInt(r.requestedAt.substring(5, 7));
+      const existing = allCosts.find(c => c.category === r.expenseCategory && c.month === month && c.item === "합계");
+      if (existing) {
+        existing.amount += r.amount;
+      } else {
+        allCosts.push({ year, month, category: r.expenseCategory, item: "합계", amount: r.amount });
+      }
+    }
+
+    return NextResponse.json({ teams, other, costs: allCosts });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }

@@ -21,17 +21,18 @@ export async function PUT(req: Request, { params }: Params) {
       .from(paymentRequests)
       .where(and(sql`${paymentRequests.projectId}::text = ${id}`, eq(paymentRequests.status, "승인")));
 
-    // 승인된 costRowId 집합 — 모달 저장 시 isApproved가 false로 덮여씌워지는 것을 방지
     const approvedRowKeys = new Set(approvedRequests.map((r) => r.rowKey).filter(Boolean));
+
+    // 기존 costs 조회 — 승인 체크 + 파일 URL 보존에 공통 사용
+    const existingCosts = await db
+      .select({ costRowId: projectCosts.costRowId, rowNum: projectCosts.rowNum, invoiceFileUrl: projectCosts.invoiceFileUrl, invoiceFileName: projectCosts.invoiceFileName })
+      .from(projectCosts)
+      .where(eq(projectCosts.projectId, id));
+
+    const currentRowIds = new Set(existingCosts.map((c) => c.costRowId).filter(Boolean));
 
     if (approvedRequests.length > 0) {
       const incomingRowIds = new Set((costs ?? []).map((c: Record<string, unknown>) => c.costRowId).filter(Boolean));
-      // DB에 실제 존재하는 costRowId와 비교 — costRowId가 null이었다가 새 UUID가 생성된 경우 오탐 방지
-      const currentCosts = await db
-        .select({ costRowId: projectCosts.costRowId })
-        .from(projectCosts)
-        .where(eq(projectCosts.projectId, id));
-      const currentRowIds = new Set(currentCosts.map((c) => c.costRowId).filter(Boolean));
       const removed = approvedRequests.filter(
         (r) => r.rowKey && currentRowIds.has(r.rowKey) && !incomingRowIds.has(r.rowKey)
       );
@@ -40,33 +41,39 @@ export async function PUT(req: Request, { params }: Params) {
       }
     }
 
+    // invoiceFileUrl 보존 맵 — ensureSaved()에서 파일 필드 생략 시 기존 DB 값 유지
+    const fileByRowKey = new Map(existingCosts.filter(c => c.costRowId).map(c => [c.costRowId!, { url: c.invoiceFileUrl ?? "", name: c.invoiceFileName ?? "" }]));
+    const fileByRowNum = new Map(existingCosts.map(c => [c.rowNum, { url: c.invoiceFileUrl ?? "", name: c.invoiceFileName ?? "" }]));
+
     await db.delete(projectCosts).where(eq(projectCosts.projectId, id));
 
     if (costs?.length) {
       await db.insert(projectCosts).values(
-        costs.map((c: Record<string, unknown>, i: number) => ({
-          projectId:       id,
-          rowNum:          i + 1,
-          costRowId:       c.costRowId ? String(c.costRowId) : null,
-          assignee:        c.assignee || null,
-          vendor:          c.vendor || null,
-          productName:     c.productName || null,
-          unitPrice:       safeInt(c.unitPrice),
-          quantity:        safeInt(c.quantity),
-          supplyPrice:     safeInt(c.supplyPrice),
-          tax:             safeInt(c.tax),
-          total:           safeInt(c.total),
-          purchaseDate:    c.purchaseDate || null,
-          invoiceDate:     c.invoiceDate || null,
-          workStartDate:   c.workStartDate || null,
-          workEndDate:     c.workEndDate || null,
-          workCompleted:   Boolean(c.workCompleted),
-          // 승인된 항목은 payment_requests 기준으로 강제 true — 모달 저장으로 덮어씌워지지 않도록
-          isApproved:      approvedRowKeys.has(String(c.costRowId)) || Boolean(c.isApproved),
-          settingDate:     c.settingDate || null,
-          invoiceFileUrl:  String(c.invoiceFileUrl || ""),
-          invoiceFileName: String(c.invoiceFileName || ""),
-        }))
+        costs.map((c: Record<string, unknown>, i: number) => {
+          const existing = fileByRowKey.get(String(c.costRowId)) ?? fileByRowNum.get(i + 1);
+          return {
+            projectId:       id,
+            rowNum:          i + 1,
+            costRowId:       c.costRowId ? String(c.costRowId) : null,
+            assignee:        c.assignee || null,
+            vendor:          c.vendor || null,
+            productName:     c.productName || null,
+            unitPrice:       safeInt(c.unitPrice),
+            quantity:        safeInt(c.quantity),
+            supplyPrice:     safeInt(c.supplyPrice),
+            tax:             safeInt(c.tax),
+            total:           safeInt(c.total),
+            purchaseDate:    c.purchaseDate || null,
+            invoiceDate:     c.invoiceDate || null,
+            workStartDate:   c.workStartDate || null,
+            workEndDate:     c.workEndDate || null,
+            workCompleted:   Boolean(c.workCompleted),
+            isApproved:      approvedRowKeys.has(String(c.costRowId)) || Boolean(c.isApproved),
+            settingDate:     c.settingDate || null,
+            invoiceFileUrl:  String(c.invoiceFileUrl || existing?.url || ""),
+            invoiceFileName: String(c.invoiceFileName || existing?.name || ""),
+          };
+        })
       );
     }
 

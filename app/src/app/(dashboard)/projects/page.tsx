@@ -1139,9 +1139,14 @@ function ProjectsInner() {
       }
     }
   });
-  // 입금요청/확인요청 제출 시 그룹 캐시 무효화 → 매입 상태 배지 즉시 갱신
+  // 입금요청/확인요청 제출 시 그룹·캠페인 캐시 무효화 → 매입/매출 상태 배지 즉시 갱신
   useEffect(() => {
-    const refresh = () => load(true);
+    const refresh = () => {
+      _campaignCacheMap.clear();
+      _campaignPendingMap.clear();
+      setCampaignMap(new Map());
+      load(true);
+    };
     window.addEventListener("approval-request-added", refresh);
     return () => window.removeEventListener("approval-request-added", refresh);
   // eslint-disable-next-line react-hooks/exhaustive-deps

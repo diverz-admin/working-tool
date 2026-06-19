@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
     // DELETE + INSERT in a single DB round trip via CTE
     const result = await db.execute(sql`
       WITH deleted AS (
-        DELETE FROM payment_requests WHERE row_key = ${rowKey}
+        DELETE FROM payment_requests WHERE row_key = ${rowKey} AND project_id = ${projectId}
       )
       INSERT INTO payment_requests (
         project_id, row_key, assigned_team, project_name, requester,

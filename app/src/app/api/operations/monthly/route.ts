@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { projects, projectRevenues, projectCosts, clients, annualCosts } from "@/db/schema";
+import { projects, projectRevenues, projectCosts, clients, annualCosts, internalExpenseRequests } from "@/db/schema";
 import { eq, and, gte, lte, isNotNull, sql } from "drizzle-orm";
 
 export async function GET(req: NextRequest) {
@@ -82,10 +82,37 @@ export async function GET(req: NextRequest) {
       tax:         p.kpiTax         ?? Number(p.taxSum    ?? 0),
     }));
 
+    // ── 승인된 내부지출 → 해당 월 SGA 카테고리별 합산 ──
+    let expenseRows: { requestedAt: string | null; amount: number | null; expenseCategory: string | null }[] = [];
+    try {
+      expenseRows = await db.select({
+        requestedAt:     internalExpenseRequests.requestedAt,
+        amount:          internalExpenseRequests.amount,
+        expenseCategory: internalExpenseRequests.expenseCategory,
+      }).from(internalExpenseRequests)
+        .where(and(
+          eq(internalExpenseRequests.status, "승인"),
+          isNotNull(internalExpenseRequests.expenseCategory),
+          gte(internalExpenseRequests.requestedAt, from),
+          lte(internalExpenseRequests.requestedAt, to),
+        ));
+    } catch { /* expense_category 컬럼 없으면 무시 */ }
+
+    const baseSgaRows = sgaData.filter(r => r.category !== "직접매입(상품)");
+    const sgaMap = new Map(baseSgaRows.map(r => [r.category, { ...r }]));
+    for (const r of expenseRows) {
+      if (!r.amount || !r.expenseCategory) continue;
+      if (sgaMap.has(r.expenseCategory)) {
+        sgaMap.get(r.expenseCategory)!.amount += r.amount;
+      } else {
+        sgaMap.set(r.expenseCategory, { id: "", year, month, category: r.expenseCategory, item: "합계", amount: r.amount });
+      }
+    }
+
     return NextResponse.json({
       revRows,
       costRows: costData,
-      sgaRows:  sgaData.filter(r => r.category !== "직접매입(상품)"),
+      sgaRows:  Array.from(sgaMap.values()),
     });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
