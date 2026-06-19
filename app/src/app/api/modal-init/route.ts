@@ -10,6 +10,7 @@ export async function GET() {
         id:             clients.id,
         status:         clients.status,
         companyName:    clients.companyName,
+        storeName:      clients.storeName,
         contactName:    clients.contactName,
         products:       clients.products,
         monthlyAvg:     clients.monthlyAvg,
