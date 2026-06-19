@@ -1382,7 +1382,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                           const costRowKey = c.costRowId;
                           const costIsLinked = Boolean(c.costRowId && c.productName.trim() && costRevAmount);
                           const costRowCs = costIsLinked ? paymentStatuses[costRowKey] : undefined;
-                          const costDeleteBlocked = c.isApproved || Boolean(costRowCs && costRowCs.status !== "반려");
+                          const costDeleteBlocked = Boolean(costRowCs && costRowCs.status !== "반려");
                           return (
                           <tr key={c.localId} className="border-t" style={{ borderColor: "#F1F5F9" }}>
                             <td className="px-2 py-1.5 font-medium" style={{ color: "#94A3B8" }}>{i+1}</td>
