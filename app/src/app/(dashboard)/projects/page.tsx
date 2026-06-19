@@ -1028,7 +1028,9 @@ function ProjectsInner() {
         return { ...r, ...patch };
       });
     });
-    const res = await fetch(`/api/costs/${id}`, {
+    // workCompleted 토글은 Staff 접근 가능한 전용 엔드포인트 사용 (/api/costs는 Manager 전용)
+    const endpoint = patch.workCompleted !== undefined ? `/api/work-check/${id}` : `/api/costs/${id}`;
+    const res = await fetch(endpoint, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(patch),
