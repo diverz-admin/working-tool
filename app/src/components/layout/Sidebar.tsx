@@ -16,9 +16,10 @@ const MARKETING_SUB = [
 ];
 
 const APPROVAL_SUB = [
-  { href: "/approval/confirm",          label: "입금확인요청" },
-  { href: "/approval/request",          label: "입금요청" },
-  { href: "/approval/internal/confirm", label: "내부결재확인", managerOnly: true },
+  { href: "/approval/confirm",                label: "프로젝트 입금확인요청" },
+  { href: "/approval/request",                label: "프로젝트 입금요청" },
+  { href: "/approval/internal/confirm",       label: "내부지출",   managerOnly: true },
+  { href: "/approval/internal/leave-confirm", label: "휴가",       managerOnly: true },
 ];
 
 const INTERNAL_SUB = [
@@ -266,7 +267,9 @@ function PendingBadge({ count }: { count: number }) {
 function ApprovalNavSection() {
   const pathname = usePathname();
   const isActive = pathname.startsWith("/approval") &&
-    (!pathname.startsWith("/approval/internal") || pathname.startsWith("/approval/internal/confirm"));
+    (!pathname.startsWith("/approval/internal") ||
+     pathname.startsWith("/approval/internal/confirm") ||
+     pathname.startsWith("/approval/internal/leave-confirm"));
   const [open, setOpen] = useState(isActive);
   const [counts, setCounts] = useState<{ confirm: number; payment: number }>({ confirm: 0, payment: 0 });
   const { role } = useUser();
@@ -356,7 +359,9 @@ function ApprovalNavSection() {
 function InternalNavSection() {
   const pathname = usePathname();
   const { role } = useUser();
-  const isActive = pathname.startsWith("/approval/internal") && !pathname.startsWith("/approval/internal/confirm");
+  const isActive = pathname.startsWith("/approval/internal") &&
+    !pathname.startsWith("/approval/internal/confirm") &&
+    !pathname.startsWith("/approval/internal/leave-confirm");
   const [open, setOpen] = useState(isActive);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
