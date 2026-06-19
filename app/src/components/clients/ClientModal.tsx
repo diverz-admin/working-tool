@@ -185,16 +185,34 @@ export default function ClientModal({ initial, onClose, onSaved, onDelete, onVie
   function handleBizRegFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      setForm((prev) => ({
-        ...prev,
-        bizRegFileUrl:  reader.result as string,
-        bizRegFileName: file.name,
-      }));
-    };
-    reader.readAsDataURL(file);
     e.target.value = "";
+
+    // PDF는 압축 없이 그대로 사용
+    if (file.type === "application/pdf") {
+      const reader = new FileReader();
+      reader.onload = () => setForm((prev) => ({ ...prev, bizRegFileUrl: reader.result as string, bizRegFileName: file.name }));
+      reader.readAsDataURL(file);
+      return;
+    }
+
+    // 이미지: 최대 1400px / JPEG 82% 품질로 압축 후 저장
+    const objectUrl = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const MAX = 1400;
+      let { width, height } = img;
+      if (width > MAX || height > MAX) {
+        if (width >= height) { height = Math.round(height * MAX / width); width = MAX; }
+        else                 { width = Math.round(width * MAX / height); height = MAX; }
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width; canvas.height = height;
+      canvas.getContext("2d")!.drawImage(img, 0, 0, width, height);
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
+      setForm((prev) => ({ ...prev, bizRegFileUrl: dataUrl, bizRegFileName: file.name }));
+    };
+    img.src = objectUrl;
   }
 
   function clearBizReg() {
