@@ -109,7 +109,10 @@ function DetailModal({ item, onClose, onAction }: {
     const link = document.createElement("a");
     link.href = a.url;
     link.download = a.name;
+    link.target = "_blank";
+    document.body.appendChild(link);
     link.click();
+    document.body.removeChild(link);
   }
 
   return (

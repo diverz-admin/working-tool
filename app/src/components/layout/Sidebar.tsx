@@ -7,7 +7,7 @@ import { useUser } from "@/lib/UserContext";
 
 const TEAMS = ["경영", "영업 1팀", "영업 2팀"];
 
-let _pendingCache: { confirm: number; payment: number; ts: number } | null = null;
+let _pendingCache: { confirm: number; payment: number; expense: number; ts: number } | null = null;
 const PENDING_TTL = 60_000;
 
 const MARKETING_SUB = [
@@ -281,7 +281,7 @@ function ApprovalNavSection() {
   useEffect(() => {
     function fetchCounts(force = false) {
       if (!force && _pendingCache && Date.now() - _pendingCache.ts < PENDING_TTL) {
-        setCounts({ confirm: _pendingCache.confirm, payment: _pendingCache.payment });
+        setCounts({ confirm: _pendingCache.confirm, payment: _pendingCache.payment, expense: _pendingCache.expense });
         return;
       }
       fetch("/api/approvals/pending-counts")
