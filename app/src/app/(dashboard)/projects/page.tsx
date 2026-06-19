@@ -148,15 +148,17 @@ function DaysBadge({ days }: { days: number | null }) {
   return <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: `${color}18`, color }}>{label}</span>;
 }
 
-function RevenueBadge({ total, invoiced, confirmed, pending }: { total: number; invoiced: number; confirmed: number; pending: number }) {
+function RevenueSalesBadge({ total, confirmed, pending }: { total: number; confirmed: number; pending: number }) {
   if (total === 0) return <span className="text-xs" style={{ color: "#CBD5E1" }}>—</span>;
+  if (confirmed === 0 && pending === 0) {
+    return (
+      <span className="text-xs font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap" style={{ background: "#F1F5F9", color: "#94A3B8" }}>
+        미요청 {total}
+      </span>
+    );
+  }
   return (
     <div className="flex flex-wrap gap-1">
-      {invoiced > 0 && (
-        <span className="text-xs font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap" style={{ background: "rgba(5,150,105,0.12)", color: "#059669" }}>
-          계산서발행 {invoiced}
-        </span>
-      )}
       {confirmed > 0 && (
         <span className="text-xs font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap" style={{ background: "rgba(16,185,129,0.12)", color: "#10B981" }}>
           입금확인 {confirmed}
@@ -167,12 +169,16 @@ function RevenueBadge({ total, invoiced, confirmed, pending }: { total: number; 
           대기 {pending}
         </span>
       )}
-      {invoiced === 0 && confirmed === 0 && pending === 0 && (
-        <span className="text-xs font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap" style={{ background: "#F1F5F9", color: "#94A3B8" }}>
-          미요청 {total}
-        </span>
-      )}
     </div>
+  );
+}
+
+function TaxInvoiceBadge({ invoiced }: { invoiced: number }) {
+  if (invoiced === 0) return <span className="text-xs" style={{ color: "#CBD5E1" }}>—</span>;
+  return (
+    <span className="text-xs font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap" style={{ background: "rgba(5,150,105,0.12)", color: "#059669" }}>
+      계산서발행 {invoiced}
+    </span>
   );
 }
 
@@ -352,7 +358,9 @@ function CampaignRow({ c, index, onEdit, onDelete, onCopy, deleting, copying }: 
       {/* 계약금액 */}
       <td className="px-4 py-3 text-xs font-semibold" style={{ color: "#10B981" }}>{wonFmt(c.contractAmount)}</td>
       {/* 매출 */}
-      <td className="px-4 py-3"><RevenueBadge total={c.revenueTotal} invoiced={c.revenueInvoiced} confirmed={c.revenueConfirmed} pending={c.revenuePending} /></td>
+      <td className="px-4 py-3"><RevenueSalesBadge total={c.revenueTotal} confirmed={c.revenueConfirmed} pending={c.revenuePending} /></td>
+      {/* 세금계산서 */}
+      <td className="px-4 py-3"><TaxInvoiceBadge invoiced={c.revenueInvoiced} /></td>
       {/* 매입 */}
       <td className="px-4 py-3"><CostBadge total={c.costTotal} approved={c.costApproved} pending={c.costPending} /></td>
       {/* 상태 */}
@@ -1906,6 +1914,7 @@ function ProjectsInner() {
                   <th className="px-4 py-3 text-left font-semibold text-xs" style={{ color: "#64748B" }}>잔여일</th>
                   <th className="px-4 py-3 text-left font-semibold text-xs" style={{ color: "#64748B" }}>계약금액</th>
                   <th className="px-4 py-3 text-left font-semibold text-xs" style={{ color: "#64748B" }}>매출</th>
+                  <th className="px-4 py-3 text-left font-semibold text-xs" style={{ color: "#64748B" }}>세금계산서</th>
                   <th className="px-4 py-3 text-left font-semibold text-xs" style={{ color: "#64748B" }}>매입</th>
                   <th className="px-4 py-3 text-left font-semibold text-xs" style={{ color: "#64748B" }}>상태</th>
                   <th className="px-4 py-3 w-12" />
@@ -1985,7 +1994,11 @@ function ProjectsInner() {
                       </td>
                       {/* 매출 */}
                       <td className="px-4 py-3.5">
-                        <RevenueBadge total={g.revenueTotal} invoiced={g.revenueInvoiced} confirmed={g.revenueConfirmed} pending={g.revenuePending} />
+                        <RevenueSalesBadge total={g.revenueTotal} confirmed={g.revenueConfirmed} pending={g.revenuePending} />
+                      </td>
+                      {/* 세금계산서 */}
+                      <td className="px-4 py-3.5">
+                        <TaxInvoiceBadge invoiced={g.revenueInvoiced} />
                       </td>
                       {/* 매입 */}
                       <td className="px-4 py-3.5">
@@ -2037,7 +2050,7 @@ function ProjectsInner() {
                     // ── 캠페인 행들 (펼쳐진 경우) ──
                     isOpen && isLoadingCamps && (
                       <tr key={`loading-${g.id}`} style={{ background: "rgba(49,130,246,0.02)" }}>
-                        <td colSpan={10} className="pl-14 py-3 text-xs" style={{ color: "#94A3B8" }}>
+                        <td colSpan={11} className="pl-14 py-3 text-xs" style={{ color: "#94A3B8" }}>
                           캠페인 불러오는 중...
                         </td>
                       </tr>
@@ -2045,7 +2058,7 @@ function ProjectsInner() {
 
                     isOpen && !isLoadingCamps && camps.length === 0 && (
                       <tr key={`empty-${g.id}`} style={{ background: "rgba(49,130,246,0.02)" }}>
-                        <td colSpan={10} className="pl-14 py-3 text-xs" style={{ color: "#CBD5E1" }}>
+                        <td colSpan={11} className="pl-14 py-3 text-xs" style={{ color: "#CBD5E1" }}>
                           등록된 캠페인이 없습니다.
                         </td>
                       </tr>
@@ -2066,7 +2079,7 @@ function ProjectsInner() {
 
                     isOpen && !isLoadingCamps && (
                       <tr key={`add-camp-${g.id}`} style={{ background: "rgba(49,130,246,0.02)" }}>
-                        <td colSpan={10} className="pl-12 pr-4 py-2">
+                        <td colSpan={11} className="pl-12 pr-4 py-2">
                           <button
                             onClick={(e) => { e.stopPropagation(); setAddCampGroup(g.id); }}
                             className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors hover:bg-blue-50"
