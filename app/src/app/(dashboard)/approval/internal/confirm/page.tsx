@@ -248,8 +248,8 @@ export default function InternalConfirmPage() {
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold" style={{ color: "#191F28" }}>내부결재확인</h1>
-          <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>내부 결재 요청을 검토하고 승인 또는 반려합니다. 대기 {counts["대기"]}건</p>
+          <h1 className="text-xl font-bold" style={{ color: "#191F28" }}>내부지출</h1>
+          <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>내부지출 결재 요청을 검토하고 승인 또는 반려합니다. 대기 {counts["대기"]}건</p>
         </div>
         <button
           type="button"
