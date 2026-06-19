@@ -24,6 +24,9 @@ const INTERNAL_SUB = [
   { href: "/approval/internal/expense", label: "내부지출" },
   { href: "/approval/internal/leave",   label: "휴가" },
 ];
+const INTERNAL_MANAGER_SUB = [
+  { href: "/approval/internal/confirm", label: "내부결재확인" },
+];
 
 const OPERATIONS_SUB = [
   { href: "/operations/annual",  label: "연간 손익관리" },
@@ -353,6 +356,7 @@ function ApprovalNavSection() {
 
 function InternalNavSection() {
   const pathname = usePathname();
+  const { role } = useUser();
   const isActive = pathname.startsWith("/approval/internal");
   const [open, setOpen] = useState(isActive);
 
@@ -388,7 +392,7 @@ function InternalNavSection() {
 
       {open && (
         <div className="mt-0.5 ml-4">
-          {INTERNAL_SUB.map((item) => {
+          {[...INTERNAL_SUB, ...(role !== "Staff" ? INTERNAL_MANAGER_SUB : [])].map((item) => {
             const isSubActive = pathname === item.href || pathname.startsWith(item.href + "/");
             return (
               <Link

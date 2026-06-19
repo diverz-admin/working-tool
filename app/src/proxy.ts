@@ -32,7 +32,10 @@ export async function proxy(req: NextRequest) {
       req.method === "POST";
     // 내부결재요청 — 모든 역할 허용 (페이지 + API 전 메서드)
     const isExpenseAccess = pathname.startsWith("/api/approvals/expense");
-    const isInternalApprovalPage = pathname.startsWith("/approval/internal");
+    // /approval/internal/confirm 은 Manager 전용 — Staff는 제외
+    const isInternalApprovalPage =
+      pathname.startsWith("/approval/internal") &&
+      !pathname.startsWith("/approval/internal/confirm");
     if (!isApprovalSubmit && !isExpenseAccess && !isInternalApprovalPage) {
       if (pathname.startsWith("/api/")) {
         return NextResponse.json({ error: "권한이 없습니다." }, { status: 403 });
