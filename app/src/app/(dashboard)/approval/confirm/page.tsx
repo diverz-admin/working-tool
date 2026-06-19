@@ -306,7 +306,7 @@ export default function ConfirmPage() {
   async function handlePaymentDone(item: ConfirmRequest, date: string) {
     const dateStr = date || new Date().toISOString().slice(0, 10);
     // 세금계산서 불필요(taxExempt)하거나 계산서가 이미 발행된 경우 확인완료로 전환
-    const moveToDone = item.taxExempt || Boolean(item.taxInvoiceDate);
+    const moveToDone = Boolean(item.taxExempt) || Boolean(item.taxInvoiceDate);
     const updates: Parameters<typeof updateConfirmRequest>[1] = { depositConfirmedAt: dateStr };
     if (moveToDone) updates.status = "확인완료";
     await Promise.all([
@@ -758,7 +758,9 @@ export default function ConfirmPage() {
                               )}
                             </td>
                             <td className="px-4 py-3">
-                              {(item.depositAccount === "전재민" || item.taxExempt) ? (
+                              {item.taxExempt ? (
+                                <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: "rgba(148,163,184,0.1)", color: "#64748B", border: "1px solid rgba(148,163,184,0.25)" }}>발행불필요</span>
+                              ) : item.depositAccount === "전재민" ? (
                                 <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: "#F1F5F9", color: "#94A3B8" }}>해당없음</span>
                               ) : invoiceDone ? (
                                 <div>
@@ -813,6 +815,11 @@ export default function ConfirmPage() {
                   style={{ background: STATUS_STYLE[selected.status].bg, color: STATUS_STYLE[selected.status].color, border: `1px solid ${STATUS_STYLE[selected.status].border}` }}>
                   {selected.status}
                 </span>
+                {selected.taxExempt && (
+                  <span className="text-xs px-2.5 py-1 rounded-full font-semibold" style={{ background: "rgba(148,163,184,0.1)", color: "#64748B", border: "1px solid rgba(148,163,184,0.25)" }}>
+                    세금계산서 발행 불필요
+                  </span>
+                )}
                 {selected.taxInvoiceDate && (
                   <span className="text-xs px-2.5 py-1 rounded-full font-semibold" style={{ background: "rgba(5,150,105,0.1)", color: "#059669" }}>
                     계산서 {selected.taxInvoiceDate}
