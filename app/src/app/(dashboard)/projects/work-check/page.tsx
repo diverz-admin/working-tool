@@ -118,13 +118,19 @@ export default function WorkCheckPage() {
   async function toggleComplete(row: WorkRow) {
     const next = !row.workCompleted;
     setRows(prev => prev.map(r => r.id === row.id ? { ...r, workCompleted: next } : r));
-    const res = await fetch(`/api/work-check/${row.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ workCompleted: next }),
-    });
-    if (!res.ok) {
+    try {
+      const res = await fetch(`/api/work-check/${row.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workCompleted: next }),
+      });
+      if (!res.ok) {
+        setRows(prev => prev.map(r => r.id === row.id ? { ...r, workCompleted: row.workCompleted } : r));
+        console.error("[work-check] PATCH 실패", res.status, await res.text().catch(() => ""));
+      }
+    } catch (err) {
       setRows(prev => prev.map(r => r.id === row.id ? { ...r, workCompleted: row.workCompleted } : r));
+      console.error("[work-check] PATCH 오류", err);
     }
   }
 
