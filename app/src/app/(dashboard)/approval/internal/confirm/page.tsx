@@ -165,17 +165,29 @@ function DetailModal({ item, onClose, onAction }: {
             {attachments.length > 0 && (
               <div>
                 <p className="text-xs font-semibold mb-2" style={{ color: "#64748B" }}>첨부파일</p>
-                <div className="flex flex-wrap gap-2">
-                  {attachments.map((a, i) => (
-                    <button key={i} onClick={() => openAttachment(a)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium hover:opacity-80 transition-opacity"
-                      style={{ background: "#F1F5F9", border: "1px solid #E9EBEF", color: "#475569" }}>
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
-                      </svg>
-                      <span className="max-w-[120px] truncate">{a.name}</span>
-                    </button>
-                  ))}
+                <div className="space-y-2">
+                  {attachments.map((a, i) => {
+                    const isImage = /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(a.name) || a.url.startsWith("data:image/");
+                    return isImage ? (
+                      <div key={i} className="rounded-xl overflow-hidden border" style={{ borderColor: "#E9EBEF" }}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={a.url} alt={a.name} className="w-full object-contain max-h-64" />
+                        <div className="flex items-center justify-between px-3 py-2" style={{ background: "#F8FAFC" }}>
+                          <span className="text-xs truncate max-w-[200px]" style={{ color: "#64748B" }}>{a.name}</span>
+                          <button onClick={() => openAttachment(a)} className="text-xs font-semibold hover:opacity-70" style={{ color: "#3182F6" }}>다운로드</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button key={i} onClick={() => openAttachment(a)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium hover:opacity-80 transition-opacity"
+                        style={{ background: "#F1F5F9", border: "1px solid #E9EBEF", color: "#475569" }}>
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                        </svg>
+                        <span className="max-w-[120px] truncate">{a.name}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}

@@ -271,7 +271,7 @@ function ApprovalNavSection() {
      pathname.startsWith("/approval/internal/confirm") ||
      pathname.startsWith("/approval/internal/leave-confirm"));
   const [open, setOpen] = useState(isActive);
-  const [counts, setCounts] = useState<{ confirm: number; payment: number }>({ confirm: 0, payment: 0 });
+  const [counts, setCounts] = useState<{ confirm: number; payment: number; expense: number }>({ confirm: 0, payment: 0, expense: 0 });
   const { role } = useUser();
   const locked = role === "Staff";
 
@@ -287,7 +287,7 @@ function ApprovalNavSection() {
       fetch("/api/approvals/pending-counts")
         .then((r) => r.json())
         .then((d) => {
-          const next = { confirm: d.confirm ?? 0, payment: d.payment ?? 0 };
+          const next = { confirm: d.confirm ?? 0, payment: d.payment ?? 0, expense: d.expense ?? 0 };
           _pendingCache = { ...next, ts: Date.now() };
           setCounts(next);
         })
@@ -300,8 +300,9 @@ function ApprovalNavSection() {
   }, [pathname]);
 
   const badgeCounts: Record<string, number> = {
-    "/approval/confirm": counts.confirm,
-    "/approval/request": counts.payment,
+    "/approval/confirm":          counts.confirm,
+    "/approval/request":          counts.payment,
+    "/approval/internal/confirm": counts.expense,
   };
 
   return (
@@ -317,7 +318,7 @@ function ApprovalNavSection() {
         >
           <span style={{ color: locked ? "#CBD5E1" : isActive ? "#3182F6" : "#8B95A1" }}>{IC.approval}</span>
           결재확인
-          {!locked && <PendingBadge count={counts.confirm + counts.payment} />}
+          {!locked && <PendingBadge count={counts.confirm + counts.payment + counts.expense} />}
           {locked && <span className="ml-auto text-xs" style={{ color: "#CBD5E1" }}>🔒</span>}
         </Link>
         <button
