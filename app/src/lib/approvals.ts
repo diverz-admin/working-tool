@@ -42,6 +42,7 @@ export interface ConfirmRequest {
   workStartDate: string;
   workEndDate: string;
   clientName: string;
+  clientStoreName?: string;
   clientBusinessNumber?: string;
   clientEmail?: string;
   clientIndustry?: string;

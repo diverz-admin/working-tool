@@ -141,6 +141,7 @@ export async function POST(req: NextRequest) {
     workStartDate:        body.workStartDate        || null,
     workEndDate:          body.workEndDate          || null,
     clientName:           body.clientName           || null,
+    clientStoreName:      body.clientStoreName      || null,
     clientBusinessNumber: body.clientBusinessNumber || null,
     clientEmail:          body.clientEmail          || null,
     clientIndustry:       body.clientIndustry       || null,

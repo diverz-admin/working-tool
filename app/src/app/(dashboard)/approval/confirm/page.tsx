@@ -844,6 +844,16 @@ export default function ConfirmPage() {
                     <p className="text-sm font-semibold" style={{ color: "#191F28" }}>{selected.clientName || "—"}</p>
                   </div>
                   <div>
+                    <p className="text-xs mb-0.5" style={{ color: "#94A3B8" }}>상호명 (사업자등록기준)</p>
+                    <p className="text-sm font-semibold" style={{ color: "#191F28" }}>{selected.clientStoreName || "—"}</p>
+                  </div>
+                  {selected.clientEmail && (
+                    <div className="col-span-2 mt-2">
+                      <p className="text-xs mb-0.5" style={{ color: "#94A3B8" }}>이메일</p>
+                      <p className="text-sm font-semibold" style={{ color: "#191F28" }}>{selected.clientEmail}</p>
+                    </div>
+                  )}
+                  <div className="col-span-2 mt-2">
                     <p className="text-xs mb-0.5" style={{ color: "#94A3B8" }}>담당팀</p>
                     {selected.assignedTeam ? (
                       <span className="text-xs font-semibold px-2 py-0.5 rounded-full"

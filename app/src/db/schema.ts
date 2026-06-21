@@ -359,6 +359,7 @@ export const confirmRequests = pgTable("confirm_requests", {
   workStartDate:        text("work_start_date"),
   workEndDate:          text("work_end_date"),
   clientName:           text("client_name"),
+  clientStoreName:      text("client_store_name"),
   clientBusinessNumber: text("client_business_number"),
   clientEmail:          text("client_email"),
   clientIndustry:       text("client_industry"),
