@@ -5,6 +5,24 @@ import { useUser } from "@/lib/UserContext";
 import type { UserRole } from "@/lib/UserContext";
 import { useState, useEffect, useRef, useCallback } from "react";
 
+function playNotifSound() {
+  try {
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(523, ctx.currentTime);        // C5
+    osc.frequency.setValueAtTime(659, ctx.currentTime + 0.12); // E5
+    gain.gain.setValueAtTime(0.28, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.45);
+    osc.onended = () => ctx.close();
+  } catch { /* 브라우저 제한 시 무시 */ }
+}
+
 const pageTitles: Record<string, string> = {
   "/dashboard": "대시보드",
   "/projects": "프로젝트 관리",
@@ -74,10 +92,14 @@ export default function Header() {
   const { name: userName, role: userRole } = useUser();
   const title = getTitle(pathname);
 
+  type ToastItem =
+    | { kind: "mention"; id: string; data: Mention }
+    | { kind: "notif";   id: string; data: AppNotif };
+
   const [mentions, setMentions]       = useState<Mention[]>([]);
   const [appNotifs, setAppNotifs]     = useState<AppNotif[]>([]);
   const [showDrop, setShowDrop]       = useState(false);
-  const [toastList, setToastList]     = useState<Mention[]>([]);
+  const [toastList, setToastList]     = useState<ToastItem[]>([]);
   const dropRef    = useRef<HTMLDivElement>(null);
   const prevCount  = useRef(0);
   const prevNotifs = useRef(0);
@@ -92,13 +114,15 @@ export default function Header() {
       const fetched: Mention[] = data.mentions ?? [];
       setMentions(fetched);
 
-      // 새 멘션 토스트
+      // 새 멘션 토스트 + 소리
       const newCount = fetched.filter((m) => !m.isRead).length;
       if (newCount > prevCount.current && prevCount.current >= 0) {
         const newItems = fetched.filter((m) => !m.isRead).slice(0, newCount - prevCount.current);
+        playNotifSound();
         newItems.forEach((item) => {
-          setToastList((p) => [...p, item]);
-          setTimeout(() => setToastList((p) => p.filter((t) => t.id !== item.id)), 5000);
+          const tid = item.id;
+          setToastList((p) => [...p, { kind: "mention", id: tid, data: item }]);
+          setTimeout(() => setToastList((p) => p.filter((t) => t.id !== tid)), 6000);
         });
       }
       prevCount.current = newCount;
@@ -113,6 +137,16 @@ export default function Header() {
       const fetched: AppNotif[] = data.notifications ?? [];
       setAppNotifs(fetched);
       const newCount = fetched.filter((n) => !n.isRead).length;
+      // 새 앱 알림 토스트 + 소리
+      if (newCount > prevNotifs.current && prevNotifs.current >= 0) {
+        const newItems = fetched.filter((n) => !n.isRead).slice(0, newCount - prevNotifs.current);
+        playNotifSound();
+        newItems.forEach((item) => {
+          const tid = item.id;
+          setToastList((p) => [...p, { kind: "notif", id: tid, data: item }]);
+          setTimeout(() => setToastList((p) => p.filter((t) => t.id !== tid)), 6000);
+        });
+      }
       prevNotifs.current = newCount;
     } catch { /* ignore */ }
   }, []);
@@ -330,33 +364,63 @@ export default function Header() {
         </div>
       </header>
 
-      {/* 멘션 토스트 (오른쪽 상단) */}
+      {/* 알림 토스트 (오른쪽 상단) */}
       {toastList.length > 0 && (
-        <div className="fixed top-20 right-6 z-50 flex flex-col gap-2">
-          {toastList.map((t) => (
-            <div key={t.id}
-              className="flex items-start gap-3 px-4 py-3.5 rounded-2xl shadow-xl cursor-pointer"
-              style={{ background: "#FFFFFF", border: "1px solid #E9EBEF", maxWidth: 320, minWidth: 280 }}
-              onClick={() => { router.push("/chat"); setToastList((p) => p.filter((x) => x.id !== t.id)); }}>
-              <div className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-xs font-bold shrink-0"
-                style={{ background: authorColor(t.fromName) }}>
-                {t.fromName.slice(0, 2)}
+        <div className="fixed top-20 right-6 z-[100] flex flex-col gap-2 pointer-events-none">
+          {toastList.map((t) => {
+            const dismiss = () => setToastList((p) => p.filter((x) => x.id !== t.id));
+            if (t.kind === "mention") {
+              const m = t.data;
+              return (
+                <div key={t.id}
+                  className="flex items-start gap-3 px-4 py-3.5 rounded-2xl shadow-xl cursor-pointer pointer-events-auto"
+                  style={{ background: "#FFFFFF", border: "1px solid #E9EBEF", maxWidth: 320, minWidth: 280, boxShadow: "0 8px 32px rgba(22,31,51,0.16)" }}
+                  onClick={() => { router.push("/chat"); dismiss(); }}>
+                  <div className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-xs font-bold shrink-0"
+                    style={{ background: authorColor(m.fromName) }}>
+                    {m.fromName.slice(0, 2)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold" style={{ color: "#191F28" }}>
+                      {m.fromName}
+                      <span className="ml-1 font-normal" style={{ color: "#94A3B8" }}>님이 멘션했습니다</span>
+                    </p>
+                    <p className="text-xs mt-0.5 truncate" style={{ color: "#64748B" }}>{m.preview}</p>
+                  </div>
+                  <button onClick={(e) => { e.stopPropagation(); dismiss(); }}
+                    className="p-1 rounded-lg hover:bg-slate-100 transition-colors shrink-0">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2.5" strokeLinecap="round">
+                      <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                  </button>
+                </div>
+              );
+            }
+            // kind === "notif"
+            const n = t.data;
+            const isApproved = n.type === "expense_approved";
+            return (
+              <div key={t.id}
+                className="flex items-start gap-3 px-4 py-3.5 rounded-2xl shadow-xl cursor-pointer pointer-events-auto"
+                style={{ background: "#FFFFFF", border: `1px solid ${isApproved ? "rgba(16,185,129,0.25)" : "rgba(239,68,68,0.2)"}`, maxWidth: 320, minWidth: 280, boxShadow: "0 8px 32px rgba(22,31,51,0.16)" }}
+                onClick={() => { if (n.link) router.push(n.link); dismiss(); }}>
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-xs font-bold shrink-0"
+                  style={{ background: isApproved ? "#10B981" : "#EF4444" }}>
+                  {isApproved ? "✓" : "✕"}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold" style={{ color: isApproved ? "#059669" : "#DC2626" }}>{n.title}</p>
+                  <p className="text-xs mt-0.5 truncate" style={{ color: "#64748B" }}>{n.body}</p>
+                </div>
+                <button onClick={(e) => { e.stopPropagation(); dismiss(); }}
+                  className="p-1 rounded-lg hover:bg-slate-100 transition-colors shrink-0">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2.5" strokeLinecap="round">
+                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-bold" style={{ color: "#191F28" }}>
-                  {t.fromName}
-                  <span className="ml-1 font-normal" style={{ color: "#94A3B8" }}>님이 멘션했습니다</span>
-                </p>
-                <p className="text-xs mt-0.5 truncate" style={{ color: "#64748B" }}>{t.preview}</p>
-              </div>
-              <button onClick={(e) => { e.stopPropagation(); setToastList((p) => p.filter((x) => x.id !== t.id)); }}
-                className="p-1 rounded-lg hover:bg-slate-100 transition-colors shrink-0">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2.5" strokeLinecap="round">
-                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                </svg>
-              </button>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </>
