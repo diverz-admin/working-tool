@@ -493,7 +493,7 @@ function MessageInput({ channelName, onSend, disabled, users }: {
   users: UserOption[];
 }) {
   const [value, setValue]               = useState("");
-  const [pendingFile, setPendingFile]   = useState<Omit<FileAttachment, "__type" | "caption"> | null>(null);
+  const [pendingFiles, setPendingFiles] = useState<Omit<FileAttachment, "__type" | "caption">[]>([]);
   const [fileError, setFileError]       = useState<string | null>(null);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionIdx, setMentionIdx]     = useState(0);
@@ -543,16 +543,15 @@ function MessageInput({ channelName, onSend, disabled, users }: {
     setFileError(null);
     const reader = new FileReader();
     reader.onload = (ev) => {
-      setPendingFile({ url: ev.target!.result as string, name: file.name, size: file.size, mimeType: file.type });
+      setPendingFiles((prev) => [...prev, { url: ev.target!.result as string, name: file.name, size: file.size, mimeType: file.type }]);
     };
     reader.readAsDataURL(file);
   }
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
+    const files = Array.from(e.target.files ?? []);
     e.target.value = "";
-    if (!file) return;
-    attachFile(file);
+    files.forEach(attachFile);
   }
 
   function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
@@ -568,13 +567,16 @@ function MessageInput({ channelName, onSend, disabled, users }: {
 
   function send() {
     if (disabled) return;
-    if (pendingFile) {
-      const content = JSON.stringify({
-        __type: "file", url: pendingFile.url, name: pendingFile.name,
-        size: pendingFile.size, mimeType: pendingFile.mimeType, caption: value.trim(),
-      } satisfies FileAttachment);
-      onSend(content);
-      setPendingFile(null);
+    if (pendingFiles.length > 0) {
+      pendingFiles.forEach((f, idx) => {
+        const content = JSON.stringify({
+          __type: "file", url: f.url, name: f.name,
+          size: f.size, mimeType: f.mimeType,
+          caption: idx === pendingFiles.length - 1 ? value.trim() : "",
+        } satisfies FileAttachment);
+        onSend(content);
+      });
+      setPendingFiles([]);
       setValue("");
       if (textareaRef.current) textareaRef.current.style.height = "auto";
       return;
@@ -594,8 +596,7 @@ function MessageInput({ channelName, onSend, disabled, users }: {
     el.style.height = Math.min(el.scrollHeight, 160) + "px";
   }
 
-  const canSend = !disabled && (!!pendingFile || !!value.trim());
-  const isImage = pendingFile?.mimeType.startsWith("image/");
+  const canSend = !disabled && (pendingFiles.length > 0 || !!value.trim());
 
   return (
     <div className="px-4 pb-4 pt-1">
@@ -626,31 +627,37 @@ function MessageInput({ channelName, onSend, disabled, users }: {
       )}
 
       {/* 파일 미리보기 */}
-      {pendingFile && (
-        <div className="mb-2 flex items-center gap-3 px-3 py-2.5 rounded-xl border-2"
-          style={{ borderColor: "#D6D0D0", background: "#F8F8F8" }}>
-          {isImage ? (
-            <img src={pendingFile.url} alt={pendingFile.name}
-              className="w-10 h-10 rounded-lg object-cover shrink-0" />
-          ) : (
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
-              style={{ background: "rgba(29,155,209,0.12)" }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1D9BD1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                <polyline points="14 2 14 8 20 8"/>
-              </svg>
-            </div>
-          )}
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold truncate" style={{ color: "#1D1C1D" }}>{pendingFile.name}</p>
-            <p className="text-xs mt-0.5" style={{ color: "#97979C" }}>{formatFileSize(pendingFile.size)}</p>
-          </div>
-          <button onClick={() => setPendingFile(null)}
-            className="p-1.5 rounded-lg hover:bg-red-50 transition-colors shrink-0">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#E01E5A" strokeWidth="2.5" strokeLinecap="round">
-              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
+      {pendingFiles.length > 0 && (
+        <div className="mb-2 flex flex-wrap gap-2 px-1">
+          {pendingFiles.map((f, idx) => {
+            const isImg = f.mimeType.startsWith("image/");
+            return (
+              <div key={idx} className="relative flex items-center gap-2 px-2.5 py-2 rounded-xl border-2"
+                style={{ borderColor: "#D6D0D0", background: "#F8F8F8", maxWidth: 220 }}>
+                {isImg ? (
+                  <img src={f.url} alt={f.name} className="w-9 h-9 rounded-lg object-cover shrink-0" />
+                ) : (
+                  <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
+                    style={{ background: "rgba(29,155,209,0.12)" }}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#1D9BD1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                      <polyline points="14 2 14 8 20 8"/>
+                    </svg>
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold truncate" style={{ color: "#1D1C1D", maxWidth: 110 }}>{f.name}</p>
+                  <p className="text-xs" style={{ color: "#97979C" }}>{formatFileSize(f.size)}</p>
+                </div>
+                <button onClick={() => setPendingFiles((prev) => prev.filter((_, i) => i !== idx))}
+                  className="p-1 rounded-lg hover:bg-red-50 transition-colors shrink-0">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#E01E5A" strokeWidth="2.5" strokeLinecap="round">
+                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
       {fileError && <p className="mb-2 text-xs px-1" style={{ color: "#E01E5A" }}>{fileError}</p>}
@@ -665,7 +672,7 @@ function MessageInput({ channelName, onSend, disabled, users }: {
           onChange={handleChange}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
-          placeholder={pendingFile ? "캡션을 입력하세요 (선택)" : `#${channelName} 채널에 메시지 보내기`}
+          placeholder={pendingFiles.length > 0 ? "캡션을 입력하세요 (선택)" : `#${channelName} 채널에 메시지 보내기`}
           rows={1}
           disabled={disabled}
           className="w-full px-4 pt-3 pb-1 text-sm outline-none resize-none leading-relaxed"
@@ -740,7 +747,7 @@ function MessageInput({ channelName, onSend, disabled, users }: {
         </div>
       </div>
 
-      <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileChange}
+      <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileChange} multiple
         accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.txt,.csv" />
 
       <p className="text-xs mt-1.5 px-1" style={{ color: "#97979C" }}>
