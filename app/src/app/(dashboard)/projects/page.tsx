@@ -1387,6 +1387,7 @@ function ProjectsInner() {
           onSaved={async (newGroupId?: string) => {
             setNewProjectModal(false);
             await load(true);
+            loadWorkCheck();
             // API 응답의 projectGroupId로 자동 펼침
             if (newGroupId) {
               setExpanded((s) => new Set(s).add(newGroupId));
@@ -1415,6 +1416,7 @@ function ProjectsInner() {
           onSaved={() => {
             loadCampaigns(addCampGroup, true);
             load(true);
+            loadWorkCheck();
             setAddCampGroup(null);
           }}
           onViewClient={handleViewClient}
@@ -1431,6 +1433,7 @@ function ProjectsInner() {
             if (editCampaign?.id) invalidateProjectCache(editCampaign.id);
             if (activeCampGroup) loadCampaigns(activeCampGroup, true);
             load(true);
+            loadWorkCheck();
           }}
           onDelete={async (cid) => {
             if (activeCampGroup) await handleDeleteCampaign(cid, activeCampGroup);
