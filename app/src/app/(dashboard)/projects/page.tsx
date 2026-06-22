@@ -1431,7 +1431,6 @@ function ProjectsInner() {
             if (editCampaign?.id) invalidateProjectCache(editCampaign.id);
             if (activeCampGroup) loadCampaigns(activeCampGroup, true);
             load(true);
-            setEditCampaign(null); setActiveCampGroup(null);
           }}
           onDelete={async (cid) => {
             if (activeCampGroup) await handleDeleteCampaign(cid, activeCampGroup);

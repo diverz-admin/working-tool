@@ -215,6 +215,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
   const [users, setUsers]           = useState<{ id: string; name: string; team: string | null }[]>([]);
   const [managedProducts, setManagedProducts] = useState<ManagedProduct[]>([]);
   const [saving, setSaving]         = useState(false);
+  const [savedSuccess, setSavedSuccess] = useState(false);
   const [sendingPayment, setSendingPayment] = useState<Set<string>>(new Set());
 
   // 변경 감지용 초기 스냅샷
@@ -724,6 +725,10 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
 
     invalidateProjectCache(pid);
     setSaving(false);
+    if (method === "PATCH") {
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 3000);
+    }
     onSaved(newGroupId ?? undefined);
   }
 
@@ -1706,6 +1711,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
             </div>
 
             {error && <p className="text-xs text-center" style={{ color: "#EF4444" }}>{error}</p>}
+            {savedSuccess && <p className="text-xs text-center font-medium" style={{ color: "#16A34A" }}>수정완료되었습니다.</p>}
 
             {/* 버튼 */}
             <div className="flex items-center justify-between pt-1">
