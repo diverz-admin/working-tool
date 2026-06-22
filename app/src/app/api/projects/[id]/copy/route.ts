@@ -39,18 +39,20 @@ export async function POST(_req: Request, { params }: Params) {
     await Promise.all([
       revenues.length > 0
         ? db.insert(projectRevenues).values(
-            revenues.map(({ id: _id, createdAt: _c, workCompleted: _wc, completedAt: _ca, completedQty: _cq, ...r }) => ({
+            revenues.map(({ id: _id, createdAt: _c, workCompleted: _wc, completedAt: _ca, completedQty: _cq, paymentDate: _pd, invoiceDate: _ivd, ...r }) => ({
               ...r,
               projectId:     copied.id,
               workCompleted: false,
               completedAt:   null,
               completedQty:  0,
+              paymentDate:   null,
+              invoiceDate:   null,
             }))
           )
         : Promise.resolve(),
       costs.length > 0
         ? db.insert(projectCosts).values(
-            costs.map(({ id: _id, createdAt: _c, workCompleted: _wc, isApproved: _ia, invoiceFileUrl: _fu, invoiceFileName: _fn, costRowId: _cr, ...r }) => ({
+            costs.map(({ id: _id, createdAt: _c, workCompleted: _wc, isApproved: _ia, invoiceFileUrl: _fu, invoiceFileName: _fn, costRowId: _cr, invoiceDate: _ivd, ...r }) => ({
               ...r,
               projectId:       copied.id,
               costRowId:       null,
@@ -58,6 +60,7 @@ export async function POST(_req: Request, { params }: Params) {
               isApproved:      false,
               invoiceFileUrl:  null,
               invoiceFileName: null,
+              invoiceDate:     null,
             }))
           )
         : Promise.resolve(),
