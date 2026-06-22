@@ -1283,7 +1283,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                           const i = revenues.indexOf(r);
                           const remDays = daysLeft(r.workEndDate);
                           const revConfirmStatus = confirmStatuses[r.revenueRowId];
-                          const revDeleteBlocked = Boolean(r.paymentDate) || Boolean(revConfirmStatus && revConfirmStatus.status !== "반려");
+                          const revDeleteBlocked = Boolean(revConfirmStatus && revConfirmStatus.status !== "반려");
                           return (
                             <tr key={r.localId} className="border-t" style={{ borderColor: "#F1F5F9" }}>
                               <td className="px-2 py-1.5 font-medium" style={{ color: "#94A3B8" }}>{i+1}</td>
