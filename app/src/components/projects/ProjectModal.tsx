@@ -1465,7 +1465,9 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                                       setSendingPayment((p) => new Set(p).add(rowKey));
                                       try {
                                         const totalNum = parseWon(c.total);
-                                        const matchedProduct = managedProducts.find((p) => p.name === c.productName);
+                                        const matchedProduct =
+                                          managedProducts.find((p) => p.name === c.productName && p.vendor === c.vendor) ??
+                                          managedProducts.find((p) => p.name === c.productName);
                                         const newReq = await addPaymentRequest({
                                           projectId:         pid,
                                           rowKey,
@@ -1481,7 +1483,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                                           workEndDate:       c.workEndDate || "",
                                           invoiceFileUrl:    c.invoiceFileUrl || "",
                                           invoiceFileName:   c.invoiceFileName || "",
-                                          vendorBankAccount: matchedProduct?.vendorBankAccount || c.vendor || "",
+                                          vendorBankAccount: matchedProduct?.vendorBankAccount || "",
                                         });
                                         setPaymentStatuses((p) => ({ ...p, [rowKey]: { status: "대기", requestId: newReq.id } }));
                                         invalidateProjectCache(pid);
