@@ -1,34 +1,72 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { projects, projectRevenues, projectCosts, kpiTargets } from "@/db/schema";
-import { eq, sql, and } from "drizzle-orm";
+import { eq, sql, and, isNotNull } from "drizzle-orm";
 
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
-    const year = parseInt(searchParams.get("year") ?? String(new Date().getFullYear()));
-    const teamParam = searchParams.get("team") ?? "";
+    const year      = parseInt(searchParams.get("year")  ?? String(new Date().getFullYear()));
+    const teamParam = searchParams.get("team")     ?? "";
+    const criteria  = searchParams.get("criteria") ?? "캠페인 시작날짜";
 
-    // 3개 쿼리 완전 병렬 실행
-    const [projectData, kpiRows, costRows] = await Promise.all([
-      // 확인된 프로젝트 + revenue 합계 단일 쿼리
-      db.select({
-          id:             projects.id,
-          startDate:      projects.startDate,
-          assignedTeam:   projects.assignedTeam,
-          contractAmount: projects.contractAmount,
-          totalSum:       sql<number>`COALESCE(SUM(${projectRevenues.total}), 0)`,
+    // 확정 매출 집계 — 기준에 따라 그룹핑 컬럼 변경
+    // 두 기준 모두 invoiceDate IS NOT NULL (계산서 발급 완료)인 행만 집계 → 월간 리포트와 동일
+    let revenueRows: { dateMonth: string; assignedTeam: string | null; totalSum: number }[];
+
+    if (criteria === "계산서날짜") {
+      // 계산서 발행일 기준: invoiceDate 월로 그룹핑
+      const raw = await db
+        .select({
+          dateMonth:    sql<string>`TO_CHAR(${projectRevenues.invoiceDate}, 'YYYY-MM')`,
+          assignedTeam: projects.assignedTeam,
+          totalSum:     sql<number>`COALESCE(SUM(${projectRevenues.total}), 0)`,
         })
-        .from(projects)
-        .innerJoin(projectRevenues, eq(projectRevenues.projectId, projects.id))
+        .from(projectRevenues)
+        .innerJoin(projects, eq(projects.id, projectRevenues.projectId))
         .where(
           and(
+            isNotNull(projectRevenues.invoiceDate),
+            sql`EXTRACT(YEAR FROM ${projectRevenues.invoiceDate}) = ${year}`,
+            teamParam ? eq(projects.assignedTeam, teamParam) : undefined,
+          )
+        )
+        .groupBy(
+          sql`TO_CHAR(${projectRevenues.invoiceDate}, 'YYYY-MM')`,
+          projects.assignedTeam,
+        );
+      revenueRows = raw.map(r => ({ ...r, totalSum: Number(r.totalSum ?? 0) }));
+    } else {
+      // 캠페인 시작날짜 기준: project.startDate 월로 그룹핑 (월간 리포트와 동일)
+      const raw = await db
+        .select({
+          dateMonth:    sql<string>`TO_CHAR(${projects.startDate}, 'YYYY-MM')`,
+          assignedTeam: projects.assignedTeam,
+          totalSum:     sql<number>`COALESCE(SUM(${projectRevenues.total}), 0)`,
+        })
+        .from(projects)
+        .innerJoin(
+          projectRevenues,
+          and(
+            eq(projectRevenues.projectId, projects.id),
+            isNotNull(projectRevenues.invoiceDate),
+          )
+        )
+        .where(
+          and(
+            isNotNull(projects.startDate),
             sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`,
             teamParam ? eq(projects.assignedTeam, teamParam) : undefined,
           )
         )
-        .groupBy(projects.id, projects.startDate, projects.assignedTeam, projects.contractAmount),
+        .groupBy(
+          sql`TO_CHAR(${projects.startDate}, 'YYYY-MM')`,
+          projects.assignedTeam,
+        );
+      revenueRows = raw.map(r => ({ ...r, totalSum: Number(r.totalSum ?? 0) }));
+    }
 
+    const [kpiRows, costRows] = await Promise.all([
       db.select().from(kpiTargets).where(eq(kpiTargets.year, year)),
 
       db.select({
@@ -39,6 +77,7 @@ export async function GET(req: Request) {
         .innerJoin(projects, eq(projects.id, projectCosts.projectId))
         .where(and(
           eq(projectCosts.isApproved, true),
+          isNotNull(projects.startDate),
           sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`,
           teamParam ? eq(projects.assignedTeam, teamParam) : undefined,
         ))
@@ -51,44 +90,28 @@ export async function GET(req: Request) {
       return row ? Number(row.total) : 0;
     });
 
-    type MonthEntry = { [team: string]: number };
-    const teamMonthMap = new Map<string, MonthEntry[]>();
+    // 팀별 월별 매출 맵 구축
+    const teamMonthRevMap = new Map<string, number[]>();
 
-    for (const p of projectData) {
-      const monthStr = p.startDate ? `${year}-${p.startDate.substring(5, 7)}` : "";
-      if (!monthStr || !monthStr.startsWith(`${year}`)) continue;
-
-      const monthIdx = parseInt(monthStr.substring(5, 7)) - 1;
-      const team  = p.assignedTeam ?? "";
-      const total = p.contractAmount ?? Number(p.totalSum ?? 0);
-
-      if (!teamMonthMap.has(team)) {
-        teamMonthMap.set(team, Array.from({ length: 12 }, () => ({ total: 0 })));
-      }
-      teamMonthMap.get(team)![monthIdx].total += total;
+    for (const r of revenueRows) {
+      if (!r.dateMonth?.startsWith(`${year}`)) continue;
+      const monthIdx = parseInt(r.dateMonth.substring(5, 7)) - 1;
+      const team = r.assignedTeam ?? "";
+      if (!teamMonthRevMap.has(team)) teamMonthRevMap.set(team, new Array(12).fill(0));
+      teamMonthRevMap.get(team)![monthIdx] += r.totalSum;
     }
 
-    // KPI 설정된 팀도 revenue 없이 포함
+    // KPI 설정된 팀도 포함 (매출 없어도 KPI 목표가 있으면 표시)
     for (const k of kpiRows) {
-      if (k.team && k.team !== "전체" && !teamMonthMap.has(k.team)) {
-        teamMonthMap.set(k.team, Array.from({ length: 12 }, () => ({ total: 0 })));
+      if (k.team && k.team !== "전체" && !teamMonthRevMap.has(k.team)) {
+        teamMonthRevMap.set(k.team, new Array(12).fill(0));
       }
     }
-    // 프론트에서 팀 파라미터 전달 시 해당 팀을 반드시 포함 (revenue·KPI 모두 없어도)
-    if (teamParam && !teamMonthMap.has(teamParam)) {
-      teamMonthMap.set(teamParam, Array.from({ length: 12 }, () => ({ total: 0 })));
+    if (teamParam && !teamMonthRevMap.has(teamParam)) {
+      teamMonthRevMap.set(teamParam, new Array(12).fill(0));
     }
 
-    const rows: { month: string; team: string | null; total: number }[] = [];
-    for (const [team, months] of teamMonthMap.entries()) {
-      months.forEach((m, i) => {
-        if (m.total > 0) {
-          rows.push({ month: `${year}-${String(i + 1).padStart(2, "0")}`, team, total: m.total });
-        }
-      });
-    }
-
-    const teams = Array.from(teamMonthMap.keys()).filter(Boolean) as string[];
+    const teams = Array.from(teamMonthRevMap.keys()).filter(Boolean) as string[];
     const monthStrs = Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, "0")}`);
 
     const monthly = monthStrs.map((month, idx) => {
@@ -97,8 +120,7 @@ export async function GET(req: Request) {
       let total = 0;
       let kpiTotal = 0;
       for (const team of teams) {
-        const row = rows.find((r) => r.month === month && r.team === team);
-        const v = row ? row.total : 0;
+        const v = teamMonthRevMap.get(team)?.[idx] ?? 0;
         entry[team] = v;
         total += v;
         const kpi = kpiRows.find((k) => k.month === monthNum && k.team === team);
@@ -117,19 +139,17 @@ export async function GET(req: Request) {
     const yearTotal: Record<string, number> = { total: 0 };
     const yearKpi:   Record<string, number> = { total: 0 };
     for (const team of teams) {
-      yearTotal[team] = rows.filter((r) => r.team === team).reduce((s, r) => s + r.total, 0);
+      yearTotal[team] = (teamMonthRevMap.get(team) ?? []).reduce((s, v) => s + v, 0);
       yearTotal.total += yearTotal[team];
       yearKpi[team]   = kpiRows.filter((k) => k.team === team).reduce((s, k) => s + k.target, 0);
       yearKpi.total  += yearKpi[team];
     }
 
     const thisMonthNum = new Date().getMonth() + 1;
-    const thisMonth    = `${year}-${String(thisMonthNum).padStart(2, "0")}`;
     const currentMonth: Record<string, number> = { total: 0 };
     const currentKpi:   Record<string, number> = { total: 0 };
     for (const team of teams) {
-      const row = rows.find((r) => r.month === thisMonth && r.team === team);
-      currentMonth[team] = row ? row.total : 0;
+      currentMonth[team] = teamMonthRevMap.get(team)?.[thisMonthNum - 1] ?? 0;
       currentMonth.total += currentMonth[team];
       const kpi = kpiRows.find((k) => k.month === thisMonthNum && k.team === team);
       currentKpi[team]  = kpi ? kpi.target : 0;
@@ -140,10 +160,10 @@ export async function GET(req: Request) {
 
     const prevDate = new Date(year, new Date().getMonth() - 1, 1);
     const prevMonthStr = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, "0")}`;
+    const prevMonthIdx = parseInt(prevMonthStr.substring(5, 7)) - 1;
     const prevMonthData: Record<string, number> = { total: 0 };
     for (const team of teams) {
-      const row = rows.find((r) => r.month === prevMonthStr && r.team === team);
-      prevMonthData[team] = row ? row.total : 0;
+      prevMonthData[team] = teamMonthRevMap.get(team)?.[prevMonthIdx] ?? 0;
       prevMonthData.total += prevMonthData[team];
     }
 
