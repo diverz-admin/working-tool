@@ -25,8 +25,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const { id } = await params;
   const body = await req.json();
   const [row] = await db.update(paymentRequests).set({
-    ...(body.status       !== undefined && { status:       body.status }),
-    ...(body.rejectReason !== undefined && { rejectReason: body.rejectReason }),
+    ...(body.status             !== undefined && { status:             body.status }),
+    ...(body.rejectReason       !== undefined && { rejectReason:       body.rejectReason }),
+    ...(body.vendorBankAccount  !== undefined && { vendorBankAccount:  body.vendorBankAccount || null }),
   }).where(eq(paymentRequests.id, id)).returning();
   if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
 

@@ -155,7 +155,7 @@ export async function addPaymentRequest(
 
 export async function updatePaymentRequest(
   id: string,
-  updates: Partial<Pick<PaymentRequest, "status" | "rejectReason">>
+  updates: Partial<Pick<PaymentRequest, "status" | "rejectReason" | "vendorBankAccount">>
 ): Promise<void> {
   const res = await fetch(`/api/approvals/payment/${id}`, {
     method: "PATCH",

@@ -29,10 +29,16 @@ export default function RequestPage() {
   const [cancelTarget,  setCancelTarget]  = useState<PaymentRequest | null>(null);
   const [cancelling,    setCancelling]    = useState(false);
   const [approveDate,   setApproveDate]   = useState(new Date().toISOString().slice(0, 10));
+  const [editingAccount, setEditingAccount] = useState(false);
+  const [accountDraft,   setAccountDraft]   = useState("");
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    if (selected) setApproveDate(new Date().toISOString().slice(0, 10));
+    if (selected) {
+      setApproveDate(new Date().toISOString().slice(0, 10));
+      setEditingAccount(false);
+      setAccountDraft(selected.vendorBankAccount ?? "");
+    }
   }, [selected?.id]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
@@ -661,17 +667,59 @@ export default function RequestPage() {
               </div>
 
               {/* 입금계좌 */}
-              {selected.vendorBankAccount && (
-                <div className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{ background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.18)" }}>
+              <div className="rounded-xl overflow-hidden" style={{ background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.18)" }}>
+                <div className="flex items-center gap-3 px-4 py-3">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2" strokeLinecap="round">
                     <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/>
                   </svg>
-                  <div>
+                  <div className="flex-1 min-w-0">
                     <p className="text-xs font-semibold mb-0.5" style={{ color: "#059669" }}>입금계좌</p>
-                    <p className="text-sm font-medium" style={{ color: "#191F28" }}>{selected.vendorBankAccount}</p>
+                    {editingAccount ? (
+                      <input
+                        value={accountDraft}
+                        onChange={(e) => setAccountDraft(e.target.value)}
+                        placeholder="은행명 계좌번호 예금주"
+                        className="w-full text-sm px-2 py-1 rounded-lg outline-none border focus:border-[#059669]"
+                        style={{ borderColor: "#D1FAE5", background: "#fff", color: "#191F28" }}
+                        autoFocus
+                      />
+                    ) : (
+                      <p className="text-sm font-medium truncate" style={{ color: selected.vendorBankAccount ? "#191F28" : "#94A3B8" }}>
+                        {selected.vendorBankAccount || "—"}
+                      </p>
+                    )}
                   </div>
+                  {!editingAccount ? (
+                    <button
+                      onClick={() => { setAccountDraft(selected.vendorBankAccount ?? ""); setEditingAccount(true); }}
+                      className="text-xs font-semibold px-2.5 py-1 rounded-lg shrink-0"
+                      style={{ background: "rgba(16,185,129,0.12)", color: "#059669" }}>
+                      수정
+                    </button>
+                  ) : (
+                    <div className="flex gap-1.5 shrink-0">
+                      <button
+                        onClick={async () => {
+                          const trimmed = accountDraft.trim();
+                          await updatePaymentRequest(selected.id, { vendorBankAccount: trimmed || undefined });
+                          setItems((prev) => prev.map((i) => i.id === selected.id ? { ...i, vendorBankAccount: trimmed || undefined } : i));
+                          setSelected((prev) => prev ? { ...prev, vendorBankAccount: trimmed || undefined } : prev);
+                          setEditingAccount(false);
+                        }}
+                        className="text-xs font-semibold px-2.5 py-1 rounded-lg text-white"
+                        style={{ background: "#059669" }}>
+                        저장
+                      </button>
+                      <button
+                        onClick={() => setEditingAccount(false)}
+                        className="text-xs font-semibold px-2.5 py-1 rounded-lg border"
+                        style={{ borderColor: "#D1D5DB", color: "#64748B" }}>
+                        취소
+                      </button>
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
 
               {selected.status === "반려" && selected.rejectReason && (
                 <div className="flex items-start gap-2 px-4 py-3 rounded-xl"
