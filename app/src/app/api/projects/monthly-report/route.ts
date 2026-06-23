@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { projects, projectRevenues, projectCosts } from "@/db/schema";
-import { eq, and, gte, lte, isNotNull, inArray } from "drizzle-orm";
+import { eq, and, gte, lte, isNotNull, inArray, sql } from "drizzle-orm";
 
 export async function GET(req: NextRequest) {
   try {
@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
     // 캠페인 시작일 맵 (월별 집계에 사용)
     const projectStartMap = new Map(projectRows.map(p => [p.id, p.startDate]));
 
-    // 확정 매출 (계산서발급 완료 = invoiceDate 있는 행)
+    // 확정 매출 (입금확인요청이 제출된 프로젝트 = confirmRequest 존재, 반려 제외)
     const revRows = await db
       .select({
         projectId:   projectRevenues.projectId,
@@ -69,7 +69,7 @@ export async function GET(req: NextRequest) {
       .where(
         and(
           inArray(projectRevenues.projectId, projectIds),
-          isNotNull(projectRevenues.invoiceDate),
+          sql`EXISTS (SELECT 1 FROM confirm_requests WHERE project_id = ${projectRevenues.projectId}::text AND status != '반려')`,
         )
       );
 

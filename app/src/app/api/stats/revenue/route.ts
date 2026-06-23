@@ -37,7 +37,8 @@ export async function GET(req: Request) {
         );
       revenueRows = raw.map(r => ({ ...r, totalSum: Number(r.totalSum ?? 0) }));
     } else {
-      // 캠페인 시작날짜 기준: project.startDate 월로 그룹핑 (월간 리포트와 동일)
+      // 캠페인 시작날짜 기준: project.startDate 월로 그룹핑
+      // 입금확인요청이 제출된 프로젝트(반려 제외)의 매출을 캠페인 시작월에 인식
       const raw = await db
         .select({
           dateMonth:    sql<string>`TO_CHAR(${projects.startDate}, 'YYYY-MM')`,
@@ -45,17 +46,12 @@ export async function GET(req: Request) {
           totalSum:     sql<number>`COALESCE(SUM(${projectRevenues.total}), 0)`,
         })
         .from(projects)
-        .innerJoin(
-          projectRevenues,
-          and(
-            eq(projectRevenues.projectId, projects.id),
-            isNotNull(projectRevenues.invoiceDate),
-          )
-        )
+        .innerJoin(projectRevenues, eq(projectRevenues.projectId, projects.id))
         .where(
           and(
             isNotNull(projects.startDate),
             sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`,
+            sql`EXISTS (SELECT 1 FROM confirm_requests WHERE project_id = ${projects.id}::text AND status != '반려')`,
             teamParam ? eq(projects.assignedTeam, teamParam) : undefined,
           )
         )

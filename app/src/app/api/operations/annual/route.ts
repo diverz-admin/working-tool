@@ -23,9 +23,10 @@ export async function GET(req: NextRequest) {
       })
       .from(projects)
       .innerJoin(projectRevenues, eq(projectRevenues.projectId, projects.id))
-      .where(
-        sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`
-      )
+      .where(and(
+        sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`,
+        sql`EXISTS (SELECT 1 FROM confirm_requests WHERE project_id = ${projects.id}::text AND status != '반려')`,
+      ))
       .groupBy(projects.id, projects.assignedTeam, projects.assignedPerson, projects.startDate, projects.contractAmount, projects.kpiSupply),
 
       db.select().from(annualCosts).where(eq(annualCosts.year, year)),
