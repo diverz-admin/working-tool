@@ -73,7 +73,7 @@ export async function GET() {
         pending:   sql<number>`COUNT(*) FILTER (WHERE ${confirmRequests.status} = '대기')`,
       })
       .from(projects)
-      .innerJoin(confirmRequests, sql`${confirmRequests.projectId} = ${projects.id}::text`)
+      .innerJoin(confirmRequests, eq(confirmRequests.projectId, projects.id))
       .where(eq(projects.status, "진행"))
       .groupBy(projects.projectGroupId),
 
@@ -91,7 +91,7 @@ export async function GET() {
         pending:  sql<number>`COUNT(*) FILTER (WHERE ${paymentRequests.status} = '대기')`,
       })
       .from(projects)
-      .innerJoin(paymentRequests, sql`${paymentRequests.projectId} = ${projects.id}::text`)
+      .innerJoin(paymentRequests, eq(paymentRequests.projectId, projects.id))
       .where(eq(projects.status, "진행"))
       .groupBy(projects.projectGroupId),
 

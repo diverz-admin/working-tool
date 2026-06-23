@@ -51,7 +51,7 @@ export async function GET(req: Request) {
           and(
             isNotNull(projects.startDate),
             sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`,
-            sql`EXISTS (SELECT 1 FROM confirm_requests WHERE project_id = ${projects.id}::text AND status != '반려')`,
+            sql`EXISTS (SELECT 1 FROM confirm_requests WHERE project_id = ${projects.id} AND status != '반려')`,
             teamParam ? eq(projects.assignedTeam, teamParam) : undefined,
           )
         )

@@ -69,7 +69,7 @@ export async function GET(req: NextRequest) {
       .where(
         and(
           inArray(projectRevenues.projectId, projectIds),
-          sql`EXISTS (SELECT 1 FROM confirm_requests WHERE project_id = ${projectRevenues.projectId}::text AND status != '반려')`,
+          sql`EXISTS (SELECT 1 FROM confirm_requests WHERE project_id = ${projectRevenues.projectId} AND status != '반려')`,
         )
       );
 

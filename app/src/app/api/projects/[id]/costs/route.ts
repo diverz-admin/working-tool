@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { projectCosts, paymentRequests } from "@/db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -19,7 +19,7 @@ export async function PUT(req: Request, { params }: Params) {
     const approvedRequests = await db
       .select({ rowKey: paymentRequests.rowKey })
       .from(paymentRequests)
-      .where(and(sql`${paymentRequests.projectId}::text = ${id}`, eq(paymentRequests.status, "승인")));
+      .where(and(eq(paymentRequests.projectId, id), eq(paymentRequests.status, "승인")));
 
     const approvedRowKeys = new Set(approvedRequests.map((r) => r.rowKey).filter(Boolean));
 

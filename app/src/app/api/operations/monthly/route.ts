@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
         isNotNull(projects.startDate),
         gte(projects.startDate, from),
         lte(projects.startDate, to),
-        sql`EXISTS (SELECT 1 FROM confirm_requests WHERE project_id = ${projects.id}::text AND status != '반려')`,
+        sql`EXISTS (SELECT 1 FROM confirm_requests WHERE project_id = ${projects.id} AND status != '반려')`,
       ))
       .groupBy(
         projects.id, projects.assignedTeam, projects.assignedPerson,

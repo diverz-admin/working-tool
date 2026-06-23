@@ -7,7 +7,7 @@ import { eq, desc, getTableColumns, sql, isNull, inArray, and, asc } from "drizz
 const assignedTeamExpr = sql<string | null>`
   COALESCE(
     ${confirmRequests.assignedTeam},
-    (SELECT p.assigned_team FROM projects p WHERE p.id::text = ${confirmRequests.projectId})
+    (SELECT p.assigned_team FROM projects p WHERE p.id = ${confirmRequests.projectId})
   )
 `;
 

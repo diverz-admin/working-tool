@@ -312,22 +312,6 @@ export const chatMessages = pgTable("chat_messages", {
 
 export type ChatMessage = typeof chatMessages.$inferSelect;
 
-export const monthlyRevenues = pgTable("monthly_revenues", {
-  id:          uuid("id").primaryKey().defaultRandom(),
-  year:        integer("year").notNull(),
-  month:       integer("month").notNull(),
-  assignee:    text("assignee"),
-  entryDate:   date("entry_date"),
-  clientName:  text("client_name"),
-  productName: text("product_name"),
-  quantity:    integer("quantity"),
-  supplyPrice: integer("supply_price").notNull().default(0),
-  tax:         integer("tax").notNull().default(0),
-  total:       integer("total").notNull().default(0),
-  invoiceDate: date("invoice_date"),
-  createdAt:   timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt:   timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
 
 export const notices = pgTable("notices", {
   id:         uuid("id").primaryKey().defaultRandom(),
@@ -346,9 +330,9 @@ export type NewNotice = typeof notices.$inferInsert;
 
 export const confirmRequests = pgTable("confirm_requests", {
   id:                   uuid("id").primaryKey().defaultRandom(),
-  projectId:            text("project_id"),
+  projectId:            uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
   rowKey:               text("row_key"),
-  clientId:             text("client_id"),
+  clientId:             uuid("client_id").references(() => clients.id, { onDelete: "set null" }),
   assignedTeam:         text("assigned_team"),
   projectName:          text("project_name").notNull().default(""),
   requester:            text("requester").notNull().default(""),
@@ -378,7 +362,7 @@ export const confirmRequests = pgTable("confirm_requests", {
 
 export const paymentRequests = pgTable("payment_requests", {
   id:                 uuid("id").primaryKey().defaultRandom(),
-  projectId:          text("project_id"),
+  projectId:          uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
   rowKey:             text("row_key"),
   assignedTeam:       text("assigned_team"),
   projectName:        text("project_name").notNull().default(""),
@@ -420,22 +404,6 @@ export const reportMeetings = pgTable("report_meetings", {
   updatedAt:  timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const monthlyCosts = pgTable("monthly_costs", {
-  id:          uuid("id").primaryKey().defaultRandom(),
-  year:        integer("year").notNull(),
-  month:       integer("month").notNull(),
-  assignee:    text("assignee"),
-  entryDate:   date("entry_date"),
-  vendor:      text("vendor"),
-  productName: text("product_name"),
-  quantity:    integer("quantity"),
-  supplyPrice: integer("supply_price").notNull().default(0),
-  tax:         integer("tax").notNull().default(0),
-  total:       integer("total").notNull().default(0),
-  invoiceDate: date("invoice_date"),
-  createdAt:   timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt:   timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
 
 export const chatMentions = pgTable("chat_mentions", {
   id:            uuid("id").primaryKey().defaultRandom(),

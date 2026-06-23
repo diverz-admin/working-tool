@@ -6,13 +6,13 @@ import { desc, getTableColumns, sql, inArray, asc } from "drizzle-orm";
 const confirmTeamExpr = sql<string | null>`
   COALESCE(
     ${confirmRequests.assignedTeam},
-    (SELECT p.assigned_team FROM projects p WHERE p.id::text = ${confirmRequests.projectId})
+    (SELECT p.assigned_team FROM projects p WHERE p.id = ${confirmRequests.projectId})
   )
 `;
 const paymentTeamExpr = sql<string | null>`
   COALESCE(
     ${paymentRequests.assignedTeam},
-    (SELECT p.assigned_team FROM projects p WHERE p.id::text = ${paymentRequests.projectId})
+    (SELECT p.assigned_team FROM projects p WHERE p.id = ${paymentRequests.projectId})
   )
 `;
 
