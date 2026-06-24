@@ -53,6 +53,7 @@ interface RevenueRow {
 interface CostRow {
   localId: number;
   costRowId: string;       // 안정적 UUID — rowKey 충돌 방지
+  sectionLabel: string;
   assignee: string;
   vendor: string;
   productName: string;
@@ -123,8 +124,8 @@ function matchesTeam(clientTeam: string | undefined, formTeam: string) {
 function emptyRevenue(sectionLabel = "1주"): RevenueRow {
   return { localId: nid(), revenueRowId: crypto.randomUUID(), linkedCostLocalId: null, sectionLabel, assignee: "", productName: "", productId: "", unitPrice: 0, quantity: "", supplyPrice: "", tax: "", total: "", paymentDate: "", invoiceDate: "", workStartDate: "", workEndDate: "", completedQty: "", workCompleted: false, depositAccount: "", settingDate: "" };
 }
-function emptyCost(): CostRow {
-  return { localId: nid(), costRowId: crypto.randomUUID(), assignee: "", vendor: "", productName: "", productId: "", unitPrice: 0, quantity: "", supplyPrice: "", tax: "", total: "", purchaseDate: "", invoiceDate: "", workStartDate: "", workEndDate: "", workCompleted: false, isApproved: false, settingDate: "", invoiceFileUrl: "", invoiceFileName: "" };
+function emptyCost(sectionLabel = "1주"): CostRow {
+  return { localId: nid(), costRowId: crypto.randomUUID(), sectionLabel, assignee: "", vendor: "", productName: "", productId: "", unitPrice: 0, quantity: "", supplyPrice: "", tax: "", total: "", purchaseDate: "", invoiceDate: "", workStartDate: "", workEndDate: "", workCompleted: false, isApproved: false, settingDate: "", invoiceFileUrl: "", invoiceFileName: "" };
 }
 
 function daysLeft(dateStr: string): number | null {
@@ -211,6 +212,9 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
   const revenuesRef = useRef<RevenueRow[]>([]);
   // eslint-disable-next-line react-hooks/refs
   revenuesRef.current = revenues;
+  const costsRef = useRef<CostRow[]>([]);
+  // eslint-disable-next-line react-hooks/refs
+  costsRef.current = costs;
   const [clients, setClients]       = useState<SimpleClient[]>([]);
   const [users, setUsers]           = useState<{ id: string; name: string; team: string | null }[]>([]);
   const [managedProducts, setManagedProducts] = useState<ManagedProduct[]>([]);
@@ -334,6 +338,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
           setCosts((cs ?? []).map((c: Record<string, unknown>) => ({
             localId:    nid(),
             costRowId:  c.costRowId ? String(c.costRowId) : crypto.randomUUID(),
+            sectionLabel: String(c.sectionLabel ?? "1주"),
             assignee:   String(c.assignee ?? ""),
             vendor:     String(c.vendor ?? ""),
             productName: String(c.productName ?? ""),
@@ -469,7 +474,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
       ? (revenuesRef.current[revenuesRef.current.length - 1].sectionLabel || "1주")
       : "1주");
     const newRev  = emptyRevenue(sl);
-    const newCost = emptyCost();
+    const newCost = emptyCost(sl);
     newRev.linkedCostLocalId = newCost.localId;
     setRevenues((p) => [...p, newRev]);
     setCosts((p) => [...p, newCost]);
@@ -486,10 +491,35 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
     const allLabels = [...new Map(revenuesRef.current.map(r => [r.sectionLabel || "1주", true] as [string, boolean])).keys()];
     const sl = nextSectionLabel(allLabels);
     const newRev = emptyRevenue(sl);
-    const newCost = emptyCost();
+    const newCost = emptyCost(sl);
     newRev.linkedCostLocalId = newCost.localId;
     setRevenues(p => [...p, newRev]);
     setCosts(p => [...p, newCost]);
+  }
+
+  function addCostSection() {
+    const allLabels = [...new Map(costsRef.current.map(c => [c.sectionLabel || "1주", true] as [string, boolean])).keys()];
+    const sl = nextSectionLabel(allLabels);
+    setCosts(p => [...p, emptyCost(sl)]);
+  }
+
+  function copyCostSection(sectionLabel: string) {
+    const sectionRows = costsRef.current.filter(c => (c.sectionLabel || "1주") === sectionLabel);
+    const allLabels = [...new Map(costsRef.current.map(c => [c.sectionLabel || "1주", true] as [string, boolean])).keys()];
+    const nextLabel = nextSectionLabel(allLabels);
+    const newCostRows = sectionRows.map(c => ({
+      ...c,
+      localId:        nid(),
+      costRowId:      crypto.randomUUID(),
+      sectionLabel:   nextLabel,
+      purchaseDate:   "",
+      invoiceDate:    "",
+      workCompleted:  false,
+      isApproved:     false,
+      invoiceFileUrl: "",
+      invoiceFileName:"",
+    }));
+    setCosts(p => [...p, ...newCostRows]);
   }
 
   function copySection(sectionLabel: string) {
@@ -506,7 +536,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
       invoiceDate: "",
       workCompleted: false,
     }));
-    const newCostRows = newRevRows.map(() => emptyCost());
+    const newCostRows = newRevRows.map(() => emptyCost(nextLabel));
     setRevenues(p => [...p, ...newRevRows]);
     setCosts(p => [...p, ...newCostRows]);
   }
@@ -1409,7 +1439,27 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                         </tr>
                       </thead>
                       <tbody>
-                        {costs.map((c, i) => {
+                        {[...new Map(costs.map(c => [c.sectionLabel || "1주", true] as [string, boolean])).keys()].flatMap(section => {
+                          const sectionCosts = costs.filter(c => (c.sectionLabel || "1주") === section);
+                          return [
+                            <tr key={`csh-${section}`} style={{ background: "#F0FDF4" }}>
+                              <td colSpan={16} className="px-3 py-1">
+                                <div className="flex items-center justify-between">
+                                  <span className="font-bold text-xs" style={{ color: "#059669" }}>{section}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => copyCostSection(section)}
+                                    className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg border transition-colors hover:bg-emerald-50"
+                                    style={{ borderColor: "#6EE7B7", color: "#059669" }}
+                                  >
+                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                                    섹션 복사
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>,
+                            ...sectionCosts.map((c) => {
+                          const i = costs.indexOf(c);
                           const costRevAmount = parseWon(c.total);
                           const costFmtAmount = costRevAmount ? `₩${costRevAmount.toLocaleString()}` : "—";
                           // UUID 기반 매칭 — 품명·날짜·금액 충돌 완전 방지
@@ -1634,16 +1684,29 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                             </td>
                           </tr>
                           );
+                        }),
+                          ];
                         })}
                       </tbody>
                     </table>
                   </div>
-                  <button type="button" onClick={() => setCosts((p) => [...p, emptyCost()])}
-                    className="mt-3 flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-xl border transition-colors hover:bg-slate-50"
-                    style={{ borderColor: "#059669", color: "#059669", borderStyle: "dashed" }}>
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                    매입(구매) 행 추가
-                  </button>
+                  <div className="mt-3 flex items-center gap-2">
+                    <button type="button" onClick={() => {
+                      const lastSection = costsRef.current.length > 0 ? (costsRef.current[costsRef.current.length - 1].sectionLabel || "1주") : "1주";
+                      setCosts((p) => [...p, emptyCost(lastSection)]);
+                    }}
+                      className="flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-xl border transition-colors hover:bg-slate-50"
+                      style={{ borderColor: "#059669", color: "#059669", borderStyle: "dashed" }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                      + 행 추가
+                    </button>
+                    <button type="button" onClick={addCostSection}
+                      className="flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-xl border transition-colors hover:bg-slate-50"
+                      style={{ borderColor: "#059669", color: "#059669", borderStyle: "dashed" }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                      + 섹션 추가
+                    </button>
+                  </div>
                 </div>
               )}
 

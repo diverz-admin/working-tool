@@ -157,6 +157,7 @@ export const projectCosts = pgTable("project_costs", {
   projectId:       uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
   rowNum:          integer("row_num"),
   costRowId:       text("cost_row_id"),
+  sectionLabel:    text("section_label"),
   assignee:        text("assignee"),
   vendor:          text("vendor"),
   productName:     text("product_name"),

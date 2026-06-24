@@ -55,6 +55,7 @@ export async function PUT(req: Request, { params }: Params) {
             projectId:       id,
             rowNum:          i + 1,
             costRowId:       c.costRowId ? String(c.costRowId) : null,
+            sectionLabel:    c.sectionLabel ? String(c.sectionLabel) : null,
             assignee:        c.assignee || null,
             vendor:          c.vendor || null,
             productName:     c.productName || null,
