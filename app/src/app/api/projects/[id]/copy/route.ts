@@ -52,7 +52,7 @@ export async function POST(_req: Request, { params }: Params) {
         : Promise.resolve(),
       costs.length > 0
         ? db.insert(projectCosts).values(
-            costs.map(({ id: _id, createdAt: _c, workCompleted: _wc, isApproved: _ia, invoiceFileUrl: _fu, invoiceFileName: _fn, costRowId: _cr, invoiceDate: _ivd, ...r }) => ({
+            costs.map(({ id: _id, createdAt: _c, workCompleted: _wc, isApproved: _ia, invoiceFileUrl: _fu, invoiceFileName: _fn, costRowId: _cr, invoiceDate: _ivd, purchaseDate: _pd, ...r }) => ({
               ...r,
               projectId:       copied.id,
               costRowId:       null,
@@ -61,6 +61,7 @@ export async function POST(_req: Request, { params }: Params) {
               invoiceFileUrl:  null,
               invoiceFileName: null,
               invoiceDate:     null,
+              purchaseDate:    null,
             }))
           )
         : Promise.resolve(),
