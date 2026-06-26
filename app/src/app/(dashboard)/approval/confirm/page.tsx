@@ -156,7 +156,21 @@ export default function ConfirmPage() {
   }, []);
 
   useEffect(() => {
-    getConfirmRequests().then(setItems);
+    getConfirmRequests().then(async (data) => {
+      const orphaned = data.filter(i =>
+        i.status === "대기" &&
+        Boolean(i.depositConfirmedAt) &&
+        (Boolean(i.taxInvoiceDate) || Boolean(i.taxExempt) || i.depositAccount === "전재민")
+      );
+      if (orphaned.length > 0) {
+        await Promise.all(orphaned.map(i => updateConfirmRequest(i.id, { status: "확인완료" })));
+        setItems(data.map(i =>
+          orphaned.some(o => o.id === i.id) ? { ...i, status: "확인완료" as ConfirmStatus } : i
+        ));
+      } else {
+        setItems(data);
+      }
+    });
   }, []);
 
   /* eslint-disable react-hooks/set-state-in-effect */
