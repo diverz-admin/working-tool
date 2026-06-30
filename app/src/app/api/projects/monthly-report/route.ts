@@ -40,12 +40,12 @@ export async function GET(req: NextRequest) {
           // 통장: 기간 내 입금/승인지급 활동 / 계산서: 기간 내 계산서 발행 활동 / 그 외: 캠페인 시작일이 기간 내
           useBank
             ? sql`(
-                EXISTS (SELECT 1 FROM project_revenues pr JOIN confirm_requests cr ON cr.project_id = pr.project_id AND cr.row_key = pr.revenue_row_id AND cr.deposit_confirmed_at IS NOT NULL WHERE pr.project_id = ${projects.id} AND pr.payment_date >= ${from} AND pr.payment_date <= ${to})
+                EXISTS (SELECT 1 FROM project_revenues pr WHERE pr.project_id = ${projects.id} AND pr.payment_date >= ${from} AND pr.payment_date <= ${to})
                 OR EXISTS (SELECT 1 FROM project_costs pc WHERE pc.project_id = ${projects.id} AND pc.is_approved = true AND pc.purchase_date >= ${from} AND pc.purchase_date <= ${to})
               )`
             : useInvoice
             ? sql`(
-                EXISTS (SELECT 1 FROM project_revenues pr JOIN confirm_requests cr ON cr.project_id = pr.project_id AND cr.row_key = pr.revenue_row_id AND cr.tax_invoice_date IS NOT NULL WHERE pr.project_id = ${projects.id} AND pr.invoice_date >= ${from} AND pr.invoice_date <= ${to})
+                EXISTS (SELECT 1 FROM project_revenues pr WHERE pr.project_id = ${projects.id} AND pr.invoice_date >= ${from} AND pr.invoice_date <= ${to})
                 OR EXISTS (SELECT 1 FROM project_costs pc WHERE pc.project_id = ${projects.id} AND pc.is_approved = true AND pc.invoice_date >= ${from} AND pc.invoice_date <= ${to})
               )`
             : and(
@@ -85,20 +85,18 @@ export async function GET(req: NextRequest) {
       .where(
         and(
           inArray(projectRevenues.projectId, projectIds),
-          // 통장: 입금 승인(depositConfirmedAt)+입금일 기간 내 / 계산서: 발행완료(taxInvoiceDate)+발행일 기간 내 / 그 외: 입금확인요청(반려 제외)
+          // 통장: 입금 확인일(paymentDate) 기간 내 = 입금 승인된 행 / 계산서: 발행일(invoiceDate) 기간 내 = 발행된 행 / 그 외: 입금확인요청(반려 제외)
           useBank
             ? and(
                 isNotNull(projectRevenues.paymentDate),
                 gte(projectRevenues.paymentDate, from),
                 lte(projectRevenues.paymentDate, to),
-                sql`EXISTS (SELECT 1 FROM confirm_requests cr WHERE cr.project_id = ${projectRevenues.projectId} AND cr.row_key = ${projectRevenues.revenueRowId} AND cr.deposit_confirmed_at IS NOT NULL)`,
               )
             : useInvoice
             ? and(
                 isNotNull(projectRevenues.invoiceDate),
                 gte(projectRevenues.invoiceDate, from),
                 lte(projectRevenues.invoiceDate, to),
-                sql`EXISTS (SELECT 1 FROM confirm_requests cr WHERE cr.project_id = ${projectRevenues.projectId} AND cr.row_key = ${projectRevenues.revenueRowId} AND cr.tax_invoice_date IS NOT NULL)`,
               )
             : sql`EXISTS (SELECT 1 FROM confirm_requests WHERE project_id = ${projectRevenues.projectId} AND status != '반려')`,
         )

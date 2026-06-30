@@ -45,11 +45,9 @@ export async function GET(req: NextRequest) {
         isNotNull(revDateField),
         gte(revDateField, from),
         lte(revDateField, to),
-        // 통장: 입금 승인(depositConfirmedAt) / 계산서: 발행완료(taxInvoiceDate) / 그 외: 입금확인요청(반려 제외)
-        useBank
-          ? sql`EXISTS (SELECT 1 FROM confirm_requests cr WHERE cr.project_id = ${projectRevenues.projectId} AND cr.row_key = ${projectRevenues.revenueRowId} AND cr.deposit_confirmed_at IS NOT NULL)`
-          : useInvoice
-          ? sql`EXISTS (SELECT 1 FROM confirm_requests cr WHERE cr.project_id = ${projectRevenues.projectId} AND cr.row_key = ${projectRevenues.revenueRowId} AND cr.tax_invoice_date IS NOT NULL)`
+        // 통장(paymentDate)·계산서(invoiceDate)는 위 날짜 존재로 이미 "승인/발행됨" 판정 / 그 외: 입금확인요청(반려 제외)
+        useBank || useInvoice
+          ? undefined
           : sql`EXISTS (SELECT 1 FROM confirm_requests WHERE project_id = ${projects.id} AND status != '반려')`,
       ))
       .groupBy(

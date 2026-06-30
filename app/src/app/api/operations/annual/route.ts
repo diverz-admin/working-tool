@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
         .from(projectCosts).where(eq(projectCosts.isApproved, true)),
     ]);
 
-    // 통장 기준: 입금 확인일(paymentDate = 결재확인 승인일) 기준 매출 행 단위 조회
+    // 통장 기준: 입금 확인일(paymentDate)이 기록된 매출 행 — 결재확인 입금 승인 시 행에 직접 기록됨 (세금계산서 무관)
     const bankRevRows = useBank
       ? await db.select({
           assignedTeam:   projects.assignedTeam,
@@ -50,12 +50,10 @@ export async function GET(req: NextRequest) {
         .where(and(
           isNotNull(projectRevenues.paymentDate),
           sql`EXTRACT(YEAR FROM ${projectRevenues.paymentDate}) = ${year}`,
-          // 결재확인에서 입금 승인(depositConfirmedAt)된 매출 행만 — 세금계산서 무관
-          sql`EXISTS (SELECT 1 FROM confirm_requests cr WHERE cr.project_id = ${projectRevenues.projectId} AND cr.row_key = ${projectRevenues.revenueRowId} AND cr.deposit_confirmed_at IS NOT NULL)`,
         ))
       : [];
 
-    // 계산서 기준: 계산서 발행완료(taxInvoiceDate) 매출 행 단위 조회 — 입금 무관
+    // 계산서 기준: 계산서 발행일(invoiceDate)이 기록된 매출 행 — 결재확인 발행완료 시 행에 직접 기록됨 (입금 무관)
     const invoiceRevRows = useInvoice
       ? await db.select({
           assignedTeam:   projects.assignedTeam,
@@ -68,7 +66,6 @@ export async function GET(req: NextRequest) {
         .where(and(
           isNotNull(projectRevenues.invoiceDate),
           sql`EXTRACT(YEAR FROM ${projectRevenues.invoiceDate}) = ${year}`,
-          sql`EXISTS (SELECT 1 FROM confirm_requests cr WHERE cr.project_id = ${projectRevenues.projectId} AND cr.row_key = ${projectRevenues.revenueRowId} AND cr.tax_invoice_date IS NOT NULL)`,
         ))
       : [];
 
