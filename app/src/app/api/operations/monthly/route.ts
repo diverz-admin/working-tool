@@ -40,7 +40,10 @@ export async function GET(req: NextRequest) {
         isNotNull(revDateField),
         gte(revDateField, from),
         lte(revDateField, to),
-        useBank ? undefined : sql`EXISTS (SELECT 1 FROM confirm_requests WHERE project_id = ${projects.id} AND status != '반려')`,
+        // 통장: 결재확인 입금 승인(depositConfirmedAt)된 행만(세금계산서 무관) / 그 외: 입금확인요청(반려 제외) 존재
+        useBank
+          ? sql`EXISTS (SELECT 1 FROM confirm_requests cr WHERE cr.project_id = ${projectRevenues.projectId} AND cr.row_key = ${projectRevenues.revenueRowId} AND cr.deposit_confirmed_at IS NOT NULL)`
+          : sql`EXISTS (SELECT 1 FROM confirm_requests WHERE project_id = ${projects.id} AND status != '반려')`,
       ))
       .groupBy(
         projects.id, projects.assignedTeam, projects.assignedPerson,

@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
           // 그 외: 캠페인 시작일이 기간 내인 프로젝트
           useBank
             ? sql`(
-                EXISTS (SELECT 1 FROM project_revenues pr WHERE pr.project_id = ${projects.id} AND pr.payment_date >= ${from} AND pr.payment_date <= ${to})
+                EXISTS (SELECT 1 FROM project_revenues pr JOIN confirm_requests cr ON cr.project_id = pr.project_id AND cr.row_key = pr.revenue_row_id AND cr.deposit_confirmed_at IS NOT NULL WHERE pr.project_id = ${projects.id} AND pr.payment_date >= ${from} AND pr.payment_date <= ${to})
                 OR EXISTS (SELECT 1 FROM project_costs pc WHERE pc.project_id = ${projects.id} AND pc.is_approved = true AND pc.purchase_date >= ${from} AND pc.purchase_date <= ${to})
               )`
             : and(
@@ -80,9 +80,14 @@ export async function GET(req: NextRequest) {
       .where(
         and(
           inArray(projectRevenues.projectId, projectIds),
-          // 통장 기준: 입금 확인일(paymentDate) 기간 내 / 그 외: 입금확인요청(반려 제외) 존재
+          // 통장 기준: 결재확인 입금 승인(depositConfirmedAt)된 행만(세금계산서 무관) + 입금일 기간 내 / 그 외: 입금확인요청(반려 제외) 존재
           useBank
-            ? and(isNotNull(projectRevenues.paymentDate), gte(projectRevenues.paymentDate, from), lte(projectRevenues.paymentDate, to))
+            ? and(
+                isNotNull(projectRevenues.paymentDate),
+                gte(projectRevenues.paymentDate, from),
+                lte(projectRevenues.paymentDate, to),
+                sql`EXISTS (SELECT 1 FROM confirm_requests cr WHERE cr.project_id = ${projectRevenues.projectId} AND cr.row_key = ${projectRevenues.revenueRowId} AND cr.deposit_confirmed_at IS NOT NULL)`,
+              )
             : sql`EXISTS (SELECT 1 FROM confirm_requests WHERE project_id = ${projectRevenues.projectId} AND status != '반려')`,
         )
       );
