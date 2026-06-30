@@ -1,30 +1,23 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { confirmRequests, paymentRequests, projectRevenues, projects } from "@/db/schema";
-import { desc, getTableColumns, sql, inArray, asc } from "drizzle-orm";
+import { desc, getTableColumns, sql, inArray, asc, eq, and, isNotNull } from "drizzle-orm";
 
-const confirmTeamExpr = sql<string | null>`
-  COALESCE(
-    ${confirmRequests.assignedTeam},
-    (SELECT p.assigned_team FROM projects p WHERE p.id = ${confirmRequests.projectId})
-  )
-`;
-const paymentTeamExpr = sql<string | null>`
-  COALESCE(
-    ${paymentRequests.assignedTeam},
-    (SELECT p.assigned_team FROM projects p WHERE p.id = ${paymentRequests.projectId})
-  )
-`;
+// 팀 표시값: 요청 행의 assignedTeam 우선, 없으면 프로젝트의 assignedTeam — 행당 서브쿼리 대신 LEFT JOIN
+const confirmTeamExpr = sql<string | null>`COALESCE(${confirmRequests.assignedTeam}, ${projects.assignedTeam})`;
+const paymentTeamExpr = sql<string | null>`COALESCE(${paymentRequests.assignedTeam}, ${projects.assignedTeam})`;
 
 export async function GET() {
   try {
-    // 1. 입금확인요청 + 입금요청 병렬 (1 cold start, 2 DB 쿼리)
+    // 1. 입금확인요청 + 입금요청 병렬 (1 cold start, 2 DB 쿼리) — 팀은 projects LEFT JOIN으로 1회 해석
     const [confirmRows, paymentRows] = await Promise.all([
       db.select({ ...getTableColumns(confirmRequests), assignedTeam: confirmTeamExpr })
         .from(confirmRequests)
+        .leftJoin(projects, eq(projects.id, confirmRequests.projectId))
         .orderBy(desc(confirmRequests.createdAt)),
       db.select({ ...getTableColumns(paymentRequests), assignedTeam: paymentTeamExpr })
         .from(paymentRequests)
+        .leftJoin(projects, eq(projects.id, paymentRequests.projectId))
         .orderBy(desc(paymentRequests.createdAt)),
     ]);
 
@@ -38,7 +31,7 @@ export async function GET() {
       return NextResponse.json({ confirms: enriched, payments: paymentRows.map((r) => ({ ...r, requestedAt: r.requestedAt ? r.requestedAt.slice(0, 10) : r.requestedAt })) });
     }
 
-    const [projectRows, revenueRows] = await Promise.all([
+    const [projectRows, revenueRows, siblings] = await Promise.all([
       db.select({ id: projects.id, projectType: projects.projectType, product: projects.product, projectGroupId: projects.projectGroupId })
         .from(projects)
         .where(inArray(projects.id, projectIds)),
@@ -51,24 +44,25 @@ export async function GET() {
       })
         .from(projectRevenues)
         .where(inArray(projectRevenues.projectId, projectIds)),
+      // 캠페인 순번용 형제 프로젝트 — groupId를 서브쿼리로 해석해 추가 round-trip 제거
+      db.select({ id: projects.id, projectGroupId: projects.projectGroupId })
+        .from(projects)
+        .where(inArray(
+          projects.projectGroupId,
+          db.select({ gid: projects.projectGroupId }).from(projects)
+            .where(and(inArray(projects.id, projectIds), isNotNull(projects.projectGroupId))),
+        ))
+        .orderBy(asc(projects.createdAt)),
     ]);
 
-    // 3. 캠페인 순번 (groupIds 확인 후 1회 추가 쿼리)
-    const groupIds = [...new Set(projectRows.map(p => p.projectGroupId).filter(Boolean))] as string[];
+    // 3. 캠페인 순번 (그룹별 createdAt 오름차순 순번)
     const campaignNumberMap = new Map<string, number>();
-    if (groupIds.length > 0) {
-      const siblings = await db
-        .select({ id: projects.id, projectGroupId: projects.projectGroupId })
-        .from(projects)
-        .where(inArray(projects.projectGroupId, groupIds))
-        .orderBy(asc(projects.createdAt));
-      const counters = new Map<string, number>();
-      for (const s of siblings) {
-        if (!s.projectGroupId) continue;
-        const n = (counters.get(s.projectGroupId) ?? 0) + 1;
-        counters.set(s.projectGroupId, n);
-        campaignNumberMap.set(s.id, n);
-      }
+    const counters = new Map<string, number>();
+    for (const s of siblings) {
+      if (!s.projectGroupId) continue;
+      const n = (counters.get(s.projectGroupId) ?? 0) + 1;
+      counters.set(s.projectGroupId, n);
+      campaignNumberMap.set(s.id, n);
     }
 
     const typeMap    = new Map(projectRows.map(p => [p.id, p.projectType]));

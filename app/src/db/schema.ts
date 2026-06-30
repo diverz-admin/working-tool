@@ -179,6 +179,8 @@ export const projectCosts = pgTable("project_costs", {
 }, (table) => [
   index("project_costs_project_id_idx").on(table.projectId),
   index("project_costs_is_approved_idx").on(table.isApproved),
+  index("project_costs_invoice_date_idx").on(table.invoiceDate),
+  index("project_costs_purchase_date_idx").on(table.purchaseDate),
 ]);
 
 export type ProjectCost = typeof projectCosts.$inferSelect;
@@ -359,7 +361,11 @@ export const confirmRequests = pgTable("confirm_requests", {
   rejectReason:          text("reject_reason"),
   taxExempt:             boolean("tax_exempt").default(false),
   createdAt:            timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => [
+  index("confirm_requests_project_row_idx").on(table.projectId, table.rowKey),
+  index("confirm_requests_status_idx").on(table.status),
+  index("confirm_requests_created_at_idx").on(table.createdAt),
+]);
 
 export const paymentRequests = pgTable("payment_requests", {
   id:                 uuid("id").primaryKey().defaultRandom(),
@@ -382,7 +388,11 @@ export const paymentRequests = pgTable("payment_requests", {
   status:             text("status").notNull().default("대기"),
   rejectReason:       text("reject_reason"),
   createdAt:          timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => [
+  index("payment_requests_project_id_idx").on(table.projectId),
+  index("payment_requests_status_idx").on(table.status),
+  index("payment_requests_created_at_idx").on(table.createdAt),
+]);
 
 export const productSections = pgTable("product_sections", {
   id:        uuid("id").primaryKey().defaultRandom(),

@@ -156,17 +156,19 @@ export default function ConfirmPage() {
   }, []);
 
   useEffect(() => {
-    getConfirmRequests().then(async (data) => {
+    getConfirmRequests().then((data) => {
       const orphaned = data.filter(i =>
         i.status === "대기" &&
         Boolean(i.depositConfirmedAt) &&
         (Boolean(i.taxInvoiceDate) || Boolean(i.taxExempt) || i.depositAccount === "전재민")
       );
       if (orphaned.length > 0) {
-        await Promise.all(orphaned.map(i => updateConfirmRequest(i.id, { status: "확인완료" })));
+        const orphanIds = new Set(orphaned.map(o => o.id));
+        // 화면은 즉시 보정된 상태로 렌더하고, 서버 반영은 백그라운드로 — 로드 블로킹 제거
         setItems(data.map(i =>
-          orphaned.some(o => o.id === i.id) ? { ...i, status: "확인완료" as ConfirmStatus } : i
+          orphanIds.has(i.id) ? { ...i, status: "확인완료" as ConfirmStatus } : i
         ));
+        Promise.all(orphaned.map(i => updateConfirmRequest(i.id, { status: "확인완료" }))).catch(() => {});
       } else {
         setItems(data);
       }
