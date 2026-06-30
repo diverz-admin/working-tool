@@ -14,7 +14,6 @@ const SGA_CATEGORIES = [
 const CRITERIA_OPTIONS = [
   { value: "캠페인 시작날짜", label: "캠페인 시작날짜 기준" },
   { value: "계산서날짜", label: "계산서날짜 기준" },
-  { value: "공급가",     label: "공급가 기준" },
   { value: "통장",       label: "통장 기준" },
 ];
 
