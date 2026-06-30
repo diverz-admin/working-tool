@@ -7,8 +7,9 @@ export async function GET(req: NextRequest) {
   try {
     const year       = parseInt(req.nextUrl.searchParams.get("year") ?? String(new Date().getFullYear()));
     const criteria  = req.nextUrl.searchParams.get("criteria") ?? "캠페인 시작날짜";
-    const useSupply = criteria === "공급가";
-    const useBank   = criteria === "통장";
+    const useSupply  = criteria === "공급가";
+    const useBank    = criteria === "통장";
+    const useInvoice = criteria === "계산서날짜";
 
     // 3 쿼리 병렬 (연간매출 + 수동비용 + 직접매입)
     const [projectData, manualRows, directCostRows] = await Promise.all([
@@ -54,14 +55,38 @@ export async function GET(req: NextRequest) {
         ))
       : [];
 
+    // 계산서 기준: 계산서 발행완료(taxInvoiceDate) 매출 행 단위 조회 — 입금 무관
+    const invoiceRevRows = useInvoice
+      ? await db.select({
+          assignedTeam:   projects.assignedTeam,
+          assignedPerson: projects.assignedPerson,
+          invoiceDate:    projectRevenues.invoiceDate,
+          total:          projectRevenues.total,
+        })
+        .from(projectRevenues)
+        .innerJoin(projects, eq(projects.id, projectRevenues.projectId))
+        .where(and(
+          isNotNull(projectRevenues.invoiceDate),
+          sql`EXTRACT(YEAR FROM ${projectRevenues.invoiceDate}) = ${year}`,
+          sql`EXISTS (SELECT 1 FROM confirm_requests cr WHERE cr.project_id = ${projectRevenues.projectId} AND cr.row_key = ${projectRevenues.revenueRowId} AND cr.tax_invoice_date IS NOT NULL)`,
+        ))
+      : [];
+
     // ── 매출 집계 ──
     const teamMap = new Map<string, Map<string, number[]>>();
     const other   = new Array(12).fill(0);
 
-    // 통장 기준: 입금 확인일·실제 입금액 / 그 외: 캠페인 시작일·계약금(또는 공급가)
+    // 통장: 입금 확인일·실제 입금액 / 계산서: 발행일·실제 매출 / 그 외: 캠페인 시작일·계약금(또는 공급가)
     const revEntries = useBank
       ? bankRevRows.map(r => ({
           month:  r.paymentDate ? parseInt(r.paymentDate.substring(5, 7)) - 1 : -1,
+          amount: r.total ?? 0,
+          team:   r.assignedTeam   ?? "",
+          person: r.assignedPerson ?? "",
+        }))
+      : useInvoice
+      ? invoiceRevRows.map(r => ({
+          month:  r.invoiceDate ? parseInt(r.invoiceDate.substring(5, 7)) - 1 : -1,
           amount: r.total ?? 0,
           team:   r.assignedTeam   ?? "",
           person: r.assignedPerson ?? "",

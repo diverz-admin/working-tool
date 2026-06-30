@@ -9,8 +9,9 @@ export async function GET(req: NextRequest) {
     const year  = parseInt(searchParams.get("year")  ?? String(new Date().getFullYear()));
     const month = parseInt(searchParams.get("month") ?? "0"); // 0 = 연간 전체
     const team  = searchParams.get("team") ?? "";
-    const criteria = searchParams.get("criteria") ?? "캠페인 시작날짜";
-    const useBank  = criteria === "통장";
+    const criteria   = searchParams.get("criteria") ?? "캠페인 시작날짜";
+    const useBank    = criteria === "통장";
+    const useInvoice = criteria === "계산서날짜";
 
     const from = month > 0
       ? `${year}-${String(month).padStart(2, "0")}-01`
@@ -36,12 +37,16 @@ export async function GET(req: NextRequest) {
       .where(
         and(
           team ? eq(projects.assignedTeam, team) : undefined,
-          // 통장 기준: 기간 내 입금(paymentDate) 또는 승인 지급(purchaseDate) 활동이 있는 프로젝트
-          // 그 외: 캠페인 시작일이 기간 내인 프로젝트
+          // 통장: 기간 내 입금/승인지급 활동 / 계산서: 기간 내 계산서 발행 활동 / 그 외: 캠페인 시작일이 기간 내
           useBank
             ? sql`(
                 EXISTS (SELECT 1 FROM project_revenues pr JOIN confirm_requests cr ON cr.project_id = pr.project_id AND cr.row_key = pr.revenue_row_id AND cr.deposit_confirmed_at IS NOT NULL WHERE pr.project_id = ${projects.id} AND pr.payment_date >= ${from} AND pr.payment_date <= ${to})
                 OR EXISTS (SELECT 1 FROM project_costs pc WHERE pc.project_id = ${projects.id} AND pc.is_approved = true AND pc.purchase_date >= ${from} AND pc.purchase_date <= ${to})
+              )`
+            : useInvoice
+            ? sql`(
+                EXISTS (SELECT 1 FROM project_revenues pr JOIN confirm_requests cr ON cr.project_id = pr.project_id AND cr.row_key = pr.revenue_row_id AND cr.tax_invoice_date IS NOT NULL WHERE pr.project_id = ${projects.id} AND pr.invoice_date >= ${from} AND pr.invoice_date <= ${to})
+                OR EXISTS (SELECT 1 FROM project_costs pc WHERE pc.project_id = ${projects.id} AND pc.is_approved = true AND pc.invoice_date >= ${from} AND pc.invoice_date <= ${to})
               )`
             : and(
                 isNotNull(projects.startDate),
@@ -80,13 +85,20 @@ export async function GET(req: NextRequest) {
       .where(
         and(
           inArray(projectRevenues.projectId, projectIds),
-          // 통장 기준: 결재확인 입금 승인(depositConfirmedAt)된 행만(세금계산서 무관) + 입금일 기간 내 / 그 외: 입금확인요청(반려 제외) 존재
+          // 통장: 입금 승인(depositConfirmedAt)+입금일 기간 내 / 계산서: 발행완료(taxInvoiceDate)+발행일 기간 내 / 그 외: 입금확인요청(반려 제외)
           useBank
             ? and(
                 isNotNull(projectRevenues.paymentDate),
                 gte(projectRevenues.paymentDate, from),
                 lte(projectRevenues.paymentDate, to),
                 sql`EXISTS (SELECT 1 FROM confirm_requests cr WHERE cr.project_id = ${projectRevenues.projectId} AND cr.row_key = ${projectRevenues.revenueRowId} AND cr.deposit_confirmed_at IS NOT NULL)`,
+              )
+            : useInvoice
+            ? and(
+                isNotNull(projectRevenues.invoiceDate),
+                gte(projectRevenues.invoiceDate, from),
+                lte(projectRevenues.invoiceDate, to),
+                sql`EXISTS (SELECT 1 FROM confirm_requests cr WHERE cr.project_id = ${projectRevenues.projectId} AND cr.row_key = ${projectRevenues.revenueRowId} AND cr.tax_invoice_date IS NOT NULL)`,
               )
             : sql`EXISTS (SELECT 1 FROM confirm_requests WHERE project_id = ${projectRevenues.projectId} AND status != '반려')`,
         )
@@ -137,7 +149,7 @@ export async function GET(req: NextRequest) {
     const monthly = Array.from({ length: 12 }, (_, i) => emptyMonth(i + 1));
     for (const r of revRows) {
       // 통장 기준은 입금일(paymentDate), 그 외는 캠페인 시작월
-      const refDate = useBank ? r.paymentDate : (r.projectId ? projectStartMap.get(r.projectId) : null);
+      const refDate = useBank ? r.paymentDate : useInvoice ? r.invoiceDate : (r.projectId ? projectStartMap.get(r.projectId) : null);
       if (!refDate) continue;
       const m = parseInt(refDate.substring(5, 7)) - 1;
       monthly[m].revenue    += r.total ?? 0;
@@ -172,7 +184,7 @@ export async function GET(req: NextRequest) {
       const teamMonthly = Array.from({ length: 12 }, (_, i) => emptyMonth(i + 1));
       for (const p of ps) {
         for (const r of p.revenueRows) {
-          const refDate = useBank ? r.paymentDate : p.startDate;
+          const refDate = useBank ? r.paymentDate : useInvoice ? r.invoiceDate : p.startDate;
           const rm = refDate ? parseInt(refDate.substring(5, 7)) - 1 : -1;
           if (rm >= 0) {
             teamMonthly[rm].revenue += r.total ?? 0;

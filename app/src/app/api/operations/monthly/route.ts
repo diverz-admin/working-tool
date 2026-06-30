@@ -7,13 +7,17 @@ export async function GET(req: NextRequest) {
   try {
     const year     = parseInt(req.nextUrl.searchParams.get("year")  ?? String(new Date().getFullYear()));
     const month    = parseInt(req.nextUrl.searchParams.get("month") ?? String(new Date().getMonth() + 1));
-    const criteria = req.nextUrl.searchParams.get("criteria") ?? "캠페인 시작날짜";
-    const useBank  = criteria === "통장";
+    const criteria   = req.nextUrl.searchParams.get("criteria") ?? "캠페인 시작날짜";
+    const useBank    = criteria === "통장";
+    const useInvoice = criteria === "계산서날짜";
+    const useActual  = useBank || useInvoice; // 실제 매출 행 금액 기준
 
-    // 매출 날짜: 통장 → 입금 확인일(paymentDate = 결재확인 승인일), 그 외 → 캠페인 시작일(startDate)
-    // 매입 날짜: 통장 → 승인일(purchaseDate),                      그 외 → 계산서 발행일(invoiceDate)
-    const revDateField  = useBank ? projectRevenues.paymentDate : projects.startDate;
-    const costDateField = useBank ? projectCosts.purchaseDate   : projectCosts.invoiceDate;
+    // 매출 날짜: 통장 → 입금 확인일(paymentDate), 계산서 → 발행일(invoiceDate), 그 외 → 캠페인 시작일(startDate)
+    // 매입 날짜: 통장 → 승인일(purchaseDate),    그 외 → 계산서 발행일(invoiceDate)
+    const revDateField  = useBank ? projectRevenues.paymentDate
+                        : useInvoice ? projectRevenues.invoiceDate
+                        : projects.startDate;
+    const costDateField = useBank ? projectCosts.purchaseDate : projectCosts.invoiceDate;
 
     const from = `${year}-${String(month).padStart(2, "0")}-01`;
     const to   = new Date(year, month, 0).toISOString().slice(0, 10);
@@ -25,6 +29,7 @@ export async function GET(req: NextRequest) {
         assignedPerson: projects.assignedPerson,
         startDate:      projects.startDate,
         paymentDate:    sql<string>`MAX(${projectRevenues.paymentDate})`,
+        invoiceDate:    sql<string>`MAX(${projectRevenues.invoiceDate})`,
         contractAmount: projects.contractAmount,
         kpiSupply:      projects.kpiSupply,
         kpiTax:         projects.kpiTax,
@@ -40,9 +45,11 @@ export async function GET(req: NextRequest) {
         isNotNull(revDateField),
         gte(revDateField, from),
         lte(revDateField, to),
-        // 통장: 결재확인 입금 승인(depositConfirmedAt)된 행만(세금계산서 무관) / 그 외: 입금확인요청(반려 제외) 존재
+        // 통장: 입금 승인(depositConfirmedAt) / 계산서: 발행완료(taxInvoiceDate) / 그 외: 입금확인요청(반려 제외)
         useBank
           ? sql`EXISTS (SELECT 1 FROM confirm_requests cr WHERE cr.project_id = ${projectRevenues.projectId} AND cr.row_key = ${projectRevenues.revenueRowId} AND cr.deposit_confirmed_at IS NOT NULL)`
+          : useInvoice
+          ? sql`EXISTS (SELECT 1 FROM confirm_requests cr WHERE cr.project_id = ${projectRevenues.projectId} AND cr.row_key = ${projectRevenues.revenueRowId} AND cr.tax_invoice_date IS NOT NULL)`
           : sql`EXISTS (SELECT 1 FROM confirm_requests WHERE project_id = ${projects.id} AND status != '반려')`,
       ))
       .groupBy(
@@ -84,13 +91,13 @@ export async function GET(req: NextRequest) {
       assignedTeam: p.assignedTeam,
       assignee:     p.assignedPerson,
       startDate:    p.startDate,
-      invoiceDate:  null as string | null,
+      invoiceDate:  useInvoice ? (p.invoiceDate ?? null) : null,
       paymentDate:  p.paymentDate ?? null,
       clientName:   p.clientName ?? null,
-      // 통장 기준은 실제 입금액(매출 행 합계), 그 외는 계약금 우선
-      total:       useBank ? Number(p.totalSum ?? 0)  : (p.contractAmount ?? Number(p.totalSum ?? 0)),
-      supplyPrice: useBank ? Number(p.supplySum ?? 0) : (p.kpiSupply      ?? Number(p.supplySum ?? 0)),
-      tax:         useBank ? Number(p.taxSum ?? 0)    : (p.kpiTax         ?? Number(p.taxSum    ?? 0)),
+      // 통장·계산서 기준은 실제 매출 행 금액, 그 외는 계약금 우선
+      total:       useActual ? Number(p.totalSum ?? 0)  : (p.contractAmount ?? Number(p.totalSum ?? 0)),
+      supplyPrice: useActual ? Number(p.supplySum ?? 0) : (p.kpiSupply      ?? Number(p.supplySum ?? 0)),
+      tax:         useActual ? Number(p.taxSum ?? 0)    : (p.kpiTax         ?? Number(p.taxSum    ?? 0)),
     }));
 
     // ── 승인된 내부지출 → 해당 월 SGA 카테고리별 합산 ──

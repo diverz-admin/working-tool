@@ -294,7 +294,7 @@ export default function ProjectReportPage() {
   const [year,   setYear]   = useState(now.getFullYear());
   const [month,  setMonth]  = useState(0); // 0 = 연간
   const [team,   setTeam]   = useState("전체");
-  const [criteria, setCriteria] = useState<"캠페인 시작날짜" | "통장">("캠페인 시작날짜");
+  const [criteria, setCriteria] = useState<"캠페인 시작날짜" | "계산서날짜" | "통장">("캠페인 시작날짜");
   const [tab,    setTab]    = useState<AnalysisTab>("overview");
   const [data,   setData]   = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -379,6 +379,8 @@ export default function ProjectReportPage() {
           <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>
             {criteria === "통장"
               ? "매출: 통장 입금일(결재확인 승인일) 기준 · 매입: 승인일 기준"
+              : criteria === "계산서날짜"
+              ? "매출: 계산서 발행완료(결재확인) 기준 · 매입: 계산서 발행일 기준"
               : "매출: 캠페인 시작일 기준 · 매입: 계산서 발행일 기준"}
           </p>
         </div>
@@ -452,6 +454,7 @@ export default function ProjectReportPage() {
         <div className="flex gap-1">
           {([
             { value: "캠페인 시작날짜", label: "캠페인 시작일" },
+            { value: "계산서날짜",     label: "계산서 발행일" },
             { value: "통장",           label: "통장 기준" },
           ] as const).map(({ value, label }) => (
             <button key={value} onClick={() => setCriteria(value)}

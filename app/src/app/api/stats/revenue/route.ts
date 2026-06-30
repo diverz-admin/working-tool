@@ -28,6 +28,8 @@ export async function GET(req: Request) {
           and(
             isNotNull(projectRevenues.invoiceDate),
             sql`EXTRACT(YEAR FROM ${projectRevenues.invoiceDate}) = ${year}`,
+            // 결재확인에서 계산서 발행완료(taxInvoiceDate)된 매출 행만 — 입금 여부와 무관
+            sql`EXISTS (SELECT 1 FROM confirm_requests cr WHERE cr.project_id = ${projectRevenues.projectId} AND cr.row_key = ${projectRevenues.revenueRowId} AND cr.tax_invoice_date IS NOT NULL)`,
             teamParam ? eq(projects.assignedTeam, teamParam) : undefined,
           )
         )
