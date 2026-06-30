@@ -9,6 +9,8 @@ export async function GET(req: NextRequest) {
     const year  = parseInt(searchParams.get("year")  ?? String(new Date().getFullYear()));
     const month = parseInt(searchParams.get("month") ?? "0"); // 0 = 연간 전체
     const team  = searchParams.get("team") ?? "";
+    const criteria = searchParams.get("criteria") ?? "캠페인 시작날짜";
+    const useBank  = criteria === "통장";
 
     const from = month > 0
       ? `${year}-${String(month).padStart(2, "0")}-01`
@@ -34,9 +36,18 @@ export async function GET(req: NextRequest) {
       .where(
         and(
           team ? eq(projects.assignedTeam, team) : undefined,
-          isNotNull(projects.startDate),
-          gte(projects.startDate, from),
-          lte(projects.startDate, to),
+          // 통장 기준: 기간 내 입금(paymentDate) 또는 승인 지급(purchaseDate) 활동이 있는 프로젝트
+          // 그 외: 캠페인 시작일이 기간 내인 프로젝트
+          useBank
+            ? sql`(
+                EXISTS (SELECT 1 FROM project_revenues pr WHERE pr.project_id = ${projects.id} AND pr.payment_date >= ${from} AND pr.payment_date <= ${to})
+                OR EXISTS (SELECT 1 FROM project_costs pc WHERE pc.project_id = ${projects.id} AND pc.is_approved = true AND pc.purchase_date >= ${from} AND pc.purchase_date <= ${to})
+              )`
+            : and(
+                isNotNull(projects.startDate),
+                gte(projects.startDate, from),
+                lte(projects.startDate, to),
+              ),
         )
       );
 
@@ -69,15 +80,19 @@ export async function GET(req: NextRequest) {
       .where(
         and(
           inArray(projectRevenues.projectId, projectIds),
-          sql`EXISTS (SELECT 1 FROM confirm_requests WHERE project_id = ${projectRevenues.projectId} AND status != '반려')`,
+          // 통장 기준: 입금 확인일(paymentDate) 기간 내 / 그 외: 입금확인요청(반려 제외) 존재
+          useBank
+            ? and(isNotNull(projectRevenues.paymentDate), gte(projectRevenues.paymentDate, from), lte(projectRevenues.paymentDate, to))
+            : sql`EXISTS (SELECT 1 FROM confirm_requests WHERE project_id = ${projectRevenues.projectId} AND status != '반려')`,
         )
       );
 
-    // 승인 매입 — 계산서 발행일(invoiceDate) 기준
+    // 승인 매입 — 통장 기준: 승인일(purchaseDate) / 그 외: 계산서 발행일(invoiceDate)
     const costRows = await db
       .select({
         projectId:    projectCosts.projectId,
         invoiceDate:  projectCosts.invoiceDate,
+        purchaseDate: projectCosts.purchaseDate,
         total:        projectCosts.total,
         supplyPrice:  projectCosts.supplyPrice,
         productName:  projectCosts.productName,
@@ -88,9 +103,9 @@ export async function GET(req: NextRequest) {
         and(
           inArray(projectCosts.projectId, projectIds),
           eq(projectCosts.isApproved, true),
-          isNotNull(projectCosts.invoiceDate),
-          gte(projectCosts.invoiceDate, from),
-          lte(projectCosts.invoiceDate, to),
+          useBank
+            ? and(isNotNull(projectCosts.purchaseDate), gte(projectCosts.purchaseDate, from), lte(projectCosts.purchaseDate, to))
+            : and(isNotNull(projectCosts.invoiceDate), gte(projectCosts.invoiceDate, from), lte(projectCosts.invoiceDate, to)),
         )
       );
 
@@ -116,16 +131,19 @@ export async function GET(req: NextRequest) {
     // 월별 집계 (12개월) — 확정 매출은 캠페인 시작월 기준
     const monthly = Array.from({ length: 12 }, (_, i) => emptyMonth(i + 1));
     for (const r of revRows) {
-      const startDate = r.projectId ? projectStartMap.get(r.projectId) : null;
-      if (!startDate) continue;
-      const m = parseInt(startDate.substring(5, 7)) - 1;
+      // 통장 기준은 입금일(paymentDate), 그 외는 캠페인 시작월
+      const refDate = useBank ? r.paymentDate : (r.projectId ? projectStartMap.get(r.projectId) : null);
+      if (!refDate) continue;
+      const m = parseInt(refDate.substring(5, 7)) - 1;
       monthly[m].revenue    += r.total ?? 0;
       monthly[m].supplyPrice += r.supplyPrice ?? 0;
       monthly[m].count      += 1;
     }
-    // 매입은 계산서 발행일(invoiceDate) 월 기준
+    // 매입은 통장 기준 승인일(purchaseDate), 그 외 계산서 발행일(invoiceDate) 월 기준
     for (const c of costRows) {
-      const m = parseInt(c.invoiceDate!.substring(5, 7)) - 1;
+      const cd = useBank ? c.purchaseDate : c.invoiceDate;
+      if (!cd) continue;
+      const m = parseInt(cd.substring(5, 7)) - 1;
       monthly[m].cost += c.total ?? 0;
     }
     for (const m of monthly) {
@@ -145,20 +163,21 @@ export async function GET(req: NextRequest) {
       const cost    = sum(ps, p => p.cost);
       const margin  = revenue - cost;
 
-      // 팀별 월별 — 확정 매출은 캠페인 시작월 기준
+      // 팀별 월별 — 통장 기준: 매출 입금일·매입 승인일 / 그 외: 매출 캠페인 시작월·매입 계산서 발행월
       const teamMonthly = Array.from({ length: 12 }, (_, i) => emptyMonth(i + 1));
       for (const p of ps) {
-        const startDate = p.startDate;
-        const rm = startDate ? parseInt(startDate.substring(5, 7)) - 1 : -1;
-        if (rm >= 0) {
-          for (const r of p.revenueRows) {
+        for (const r of p.revenueRows) {
+          const refDate = useBank ? r.paymentDate : p.startDate;
+          const rm = refDate ? parseInt(refDate.substring(5, 7)) - 1 : -1;
+          if (rm >= 0) {
             teamMonthly[rm].revenue += r.total ?? 0;
             teamMonthly[rm].count   += 1;
           }
         }
         for (const c of p.costRows) {
-          const cm = parseInt(c.invoiceDate!.substring(5, 7)) - 1;
-          teamMonthly[cm].cost += c.total ?? 0;
+          const cd = useBank ? c.purchaseDate : c.invoiceDate;
+          const cm = cd ? parseInt(cd.substring(5, 7)) - 1 : -1;
+          if (cm >= 0) teamMonthly[cm].cost += c.total ?? 0;
         }
       }
       for (const m of teamMonthly) {

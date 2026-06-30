@@ -8,6 +8,7 @@ export async function GET(req: NextRequest) {
     const year       = parseInt(req.nextUrl.searchParams.get("year") ?? String(new Date().getFullYear()));
     const criteria  = req.nextUrl.searchParams.get("criteria") ?? "캠페인 시작날짜";
     const useSupply = criteria === "공급가";
+    const useBank   = criteria === "통장";
 
     // 3 쿼리 병렬 (연간매출 + 수동비용 + 직접매입)
     const [projectData, manualRows, directCostRows] = await Promise.all([
@@ -35,20 +36,44 @@ export async function GET(req: NextRequest) {
         .from(projectCosts).where(eq(projectCosts.isApproved, true)),
     ]);
 
+    // 통장 기준: 입금 확인일(paymentDate = 결재확인 승인일) 기준 매출 행 단위 조회
+    const bankRevRows = useBank
+      ? await db.select({
+          assignedTeam:   projects.assignedTeam,
+          assignedPerson: projects.assignedPerson,
+          paymentDate:    projectRevenues.paymentDate,
+          total:          projectRevenues.total,
+        })
+        .from(projectRevenues)
+        .innerJoin(projects, eq(projects.id, projectRevenues.projectId))
+        .where(and(
+          isNotNull(projectRevenues.paymentDate),
+          sql`EXTRACT(YEAR FROM ${projectRevenues.paymentDate}) = ${year}`,
+        ))
+      : [];
+
     // ── 매출 집계 ──
     const teamMap = new Map<string, Map<string, number[]>>();
     const other   = new Array(12).fill(0);
 
-    for (const p of projectData) {
-      const refDate = p.startDate;
-      if (!refDate) continue;
-      const month  = parseInt(refDate.substring(5, 7)) - 1;
-      const amount = useSupply
-        ? (p.kpiSupply ?? Number(p.supplySum))
-        : (p.contractAmount ?? Number(p.totalSum));
-      const team   = p.assignedTeam   ?? "";
-      const person = p.assignedPerson ?? "";
+    // 통장 기준: 입금 확인일·실제 입금액 / 그 외: 캠페인 시작일·계약금(또는 공급가)
+    const revEntries = useBank
+      ? bankRevRows.map(r => ({
+          month:  r.paymentDate ? parseInt(r.paymentDate.substring(5, 7)) - 1 : -1,
+          amount: r.total ?? 0,
+          team:   r.assignedTeam   ?? "",
+          person: r.assignedPerson ?? "",
+        }))
+      : projectData.map(p => ({
+          month:  p.startDate ? parseInt(p.startDate.substring(5, 7)) - 1 : -1,
+          amount: useSupply ? (p.kpiSupply ?? Number(p.supplySum)) : (p.contractAmount ?? Number(p.totalSum)),
+          team:   p.assignedTeam   ?? "",
+          person: p.assignedPerson ?? "",
+        }));
 
+    for (const e of revEntries) {
+      if (e.month < 0) continue;
+      const { month, amount, team, person } = e;
       if (!team) { other[month] += amount; continue; }
       if (!teamMap.has(team)) teamMap.set(team, new Map());
       const pMap = teamMap.get(team)!;
@@ -71,7 +96,8 @@ export async function GET(req: NextRequest) {
     const filtered     = manualRows.filter(r => r.category !== "직접매입(상품)");
     const directMonthly = new Array(12).fill(0);
     for (const r of directCostRows) {
-      const dateStr = r.invoiceDate ?? r.purchaseDate;
+      // 통장 기준: 승인일(purchaseDate) / 그 외: 계산서 발행일(invoiceDate, 없으면 매입일)
+      const dateStr = useBank ? r.purchaseDate : (r.invoiceDate ?? r.purchaseDate);
       if (!dateStr) continue;
       if (parseInt(dateStr.substring(0, 4)) !== year) continue;
       directMonthly[parseInt(dateStr.substring(5, 7)) - 1] += r.total ?? 0;

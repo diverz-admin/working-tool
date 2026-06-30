@@ -7,8 +7,13 @@ export async function GET(req: NextRequest) {
   try {
     const year     = parseInt(req.nextUrl.searchParams.get("year")  ?? String(new Date().getFullYear()));
     const month    = parseInt(req.nextUrl.searchParams.get("month") ?? String(new Date().getMonth() + 1));
-    // 매입은 criteria(캠페인 시작날짜/계산서날짜)와 무관하게 항상 세금계산서 발행일(invoiceDate) 기준 — 연간 손익관리와 동일
-    const costDateField = projectCosts.invoiceDate;
+    const criteria = req.nextUrl.searchParams.get("criteria") ?? "캠페인 시작날짜";
+    const useBank  = criteria === "통장";
+
+    // 매출 날짜: 통장 → 입금 확인일(paymentDate = 결재확인 승인일), 그 외 → 캠페인 시작일(startDate)
+    // 매입 날짜: 통장 → 승인일(purchaseDate),                      그 외 → 계산서 발행일(invoiceDate)
+    const revDateField  = useBank ? projectRevenues.paymentDate : projects.startDate;
+    const costDateField = useBank ? projectCosts.purchaseDate   : projectCosts.invoiceDate;
 
     const from = `${year}-${String(month).padStart(2, "0")}-01`;
     const to   = new Date(year, month, 0).toISOString().slice(0, 10);
@@ -19,6 +24,7 @@ export async function GET(req: NextRequest) {
         assignedTeam:   projects.assignedTeam,
         assignedPerson: projects.assignedPerson,
         startDate:      projects.startDate,
+        paymentDate:    sql<string>`MAX(${projectRevenues.paymentDate})`,
         contractAmount: projects.contractAmount,
         kpiSupply:      projects.kpiSupply,
         kpiTax:         projects.kpiTax,
@@ -31,10 +37,10 @@ export async function GET(req: NextRequest) {
       .innerJoin(projects, eq(projectRevenues.projectId, projects.id))
       .leftJoin(clients, eq(projects.clientId, clients.id))
       .where(and(
-        isNotNull(projects.startDate),
-        gte(projects.startDate, from),
-        lte(projects.startDate, to),
-        sql`EXISTS (SELECT 1 FROM confirm_requests WHERE project_id = ${projects.id} AND status != '반려')`,
+        isNotNull(revDateField),
+        gte(revDateField, from),
+        lte(revDateField, to),
+        useBank ? undefined : sql`EXISTS (SELECT 1 FROM confirm_requests WHERE project_id = ${projects.id} AND status != '반려')`,
       ))
       .groupBy(
         projects.id, projects.assignedTeam, projects.assignedPerson,
@@ -56,6 +62,7 @@ export async function GET(req: NextRequest) {
         total:        projectCosts.total,
         startDate:    projects.startDate,
         invoiceDate:  projectCosts.invoiceDate,
+        purchaseDate: projectCosts.purchaseDate,
       })
       .from(projectCosts)
       .innerJoin(projects, eq(projectCosts.projectId, projects.id))
@@ -75,10 +82,12 @@ export async function GET(req: NextRequest) {
       assignee:     p.assignedPerson,
       startDate:    p.startDate,
       invoiceDate:  null as string | null,
+      paymentDate:  p.paymentDate ?? null,
       clientName:   p.clientName ?? null,
-      total:       p.contractAmount ?? Number(p.totalSum ?? 0),
-      supplyPrice: p.kpiSupply      ?? Number(p.supplySum ?? 0),
-      tax:         p.kpiTax         ?? Number(p.taxSum    ?? 0),
+      // 통장 기준은 실제 입금액(매출 행 합계), 그 외는 계약금 우선
+      total:       useBank ? Number(p.totalSum ?? 0)  : (p.contractAmount ?? Number(p.totalSum ?? 0)),
+      supplyPrice: useBank ? Number(p.supplySum ?? 0) : (p.kpiSupply      ?? Number(p.supplySum ?? 0)),
+      tax:         useBank ? Number(p.taxSum ?? 0)    : (p.kpiTax         ?? Number(p.taxSum    ?? 0)),
     }));
 
     // ── 승인된 내부지출 → 해당 월 SGA 카테고리별 합산 ──

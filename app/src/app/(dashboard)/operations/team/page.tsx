@@ -16,7 +16,23 @@ const TEAM_COLORS: Record<string, string> = {
 const CRITERIA_OPTIONS = [
   { value: "캠페인 시작날짜", label: "캠페인 시작날짜 기준" },
   { value: "계산서날짜", label: "계산서날짜 기준" },
+  { value: "통장", label: "통장 기준" },
 ];
+
+// 매출 표시 날짜: 통장→입금일(paymentDate), 계산서→발행일(invoiceDate), 그 외→캠페인 시작일(startDate)
+function revDateLabel(criteria: string) {
+  return criteria === "통장" ? "통장(입금일)" : criteria === "계산서날짜" ? "계산서날짜" : "캠페인 시작날짜";
+}
+function revDateVal(r: { startDate: string | null; invoiceDate: string | null; paymentDate: string | null }, criteria: string) {
+  return criteria === "통장" ? r.paymentDate : criteria === "계산서날짜" ? r.invoiceDate : r.startDate;
+}
+// 매입 표시 날짜: 통장→승인일(purchaseDate), 그 외→계산서 발행일(invoiceDate)
+function costDateLabel(criteria: string) {
+  return criteria === "통장" ? "통장(승인일)" : "계산서날짜";
+}
+function costDateVal(r: { invoiceDate: string | null; purchaseDate: string | null }, criteria: string) {
+  return criteria === "통장" ? r.purchaseDate : r.invoiceDate;
+}
 
 // ─── 타입 ────────────────────────────────────────────────
 
@@ -32,6 +48,7 @@ interface RevenueRow {
   total: number | null;
   startDate: string | null;
   invoiceDate: string | null;
+  paymentDate: string | null;
   clientName: string | null;
 }
 
@@ -48,6 +65,7 @@ interface CostRow {
   total: number | null;
   startDate: string | null;
   invoiceDate: string | null;
+  purchaseDate: string | null;
 }
 
 // ─── 유틸 ────────────────────────────────────────────────
@@ -150,7 +168,7 @@ function RevenueTable({ rows, criteria }: { rows: RevenueRow[]; criteria: string
   const totalSupply = sumN(rows.map(r => r.supplyPrice));
   const totalTax    = sumN(rows.map(r => r.tax));
   const totalAmount = sumN(rows.map(r => r.total));
-  const dateLabel   = criteria === "계산서날짜" ? "계산서날짜" : "캠페인 시작날짜";
+  const dateLabel   = revDateLabel(criteria);
 
   return (
     <section>
@@ -171,7 +189,7 @@ function RevenueTable({ rows, criteria }: { rows: RevenueRow[]; criteria: string
               <tr key={r.id}>
                 <td style={{ ...S.tdLabel, width:36 }}>{i+1}</td>
                 <td style={S.tdLabel}>{r.assignee || <span style={{color:"#CBD5E1"}}>—</span>}</td>
-                <td style={{ ...S.tdData, textAlign:"center" }}>{dateFmt(criteria==="계산서날짜" ? r.invoiceDate : r.startDate)}</td>
+                <td style={{ ...S.tdData, textAlign:"center" }}>{dateFmt(revDateVal(r, criteria))}</td>
                 <td style={{ ...S.tdData, textAlign:"left", maxWidth:160 }}>{r.clientName || <span style={{color:"#CBD5E1"}}>—</span>}</td>
                 <td style={{ ...S.tdData, textAlign:"left" }}>{r.productName || <span style={{color:"#CBD5E1"}}>—</span>}</td>
                 <td style={{ ...S.tdData, textAlign:"center" }}>{r.quantity ? `${r.quantity}개` : <span style={{color:"#CBD5E1"}}>—</span>}</td>
@@ -199,12 +217,11 @@ function RevenueTable({ rows, criteria }: { rows: RevenueRow[]; criteria: string
 
 // ─── 매입 테이블 ──────────────────────────────────────────
 
-function CostTable({ rows }: { rows: CostRow[] }) {
+function CostTable({ rows, criteria }: { rows: CostRow[]; criteria: string }) {
   const totalSupply = sumN(rows.map(r => r.supplyPrice));
   const totalTax    = sumN(rows.map(r => r.tax));
   const totalAmount = sumN(rows.map(r => r.total));
-  // 매입은 항상 세금계산서 발행일 기준
-  const dateLabel   = "계산서날짜";
+  const dateLabel   = costDateLabel(criteria);
 
   return (
     <section>
@@ -225,7 +242,7 @@ function CostTable({ rows }: { rows: CostRow[] }) {
               <tr key={r.id}>
                 <td style={{ ...S.tdLabel, width:36 }}>{i+1}</td>
                 <td style={S.tdLabel}>{r.assignee || <span style={{color:"#CBD5E1"}}>—</span>}</td>
-                <td style={{ ...S.tdData, textAlign:"center" }}>{dateFmt(r.invoiceDate)}</td>
+                <td style={{ ...S.tdData, textAlign:"center" }}>{dateFmt(costDateVal(r, criteria))}</td>
                 <td style={{ ...S.tdData, textAlign:"left" }}>{r.vendor || <span style={{color:"#CBD5E1"}}>—</span>}</td>
                 <td style={{ ...S.tdData, textAlign:"left" }}>{r.productName || <span style={{color:"#CBD5E1"}}>—</span>}</td>
                 <td style={{ ...S.tdData, textAlign:"center" }}>{r.quantity ? `${r.quantity}개` : <span style={{color:"#CBD5E1"}}>—</span>}</td>
@@ -408,7 +425,7 @@ export default function TeamProfitPage() {
 
           {dataTab === "revenue"
             ? <RevenueTable rows={filteredRev}  criteria={criteria} />
-            : <CostTable    rows={filteredCost} />
+            : <CostTable    rows={filteredCost} criteria={criteria} />
           }
         </>
       )}

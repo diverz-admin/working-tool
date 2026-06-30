@@ -294,6 +294,7 @@ export default function ProjectReportPage() {
   const [year,   setYear]   = useState(now.getFullYear());
   const [month,  setMonth]  = useState(0); // 0 = 연간
   const [team,   setTeam]   = useState("전체");
+  const [criteria, setCriteria] = useState<"캠페인 시작날짜" | "통장">("캠페인 시작날짜");
   const [tab,    setTab]    = useState<AnalysisTab>("overview");
   const [data,   setData]   = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -302,10 +303,10 @@ export default function ProjectReportPage() {
 
   const load = useCallback(() => {
     setLoading(true);
-    const p = new URLSearchParams({ year: String(year), month: String(month), ...(team !== "전체" ? { team } : {}) });
+    const p = new URLSearchParams({ year: String(year), month: String(month), criteria, ...(team !== "전체" ? { team } : {}) });
     fetch(`/api/projects/monthly-report?${p}`)
       .then(r => r.json()).then(setData).finally(() => setLoading(false));
-  }, [year, month, team]);
+  }, [year, month, team, criteria]);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, [load]);
@@ -317,9 +318,9 @@ export default function ProjectReportPage() {
     if (month === 0) { setPrevData(null); return; }
     const py = month === 1 ? year - 1 : year;
     const pm = month === 1 ? 12 : month - 1;
-    const p = new URLSearchParams({ year: String(py), month: String(pm), ...(team !== "전체" ? { team } : {}) });
+    const p = new URLSearchParams({ year: String(py), month: String(pm), criteria, ...(team !== "전체" ? { team } : {}) });
     fetch(`/api/projects/monthly-report?${p}`).then(r => r.json()).then(setPrevData);
-  }, [year, month, team]);
+  }, [year, month, team, criteria]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const total = data?.totalSummary;
@@ -375,7 +376,11 @@ export default function ProjectReportPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold" style={{ color: "#191F28" }}>프로젝트 리포트</h1>
-          <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>매출: 캠페인 시작일 기준 · 매입: 계산서 발행일 기준</p>
+          <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>
+            {criteria === "통장"
+              ? "매출: 통장 입금일(결재확인 승인일) 기준 · 매입: 승인일 기준"
+              : "매출: 캠페인 시작일 기준 · 매입: 계산서 발행일 기준"}
+          </p>
         </div>
         <button onClick={exportExcel} disabled={!total || total.projectCount === 0}
           className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition-all hover:bg-slate-50 disabled:opacity-40"
@@ -437,6 +442,26 @@ export default function ProjectReportPage() {
                 border:     `1px solid ${team === t ? "rgba(49,130,246,0.3)" : "#E9EBEF"}`,
               }}>
               {t}
+            </button>
+          ))}
+        </div>
+
+        <div className="w-px h-5" style={{ background: "#E9EBEF" }} />
+
+        {/* 기준 토글 */}
+        <div className="flex gap-1">
+          {([
+            { value: "캠페인 시작날짜", label: "캠페인 시작일" },
+            { value: "통장",           label: "통장 기준" },
+          ] as const).map(({ value, label }) => (
+            <button key={value} onClick={() => setCriteria(value)}
+              className="px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
+              style={{
+                background: criteria === value ? "rgba(16,185,129,0.1)" : "#F8FAFC",
+                color:      criteria === value ? "#10B981" : "#64748B",
+                border:     `1px solid ${criteria === value ? "rgba(16,185,129,0.3)" : "#E9EBEF"}`,
+              }}>
+              {label}
             </button>
           ))}
         </div>

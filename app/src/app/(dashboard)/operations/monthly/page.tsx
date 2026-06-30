@@ -13,7 +13,23 @@ const SGA_CATEGORIES = [
 const CRITERIA_OPTIONS = [
   { value: "캠페인 시작날짜", label: "캠페인 시작날짜 기준" },
   { value: "계산서날짜", label: "계산서날짜 기준" },
+  { value: "통장", label: "통장 기준" },
 ];
+
+// 매출 표시 날짜: 통장→입금일(paymentDate), 계산서→발행일(invoiceDate), 그 외→캠페인 시작일(startDate)
+function revDateLabel(criteria: string) {
+  return criteria === "통장" ? "통장(입금일)" : criteria === "계산서날짜" ? "계산서날짜" : "캠페인 시작날짜";
+}
+function revDateVal(r: { startDate: string | null; invoiceDate: string | null; paymentDate: string | null }, criteria: string) {
+  return criteria === "통장" ? r.paymentDate : criteria === "계산서날짜" ? r.invoiceDate : r.startDate;
+}
+// 매입 표시 날짜: 통장→승인일(purchaseDate), 그 외→계산서 발행일(invoiceDate)
+function costDateLabel(criteria: string) {
+  return criteria === "통장" ? "통장(승인일)" : "계산서날짜";
+}
+function costDateVal(r: { invoiceDate: string | null; purchaseDate: string | null }, criteria: string) {
+  return criteria === "통장" ? r.purchaseDate : r.invoiceDate;
+}
 
 // ─── 타입 ────────────────────────────────────────────────
 
@@ -28,6 +44,7 @@ interface RevenueRow {
   total: number | null;
   startDate: string | null;
   invoiceDate: string | null;
+  paymentDate: string | null;
   clientName: string | null;
 }
 
@@ -44,6 +61,7 @@ interface CostRow {
   total: number | null;
   startDate: string | null;
   invoiceDate: string | null;
+  purchaseDate: string | null;
 }
 
 interface SgaRow {
@@ -178,7 +196,7 @@ function RevenueSection({ rows, criteria }: { rows: RevenueRow[]; criteria: stri
   const totalSupply = sumN(rows.map(r => r.supplyPrice));
   const totalTax    = sumN(rows.map(r => r.tax));
   const totalAmount = sumN(rows.map(r => r.total));
-  const dateLabel   = criteria === "계산서날짜" ? "계산서날짜" : "캠페인 시작날짜";
+  const dateLabel   = revDateLabel(criteria);
 
   return (
     <div>
@@ -215,7 +233,7 @@ function RevenueSection({ rows, criteria }: { rows: RevenueRow[]; criteria: stri
                 <td style={S.tdLabel}>{i+1}</td>
                 <td style={S.tdLabel}>{r.assignedTeam || <span style={{color:"#CBD5E1"}}>—</span>}</td>
                 <td style={S.tdLabel}>{r.assignee || <span style={{color:"#CBD5E1"}}>—</span>}</td>
-                <td style={{ ...S.tdData, textAlign:"center" }}>{dateFmt(criteria==="계산서날짜" ? r.invoiceDate : r.startDate)}</td>
+                <td style={{ ...S.tdData, textAlign:"center" }}>{dateFmt(revDateVal(r, criteria))}</td>
                 <td style={{ ...S.tdData, textAlign:"left" }}>{r.clientName || <span style={{color:"#CBD5E1"}}>—</span>}</td>
                 <td style={S.tdData}>{won(r.supplyPrice)}</td>
                 <td style={S.tdData}>{won(r.tax)}</td>
@@ -242,12 +260,12 @@ function RevenueSection({ rows, criteria }: { rows: RevenueRow[]; criteria: stri
 // ─── 지출 섹션 ────────────────────────────────────────────
 
 function ExpenseSection({
-  costRows, sgaRows, year, month,
+  costRows, sgaRows, year, month, criteria,
   editKey, editValue, inputRef,
   onStartEdit, onCommitEdit, onSetEditValue,
 }: {
   costRows: CostRow[]; sgaRows: SgaRow[];
-  year: number; month: number;
+  year: number; month: number; criteria: string;
   editKey: string | null; editValue: string;
   inputRef: React.RefObject<HTMLInputElement | null>;
   onStartEdit: (key: string, val: number) => void;
@@ -268,7 +286,7 @@ function ExpenseSection({
   const otherSgaTotal = sumN(SGA_CATEGORIES.filter(c => c !== "직접매입(상품)").map(sgaVal));
   const grandTotal    = directTotal + otherSgaTotal;
   // 매입은 항상 세금계산서 발행일 기준
-  const dateLabel     = "계산서날짜";
+  const dateLabel     = costDateLabel(criteria);
 
   function ChevronIcon({ open }: { open: boolean }) {
     return (
@@ -350,7 +368,7 @@ function ExpenseSection({
                                 <td style={{ ...S.tdLabel, fontSize:11 }}>{i+1}</td>
                                 <td style={{ ...S.tdLabel, fontSize:11 }}>{r.assignedTeam||<span style={{color:"#CBD5E1"}}>—</span>}</td>
                                 <td style={{ ...S.tdLabel, fontSize:11 }}>{r.assignee||<span style={{color:"#CBD5E1"}}>—</span>}</td>
-                                <td style={{ ...S.tdData, textAlign:"center", fontSize:11 }}>{dateFmt(r.invoiceDate)}</td>
+                                <td style={{ ...S.tdData, textAlign:"center", fontSize:11 }}>{dateFmt(costDateVal(r, criteria))}</td>
                                 <td style={{ ...S.tdData, textAlign:"left", fontSize:11, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{r.campaignName||<span style={{color:"#CBD5E1"}}>—</span>}</td>
                                 <td style={{ ...S.tdData, textAlign:"left", fontSize:11, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{r.vendor||<span style={{color:"#CBD5E1"}}>—</span>}</td>
                                 <td style={{ ...S.tdData, fontSize:11 }}>{won(r.supplyPrice)}</td>
@@ -555,7 +573,7 @@ export default function MonthlyManagePage() {
           ) : (
             <ExpenseSection
               costRows={costRows} sgaRows={sgaRows}
-              year={year} month={month}
+              year={year} month={month} criteria={criteria}
               editKey={editKey} editValue={editValue} inputRef={inputRef}
               onStartEdit={startEdit} onCommitEdit={commitEdit} onSetEditValue={setEditValue}
             />

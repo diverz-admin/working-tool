@@ -36,6 +36,28 @@ export async function GET(req: Request) {
           projects.assignedTeam,
         );
       revenueRows = raw.map(r => ({ ...r, totalSum: Number(r.totalSum ?? 0) }));
+    } else if (criteria === "통장") {
+      // 통장 기준: 입금 확인일(paymentDate = 결재확인 승인일) 월로 그룹핑
+      const raw = await db
+        .select({
+          dateMonth:    sql<string>`TO_CHAR(${projectRevenues.paymentDate}, 'YYYY-MM')`,
+          assignedTeam: projects.assignedTeam,
+          totalSum:     sql<number>`COALESCE(SUM(${projectRevenues.total}), 0)`,
+        })
+        .from(projectRevenues)
+        .innerJoin(projects, eq(projects.id, projectRevenues.projectId))
+        .where(
+          and(
+            isNotNull(projectRevenues.paymentDate),
+            sql`EXTRACT(YEAR FROM ${projectRevenues.paymentDate}) = ${year}`,
+            teamParam ? eq(projects.assignedTeam, teamParam) : undefined,
+          )
+        )
+        .groupBy(
+          sql`TO_CHAR(${projectRevenues.paymentDate}, 'YYYY-MM')`,
+          projects.assignedTeam,
+        );
+      revenueRows = raw.map(r => ({ ...r, totalSum: Number(r.totalSum ?? 0) }));
     } else {
       // 캠페인 시작날짜 기준: project.startDate 월로 그룹핑
       // 입금확인요청이 제출된 프로젝트(반려 제외)의 매출을 캠페인 시작월에 인식
@@ -62,23 +84,25 @@ export async function GET(req: Request) {
       revenueRows = raw.map(r => ({ ...r, totalSum: Number(r.totalSum ?? 0) }));
     }
 
+    // 매입 날짜 기준: 통장 → 승인일(purchaseDate), 그 외 → 계산서 발행일(invoiceDate)
+    const costDateExpr = criteria === "통장" ? projectCosts.purchaseDate : projectCosts.invoiceDate;
+
     const [kpiRows, costRows] = await Promise.all([
       db.select().from(kpiTargets).where(eq(kpiTargets.year, year)),
 
-      // 매입은 계산서 발행일(invoiceDate) 월 기준 — 손익관리와 동일
       db.select({
-          month: sql<string>`TO_CHAR(${projectCosts.invoiceDate}, 'YYYY-MM')`,
+          month: sql<string>`TO_CHAR(${costDateExpr}, 'YYYY-MM')`,
           total: sql<number>`COALESCE(SUM(${projectCosts.total}), 0)`,
         })
         .from(projectCosts)
         .innerJoin(projects, eq(projects.id, projectCosts.projectId))
         .where(and(
           eq(projectCosts.isApproved, true),
-          isNotNull(projectCosts.invoiceDate),
-          sql`EXTRACT(YEAR FROM ${projectCosts.invoiceDate}) = ${year}`,
+          isNotNull(costDateExpr),
+          sql`EXTRACT(YEAR FROM ${costDateExpr}) = ${year}`,
           teamParam ? eq(projects.assignedTeam, teamParam) : undefined,
         ))
-        .groupBy(sql`TO_CHAR(${projectCosts.invoiceDate}, 'YYYY-MM')`),
+        .groupBy(sql`TO_CHAR(${costDateExpr}, 'YYYY-MM')`),
     ]);
 
     const monthlyCosts = Array.from({ length: 12 }, (_, i) => {

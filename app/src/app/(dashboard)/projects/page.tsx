@@ -449,8 +449,8 @@ function RevenueKpiSection({
   stats: RevenueStats;
   teamFilter: string | null;
   onReload: () => void;
-  criteria: "캠페인 시작날짜" | "계산서날짜";
-  onCriteriaChange: (c: "캠페인 시작날짜" | "계산서날짜") => void;
+  criteria: "캠페인 시작날짜" | "계산서날짜" | "통장";
+  onCriteriaChange: (c: "캠페인 시작날짜" | "계산서날짜" | "통장") => void;
 }) {
   const year = stats.year;
   const thisMonthNum = new Date().getMonth() + 1;
@@ -543,6 +543,7 @@ function RevenueKpiSection({
               {([
                 { value: "캠페인 시작날짜", label: "캠페인 시작일" },
                 { value: "계산서날짜",     label: "계산서 발행일" },
+                { value: "통장",           label: "통장 기준" },
               ] as const).map(({ value, label }) => (
                 <button key={value} onClick={() => onCriteriaChange(value)}
                   className="px-3 py-1 rounded-lg text-xs font-semibold transition-all"
@@ -949,7 +950,7 @@ function ProjectsInner() {
   const [search,       setSearch]       = useState("");
   const [activeTab,    setActiveTab]    = useState<string>("전체");
   const [revenueStats, setRevenueStats]     = useState<RevenueStats | null>(null);
-  const [statsCriteria, setStatsCriteria]   = useState<"캠페인 시작날짜" | "계산서날짜">("캠페인 시작날짜");
+  const [statsCriteria, setStatsCriteria]   = useState<"캠페인 시작날짜" | "계산서날짜" | "통장">("캠페인 시작날짜");
 
   // 아코디언: 펼쳐진 그룹 ID 셋
   const [statusFilter, setStatusFilter] = useState<"전체" | "진행중" | "종료" | "D-7" | "D-3" | "D-1" | "WD-7" | "WD-3" | "WD-1">("전체");
