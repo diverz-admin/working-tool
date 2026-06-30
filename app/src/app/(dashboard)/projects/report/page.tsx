@@ -375,7 +375,7 @@ export default function ProjectReportPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold" style={{ color: "#191F28" }}>프로젝트 리포트</h1>
-          <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>확정매출(계산서발급) · 승인매입 기준</p>
+          <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>매출: 캠페인 시작일 기준 · 매입: 계산서 발행일 기준</p>
         </div>
         <button onClick={exportExcel} disabled={!total || total.projectCount === 0}
           className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition-all hover:bg-slate-50 disabled:opacity-40"

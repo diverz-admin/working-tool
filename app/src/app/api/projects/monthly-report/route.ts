@@ -73,11 +73,11 @@ export async function GET(req: NextRequest) {
         )
       );
 
-    // 승인 매입
+    // 승인 매입 — 계산서 발행일(invoiceDate) 기준
     const costRows = await db
       .select({
         projectId:    projectCosts.projectId,
-        purchaseDate: projectCosts.purchaseDate,
+        invoiceDate:  projectCosts.invoiceDate,
         total:        projectCosts.total,
         supplyPrice:  projectCosts.supplyPrice,
         productName:  projectCosts.productName,
@@ -88,9 +88,9 @@ export async function GET(req: NextRequest) {
         and(
           inArray(projectCosts.projectId, projectIds),
           eq(projectCosts.isApproved, true),
-          isNotNull(projectCosts.purchaseDate),
-          gte(projectCosts.purchaseDate, from),
-          lte(projectCosts.purchaseDate, to),
+          isNotNull(projectCosts.invoiceDate),
+          gte(projectCosts.invoiceDate, from),
+          lte(projectCosts.invoiceDate, to),
         )
       );
 
@@ -123,8 +123,9 @@ export async function GET(req: NextRequest) {
       monthly[m].supplyPrice += r.supplyPrice ?? 0;
       monthly[m].count      += 1;
     }
+    // 매입은 계산서 발행일(invoiceDate) 월 기준
     for (const c of costRows) {
-      const m = parseInt(c.purchaseDate!.substring(5, 7)) - 1;
+      const m = parseInt(c.invoiceDate!.substring(5, 7)) - 1;
       monthly[m].cost += c.total ?? 0;
     }
     for (const m of monthly) {
@@ -156,7 +157,7 @@ export async function GET(req: NextRequest) {
           }
         }
         for (const c of p.costRows) {
-          const cm = parseInt(c.purchaseDate!.substring(5, 7)) - 1;
+          const cm = parseInt(c.invoiceDate!.substring(5, 7)) - 1;
           teamMonthly[cm].cost += c.total ?? 0;
         }
       }

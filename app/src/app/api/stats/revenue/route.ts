@@ -65,19 +65,20 @@ export async function GET(req: Request) {
     const [kpiRows, costRows] = await Promise.all([
       db.select().from(kpiTargets).where(eq(kpiTargets.year, year)),
 
+      // 매입은 계산서 발행일(invoiceDate) 월 기준 — 손익관리와 동일
       db.select({
-          month: sql<string>`TO_CHAR(${projects.startDate}, 'YYYY-MM')`,
+          month: sql<string>`TO_CHAR(${projectCosts.invoiceDate}, 'YYYY-MM')`,
           total: sql<number>`COALESCE(SUM(${projectCosts.total}), 0)`,
         })
         .from(projectCosts)
         .innerJoin(projects, eq(projects.id, projectCosts.projectId))
         .where(and(
           eq(projectCosts.isApproved, true),
-          isNotNull(projects.startDate),
-          sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`,
+          isNotNull(projectCosts.invoiceDate),
+          sql`EXTRACT(YEAR FROM ${projectCosts.invoiceDate}) = ${year}`,
           teamParam ? eq(projects.assignedTeam, teamParam) : undefined,
         ))
-        .groupBy(sql`TO_CHAR(${projects.startDate}, 'YYYY-MM')`),
+        .groupBy(sql`TO_CHAR(${projectCosts.invoiceDate}, 'YYYY-MM')`),
     ]);
 
     const monthlyCosts = Array.from({ length: 12 }, (_, i) => {
