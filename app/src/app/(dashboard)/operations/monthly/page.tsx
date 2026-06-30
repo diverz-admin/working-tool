@@ -242,12 +242,12 @@ function RevenueSection({ rows, criteria }: { rows: RevenueRow[]; criteria: stri
 // ─── 지출 섹션 ────────────────────────────────────────────
 
 function ExpenseSection({
-  costRows, sgaRows, year, month, criteria,
+  costRows, sgaRows, year, month,
   editKey, editValue, inputRef,
   onStartEdit, onCommitEdit, onSetEditValue,
 }: {
   costRows: CostRow[]; sgaRows: SgaRow[];
-  year: number; month: number; criteria: string;
+  year: number; month: number;
   editKey: string | null; editValue: string;
   inputRef: React.RefObject<HTMLInputElement | null>;
   onStartEdit: (key: string, val: number) => void;
@@ -267,7 +267,8 @@ function ExpenseSection({
   }
   const otherSgaTotal = sumN(SGA_CATEGORIES.filter(c => c !== "직접매입(상품)").map(sgaVal));
   const grandTotal    = directTotal + otherSgaTotal;
-  const dateLabel     = criteria === "계산서날짜" ? "계산서날짜" : "캠페인 시작날짜";
+  // 매입은 항상 세금계산서 발행일 기준
+  const dateLabel     = "계산서날짜";
 
   function ChevronIcon({ open }: { open: boolean }) {
     return (
@@ -349,7 +350,7 @@ function ExpenseSection({
                                 <td style={{ ...S.tdLabel, fontSize:11 }}>{i+1}</td>
                                 <td style={{ ...S.tdLabel, fontSize:11 }}>{r.assignedTeam||<span style={{color:"#CBD5E1"}}>—</span>}</td>
                                 <td style={{ ...S.tdLabel, fontSize:11 }}>{r.assignee||<span style={{color:"#CBD5E1"}}>—</span>}</td>
-                                <td style={{ ...S.tdData, textAlign:"center", fontSize:11 }}>{dateFmt(criteria==="계산서날짜"?r.invoiceDate:r.startDate)}</td>
+                                <td style={{ ...S.tdData, textAlign:"center", fontSize:11 }}>{dateFmt(r.invoiceDate)}</td>
                                 <td style={{ ...S.tdData, textAlign:"left", fontSize:11, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{r.campaignName||<span style={{color:"#CBD5E1"}}>—</span>}</td>
                                 <td style={{ ...S.tdData, textAlign:"left", fontSize:11, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{r.vendor||<span style={{color:"#CBD5E1"}}>—</span>}</td>
                                 <td style={{ ...S.tdData, fontSize:11 }}>{won(r.supplyPrice)}</td>
@@ -441,6 +442,7 @@ export default function MonthlyManagePage() {
   const [editValue, setEditValue] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // 매출: 캠페인 시작 날짜 기준 / 매입: 계산서 발행 날짜 기준
   // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const load = useCallback(() => {
     setLoading(true);
@@ -550,7 +552,7 @@ export default function MonthlyManagePage() {
           ) : (
             <ExpenseSection
               costRows={costRows} sgaRows={sgaRows}
-              year={year} month={month} criteria={criteria}
+              year={year} month={month}
               editKey={editKey} editValue={editValue} inputRef={inputRef}
               onStartEdit={startEdit} onCommitEdit={commitEdit} onSetEditValue={setEditValue}
             />

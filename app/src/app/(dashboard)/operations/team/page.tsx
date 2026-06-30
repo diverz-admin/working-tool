@@ -199,11 +199,12 @@ function RevenueTable({ rows, criteria }: { rows: RevenueRow[]; criteria: string
 
 // ─── 매입 테이블 ──────────────────────────────────────────
 
-function CostTable({ rows, criteria }: { rows: CostRow[]; criteria: string }) {
+function CostTable({ rows }: { rows: CostRow[] }) {
   const totalSupply = sumN(rows.map(r => r.supplyPrice));
   const totalTax    = sumN(rows.map(r => r.tax));
   const totalAmount = sumN(rows.map(r => r.total));
-  const dateLabel   = criteria === "계산서날짜" ? "계산서날짜" : "캠페인 시작날짜";
+  // 매입은 항상 세금계산서 발행일 기준
+  const dateLabel   = "계산서날짜";
 
   return (
     <section>
@@ -211,7 +212,7 @@ function CostTable({ rows, criteria }: { rows: CostRow[]; criteria: string }) {
       <div className="overflow-x-auto rounded-xl" style={{ border: "1px solid #E9EBEF" }}>
         <table className="w-full border-collapse" style={{ minWidth: 720 }}>
           <thead>
-            <tr>{["#","담당자",dateLabel,"매입처","품명","개수","공급가","부가세","합계","계산서날짜"].map(h => (
+            <tr>{["#","담당자",dateLabel,"매입처","품명","개수","공급가","부가세","합계"].map(h => (
               <th key={h} style={S.thDark}>{h}</th>
             ))}</tr>
           </thead>
@@ -224,14 +225,13 @@ function CostTable({ rows, criteria }: { rows: CostRow[]; criteria: string }) {
               <tr key={r.id}>
                 <td style={{ ...S.tdLabel, width:36 }}>{i+1}</td>
                 <td style={S.tdLabel}>{r.assignee || <span style={{color:"#CBD5E1"}}>—</span>}</td>
-                <td style={{ ...S.tdData, textAlign:"center" }}>{dateFmt(criteria==="계산서날짜" ? r.invoiceDate : r.startDate)}</td>
+                <td style={{ ...S.tdData, textAlign:"center" }}>{dateFmt(r.invoiceDate)}</td>
                 <td style={{ ...S.tdData, textAlign:"left" }}>{r.vendor || <span style={{color:"#CBD5E1"}}>—</span>}</td>
                 <td style={{ ...S.tdData, textAlign:"left" }}>{r.productName || <span style={{color:"#CBD5E1"}}>—</span>}</td>
                 <td style={{ ...S.tdData, textAlign:"center" }}>{r.quantity ? `${r.quantity}개` : <span style={{color:"#CBD5E1"}}>—</span>}</td>
                 <td style={S.tdData}>{won(r.supplyPrice)}</td>
                 <td style={S.tdData}>{won(r.tax)}</td>
                 <td style={{ ...S.tdData, fontWeight:600 }}>{won(r.total)}</td>
-                <td style={{ ...S.tdData, textAlign:"center" }}>{dateFmt(r.invoiceDate)}</td>
               </tr>
             ))}
             {rows.length > 0 && (
@@ -240,7 +240,6 @@ function CostTable({ rows, criteria }: { rows: CostRow[]; criteria: string }) {
                 <td style={S.tdTotal}>{wonNum(totalSupply)}</td>
                 <td style={S.tdTotal}>{wonNum(totalTax)}</td>
                 <td style={{ ...S.tdTotal, background:"rgba(49,130,246,0.14)" }}>{wonNum(totalAmount)}</td>
-                <td style={{ ...S.tdLabel, background:"rgba(49,130,246,0.04)" }} />
               </tr>
             )}
           </tbody>
@@ -264,6 +263,7 @@ export default function TeamProfitPage() {
   const [costRows, setCostRows] = useState<CostRow[]>([]);
   const [loading,  setLoading]  = useState(true);
 
+  // 매출: 캠페인 시작 날짜 기준 / 매입: 계산서 발행 날짜 기준
   const load = useCallback(() => {
     setLoading(true);
     const q = `year=${year}&month=${month}&criteria=${encodeURIComponent(criteria)}`;
@@ -405,7 +405,7 @@ export default function TeamProfitPage() {
 
           {dataTab === "revenue"
             ? <RevenueTable rows={filteredRev}  criteria={criteria} />
-            : <CostTable    rows={filteredCost} criteria={criteria} />
+            : <CostTable    rows={filteredCost} />
           }
         </>
       )}

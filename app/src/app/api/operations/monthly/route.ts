@@ -7,10 +7,8 @@ export async function GET(req: NextRequest) {
   try {
     const year     = parseInt(req.nextUrl.searchParams.get("year")  ?? String(new Date().getFullYear()));
     const month    = parseInt(req.nextUrl.searchParams.get("month") ?? String(new Date().getMonth() + 1));
-    const criteria = req.nextUrl.searchParams.get("criteria") ?? "캠페인 시작날짜";
-
-    const useInvoice    = criteria === "계산서날짜";
-    const costDateField = useInvoice ? projectCosts.invoiceDate : projects.startDate;
+    // 매입은 criteria(캠페인 시작날짜/계산서날짜)와 무관하게 항상 세금계산서 발행일(invoiceDate) 기준 — 연간 손익관리와 동일
+    const costDateField = projectCosts.invoiceDate;
 
     const from = `${year}-${String(month).padStart(2, "0")}-01`;
     const to   = new Date(year, month, 0).toISOString().slice(0, 10);

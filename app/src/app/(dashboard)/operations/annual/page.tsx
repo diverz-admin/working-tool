@@ -86,6 +86,7 @@ export default function AnnualProfitPage() {
   const [savedKey,  setSavedKey]  = useState<string|null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // 매출: 캠페인 시작 날짜 기준 / 매입: 계산서 발행 날짜 기준
   const load = useCallback(() => {
     setLoading(true);
     fetch(`/api/operations/annual?year=${year}&criteria=${encodeURIComponent(criteria)}`)
