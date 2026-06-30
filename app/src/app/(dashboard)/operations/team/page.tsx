@@ -301,7 +301,10 @@ export default function TeamProfitPage() {
     <div className="space-y-5">
       {/* ── 헤더 ── */}
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold" style={{ color: "#191F28" }}>팀별 손익현황</h1>
+        <div>
+          <h1 className="text-xl font-bold" style={{ color: "#191F28" }}>팀별 손익현황</h1>
+          <p className="text-xs mt-0.5" style={{ color:"#94A3B8" }}>매출: 캠페인 시작일 기준 · 매입: 계산서 발행일 기준</p>
+        </div>
 
         <div className="flex items-center gap-2">
           <select value={criteria} onChange={e => setCriteria(e.target.value)}
