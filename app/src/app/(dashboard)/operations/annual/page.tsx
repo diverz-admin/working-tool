@@ -180,7 +180,7 @@ export default function AnnualProfitPage() {
         <div>
           <h1 className="text-xl font-bold" style={{ color:"#1E293B" }}>연간 손익관리</h1>
           <p className="text-xs mt-0.5" style={{ color:"#94A3B8" }}>{year}년 전체 수익·비용 현황</p>
-          <p className="text-xs mt-0.5" style={{ color:"#94A3B8" }}>매출: 캠페인 시작일 기준 · 매입: 계산서 발행일 기준</p>
+          <p className="text-xs mt-0.5" style={{ color:"#94A3B8" }}>{criteria === "통장" ? "매출: 입금 승인일 기준 · 매입: 승인일 기준" : criteria === "계산서날짜" ? "매출: 계산서 발행일 기준 · 매입: 계산서 발행일 기준" : "매출: 캠페인 시작일 기준 · 매입: 계산서 발행일 기준"}</p>
         </div>
         <div className="flex items-center gap-2">
           <select value={criteria} onChange={e=>setCriteria(e.target.value)}

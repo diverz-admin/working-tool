@@ -556,6 +556,9 @@ function RevenueKpiSection({
                 </button>
               ))}
             </div>
+            <span className="text-xs ml-1" style={{ color: "#94A3B8" }}>
+              {criteria === "통장" ? "매출: 입금 승인일 · 매입: 승인일" : criteria === "계산서날짜" ? "매출: 계산서 발행일 · 매입: 계산서 발행일" : "매출: 캠페인 시작일 · 매입: 계산서 발행일"}
+            </span>
           </div>
           <button
             onClick={openKpiEdit}

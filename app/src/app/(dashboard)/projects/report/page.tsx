@@ -378,9 +378,9 @@ export default function ProjectReportPage() {
           <h1 className="text-xl font-bold" style={{ color: "#191F28" }}>프로젝트 리포트</h1>
           <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>
             {criteria === "통장"
-              ? "매출: 통장 입금일(결재확인 승인일) 기준 · 매입: 승인일 기준"
+              ? "매출: 입금 승인일 기준 · 매입: 승인일 기준"
               : criteria === "계산서날짜"
-              ? "매출: 계산서 발행완료(결재확인) 기준 · 매입: 계산서 발행일 기준"
+              ? "매출: 계산서 발행일 기준 · 매입: 계산서 발행일 기준"
               : "매출: 캠페인 시작일 기준 · 매입: 계산서 발행일 기준"}
           </p>
         </div>

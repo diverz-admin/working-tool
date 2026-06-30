@@ -320,7 +320,7 @@ export default function TeamProfitPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold" style={{ color: "#191F28" }}>팀별 손익현황</h1>
-          <p className="text-xs mt-0.5" style={{ color:"#94A3B8" }}>매출: 캠페인 시작일 기준 · 매입: 계산서 발행일 기준</p>
+          <p className="text-xs mt-0.5" style={{ color:"#94A3B8" }}>{criteria === "통장" ? "매출: 입금 승인일 기준 · 매입: 승인일 기준" : criteria === "계산서날짜" ? "매출: 계산서 발행일 기준 · 매입: 계산서 발행일 기준" : "매출: 캠페인 시작일 기준 · 매입: 계산서 발행일 기준"}</p>
         </div>
 
         <div className="flex items-center gap-2">
