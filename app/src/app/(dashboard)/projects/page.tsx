@@ -336,7 +336,7 @@ function CampaignRow({ c, index, onEdit, onDelete, onCopy, deleting, copying }: 
       {/* 유형 */}
       <td className="px-4 py-3">
         {c.projectType ? (
-          <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{
+          <span className="text-xs px-2 py-0.5 rounded-full font-semibold whitespace-nowrap inline-block" style={{
             background: c.projectType === "관리형" ? "rgba(49,130,246,0.1)" : "rgba(139,92,246,0.1)",
             color:      c.projectType === "관리형" ? "#3182F6" : "#8B5CF6",
           }}>{c.projectType}</span>
@@ -345,7 +345,7 @@ function CampaignRow({ c, index, onEdit, onDelete, onCopy, deleting, copying }: 
       {/* 상품 */}
       <td className="px-4 py-3">
         {c.product ? (
-          <span className="text-xs px-2 py-0.5 rounded-full font-medium"
+          <span className="text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap inline-block"
             style={{ background: "rgba(49,130,246,0.08)", color: "#3182F6" }}>{c.product}</span>
         ) : <span style={{ color: "#CBD5E1" }}>—</span>}
       </td>
@@ -365,7 +365,7 @@ function CampaignRow({ c, index, onEdit, onDelete, onCopy, deleting, copying }: 
       <td className="px-4 py-3"><CostBadge total={c.costTotal} approved={c.costApproved} pending={c.costPending} /></td>
       {/* 상태 */}
       <td className="px-4 py-3">
-        <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{
+        <span className="text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap inline-block" style={{
           background: c.status === "종료" ? "#F1F5F9" : "rgba(49,130,246,0.1)",
           color:      c.status === "종료" ? "#64748B" : "#3182F6",
         }}>{c.status === "종료" ? "종료" : "진행중"}</span>
@@ -2000,7 +2000,7 @@ function ProjectsInner() {
                       {/* 유형 */}
                       <td className="px-4 py-3.5">
                         {g.activeProjectType ? (
-                          <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{
+                          <span className="text-xs px-2 py-0.5 rounded-full font-semibold whitespace-nowrap inline-block" style={{
                             background: g.activeProjectType === "관리형" ? "rgba(49,130,246,0.1)" : "rgba(139,92,246,0.1)",
                             color:      g.activeProjectType === "관리형" ? "#3182F6" : "#8B5CF6",
                           }}>{g.activeProjectType}</span>
@@ -2009,7 +2009,7 @@ function ProjectsInner() {
                       {/* 상품 */}
                       <td className="px-4 py-3.5">
                         {g.activeProduct ? (
-                          <span className="text-xs px-2 py-0.5 rounded-full font-medium"
+                          <span className="text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap inline-block"
                             style={{ background: "rgba(49,130,246,0.08)", color: "#3182F6" }}>{g.activeProduct}</span>
                         ) : <span style={{ color: "#E2E8F0" }}>—</span>}
                       </td>
@@ -2022,7 +2022,7 @@ function ProjectsInner() {
                       {/* 잔여일 */}
                       <td className="px-4 py-3.5"><DaysBadge days={g.activeDaysRemaining} /></td>
                       {/* 계약금액 — 캠페인 2개 이상이면 전체 누적 합계 표시 */}
-                      <td className="px-4 py-3.5 text-xs font-semibold" style={{ color: "#10B981" }}>
+                      <td className="px-4 py-3.5 text-xs font-semibold whitespace-nowrap" style={{ color: "#10B981" }}>
                         {g.campaignCount > 1
                           ? wonFmt(g.totalContractAmount)
                           : wonFmt(g.activeContractAmount)}
@@ -2044,7 +2044,7 @@ function ProjectsInner() {
                       </td>
                       {/* 상태 */}
                       <td className="px-4 py-3.5">
-                        <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{
+                        <span className="text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap inline-block" style={{
                           background: g.status === "종료" ? "#F1F5F9" : "rgba(49,130,246,0.1)",
                           color:      g.status === "종료" ? "#64748B" : "#3182F6",
                         }}>{g.status === "종료" ? "종료" : "진행중"}</span>
