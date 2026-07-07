@@ -464,6 +464,8 @@ function RevenueKpiSection({
   // draft: { [team_month]: value }  예) "영업 1팀_3": "5000000"
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  // 상단 카드 기준 월 (기본: 이번 달) — 지나간 달만 선택 가능
+  const [selectedMonth, setSelectedMonth] = useState(thisMonthNum);
 
   function openKpiEdit() {
     const d: Record<string, string> = {};
@@ -514,11 +516,16 @@ function RevenueKpiSection({
       return entry;
     });
 
-  const totalCurrentMonth = displayTeams.reduce((s, t) => s + (stats.currentMonth[t] ?? 0), 0);
-  const totalKpiMonth = displayTeams.reduce((s, t) => s + (stats.currentKpi[t] ?? 0), 0) || (stats.currentKpi.total ?? 0);
+  // 선택한 월(및 직전 월)의 데이터 행
+  const selRow  = stats.monthly[selectedMonth - 1] ?? {};
+  const prevRow = selectedMonth >= 2 ? stats.monthly[selectedMonth - 2] : null;
+
+  const totalCurrentMonth = displayTeams.reduce((s, t) => s + ((selRow[t] as number) ?? 0), 0);
+  const totalKpiMonth = displayTeams.reduce((s, t) => s + ((selRow[`kpi_${t}`] as number) ?? 0), 0) || ((selRow.kpiTotal as number) ?? 0);
+  // 누적 카드는 연간 목표 대비 진척률 (월 선택과 무관)
   const totalYearRevenue = displayTeams.reduce((s, t) => s + (stats.yearTotal[t] ?? 0), 0);
   const totalYearKpi = displayTeams.reduce((s, t) => s + (stats.yearKpi[t] ?? 0), 0);
-  const totalPrevMonth = displayTeams.reduce((s, t) => s + (stats.prevMonth[t] ?? 0), 0);
+  const totalPrevMonth = prevRow ? displayTeams.reduce((s, t) => s + ((prevRow[t] as number) ?? 0), 0) : 0;
 
   const monthRate = totalKpiMonth > 0 ? (totalCurrentMonth / totalKpiMonth) * 100 : null;
   const yearRate  = totalYearKpi  > 0 ? (totalYearRevenue  / totalYearKpi)  * 100 : null;
@@ -538,6 +545,18 @@ function RevenueKpiSection({
             <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: "rgba(49,130,246,0.1)", color: "#3182F6" }}>
               {year}년
             </span>
+            {/* 월 선택 (상단 카드 기준) */}
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(Number(e.target.value))}
+              className="text-xs font-semibold rounded-full px-2.5 py-0.5 border cursor-pointer outline-none"
+              style={{ borderColor: "#E9EBEF", color: "#3182F6", background: "#fff" }}
+              title="상단 카드 기준 월"
+            >
+              {MONTHS_KO.slice(0, thisMonthNum).map((m, i) => (
+                <option key={i} value={i + 1}>{m}</option>
+              ))}
+            </select>
             {/* 기준 토글 */}
             <div className="flex gap-0.5 p-0.5 rounded-xl ml-2" style={{ background: "#F1F5F9" }}>
               {([
@@ -583,7 +602,7 @@ function RevenueKpiSection({
               <div className="rounded-xl p-4" style={{ background: "#F8FAFC", border: "1px solid #E9EBEF" }}>
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-xs font-medium mb-0.5" style={{ color: "#94A3B8" }}>{year}년 {thisMonthNum}월 매출</p>
+                    <p className="text-xs font-medium mb-0.5" style={{ color: "#94A3B8" }}>{year}년 {selectedMonth}월 매출</p>
                     <p className="text-2xl font-bold" style={{ color: "#191F28" }}>₩{totalCurrentMonth.toLocaleString()}</p>
                     {totalKpiMonth > 0 && (
                       <p className="text-xs mt-0.5" style={{ color: "#64748B" }}>
@@ -644,8 +663,8 @@ function RevenueKpiSection({
                 <div className="rounded-xl p-4 space-y-3" style={{ background: "#F8FAFC", border: "1px solid #E9EBEF" }}>
                   <p className="text-xs font-semibold" style={{ color: "#94A3B8" }}>팀별 달성률</p>
                   {displayTeams.map((team) => {
-                    const actual = stats.currentMonth[team] ?? 0;
-                    const kpi = stats.currentKpi[team] ?? 0;
+                    const actual = (selRow[team] as number) ?? 0;
+                    const kpi = (selRow[`kpi_${team}`] as number) ?? 0;
                     const rate = kpi > 0 ? (actual / kpi) * 100 : null;
                     return (
                       <div key={team}>
@@ -678,7 +697,13 @@ function RevenueKpiSection({
             <div className="flex-1 min-w-0">
               <p className="text-xs font-semibold mb-3" style={{ color: "#94A3B8" }}>월별 매출 / 이익 추이</p>
               <ResponsiveContainer width="100%" height={210}>
-                <ComposedChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }} barCategoryGap="30%">
+                <ComposedChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }} barCategoryGap="30%"
+                  onClick={(e) => {
+                    const label = (e as { activeLabel?: string })?.activeLabel;
+                    const idx = label ? MONTHS_KO.indexOf(label) : -1;
+                    if (idx >= 0 && idx < thisMonthNum) setSelectedMonth(idx + 1);
+                  }}
+                  style={{ cursor: "pointer" }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
                   <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fontSize: 10, fill: "#94A3B8" }} axisLine={false} tickLine={false} width={48} tickFormatter={(v: number) => wonShort(v)} />
@@ -719,6 +744,8 @@ function RevenueKpiSection({
                     }}
                   />
                   <ReferenceLine y={0} stroke="#E2E8F0" />
+                  {/* 선택한 월 표시 */}
+                  <ReferenceLine x={MONTHS_KO[selectedMonth - 1]} stroke="#3182F6" strokeDasharray="2 3" strokeOpacity={0.45} />
 
                   {/* 매출 — 팀별 스택 또는 전체 */}
                   {displayTeams.length > 0
