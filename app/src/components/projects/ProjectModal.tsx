@@ -215,6 +215,9 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
   const costsRef = useRef<CostRow[]>([]);
   // eslint-disable-next-line react-hooks/refs
   costsRef.current = costs;
+  // 저장 직렬화용 뮤텍스 — 입금요청/확인요청 버튼 연타·동시 클릭으로 저장이 겹쳐
+  // 서버 delete+insert 가 경합해 매입/매출 행이 중복 생성되던 문제 방지
+  const saveLockRef = useRef<Promise<unknown>>(Promise.resolve());
   const [clients, setClients]       = useState<SimpleClient[]>([]);
   const [users, setUsers]           = useState<{ id: string; name: string; team: string | null }[]>([]);
   const [managedProducts, setManagedProducts] = useState<ManagedProduct[]>([]);
@@ -671,8 +674,15 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
   const missingFields = requiredFields.filter((f) => !String(form[f.key] ?? "").trim());
   const isFormValid = missingFields.length === 0;
 
+  // 저장을 순차 실행 — 이전 저장이 끝난 뒤에만 다음 저장 시작(경합 방지)
+  function ensureSaved(): Promise<string | null> {
+    const run = saveLockRef.current.then(() => ensureSavedInner(), () => ensureSavedInner());
+    saveLockRef.current = run.catch(() => {});
+    return run;
+  }
+
   // 신규 프로젝트일 때 결재 버튼 클릭 시 자동으로 먼저 저장
-  async function ensureSaved(): Promise<string | null> {
+  async function ensureSavedInner(): Promise<string | null> {
     if (savedIdRef.current) {
       // 기존 프로젝트: 승인요청 전에 현재 costs/revenues를 DB에 저장
       // invoiceFileUrl(base64)은 제외 — body 크기 초과 방지; API가 기존 DB 값으로 보존
