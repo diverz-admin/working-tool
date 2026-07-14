@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, integer, date, timestamp, boolean, index } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, integer, real, date, timestamp, boolean, index } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id:           uuid("id").primaryKey().defaultRandom(),
@@ -13,6 +13,7 @@ export const users = pgTable("users", {
   workPhone:    text("work_phone"),
   username:     text("username").unique(),
   passwordHash: text("password_hash"),
+  annualLeaveDays: real("annual_leave_days").notNull().default(15), // 연간 부여 연차
   createdAt:    timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt:    timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -493,6 +494,24 @@ export const internalExpenseRequests = pgTable("internal_expense_requests", {
 });
 
 export type InternalExpenseRequest = typeof internalExpenseRequests.$inferSelect;
+
+export const internalLeaveRequests = pgTable("internal_leave_requests", {
+  id:           uuid("id").primaryKey().defaultRandom(),
+  title:        text("title").notNull(),
+  leaveType:    text("leave_type").notNull(),          // 연차 | 반차 | 병가 | 기타
+  requester:    text("requester").notNull(),
+  startDate:    date("start_date").notNull(),
+  endDate:      date("end_date"),
+  requestedAt:  date("requested_at").notNull(),
+  leaveDays:    real("leave_days").notNull().default(0), // 연차에서 차감되는 일수 (병가·기타는 0)
+  note:         text("note"),
+  status:       text("status").notNull().default("대기"), // 대기 | 승인 | 반려
+  rejectReason: text("reject_reason"),
+  createdAt:    timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:    timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type InternalLeaveRequest = typeof internalLeaveRequests.$inferSelect;
 
 export const appNotifications = pgTable("app_notifications", {
   id:            uuid("id").primaryKey().defaultRandom(),

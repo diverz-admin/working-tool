@@ -31,7 +31,9 @@ export async function proxy(req: NextRequest) {
       (pathname === "/api/approvals/confirm" || pathname === "/api/approvals/payment") &&
       req.method === "POST";
     // 내부결재요청 — 모든 역할 허용 (페이지 + API 전 메서드)
-    const isExpenseAccess = pathname.startsWith("/api/approvals/expense");
+    const isExpenseAccess =
+      pathname.startsWith("/api/approvals/expense") ||
+      pathname.startsWith("/api/approvals/leave");
     // /approval/internal/confirm, /approval/internal/leave-confirm 은 Manager 전용 — Staff는 제외
     const isInternalApprovalPage =
       pathname.startsWith("/approval/internal") &&

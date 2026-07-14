@@ -7,7 +7,7 @@ import { useUser } from "@/lib/UserContext";
 
 const TEAMS = ["경영", "영업 1팀", "영업 2팀"];
 
-let _pendingCache: { confirm: number; payment: number; expense: number; ts: number } | null = null;
+let _pendingCache: { confirm: number; payment: number; expense: number; leave: number; ts: number } | null = null;
 const PENDING_TTL = 60_000;
 
 const MARKETING_SUB = [
@@ -271,7 +271,7 @@ function ApprovalNavSection() {
      pathname.startsWith("/approval/internal/confirm") ||
      pathname.startsWith("/approval/internal/leave-confirm"));
   const [open, setOpen] = useState(isActive);
-  const [counts, setCounts] = useState<{ confirm: number; payment: number; expense: number }>({ confirm: 0, payment: 0, expense: 0 });
+  const [counts, setCounts] = useState<{ confirm: number; payment: number; expense: number; leave: number }>({ confirm: 0, payment: 0, expense: 0, leave: 0 });
   const { role } = useUser();
   const locked = role === "Staff";
 
@@ -281,13 +281,13 @@ function ApprovalNavSection() {
   useEffect(() => {
     function fetchCounts(force = false) {
       if (!force && _pendingCache && Date.now() - _pendingCache.ts < PENDING_TTL) {
-        setCounts({ confirm: _pendingCache.confirm, payment: _pendingCache.payment, expense: _pendingCache.expense });
+        setCounts({ confirm: _pendingCache.confirm, payment: _pendingCache.payment, expense: _pendingCache.expense, leave: _pendingCache.leave });
         return;
       }
       fetch("/api/approvals/pending-counts")
         .then((r) => r.json())
         .then((d) => {
-          const next = { confirm: d.confirm ?? 0, payment: d.payment ?? 0, expense: d.expense ?? 0 };
+          const next = { confirm: d.confirm ?? 0, payment: d.payment ?? 0, expense: d.expense ?? 0, leave: d.leave ?? 0 };
           _pendingCache = { ...next, ts: Date.now() };
           setCounts(next);
         })
@@ -300,9 +300,10 @@ function ApprovalNavSection() {
   }, [pathname]);
 
   const badgeCounts: Record<string, number> = {
-    "/approval/confirm":          counts.confirm,
-    "/approval/request":          counts.payment,
-    "/approval/internal/confirm": counts.expense,
+    "/approval/confirm":               counts.confirm,
+    "/approval/request":               counts.payment,
+    "/approval/internal/confirm":      counts.expense,
+    "/approval/internal/leave-confirm": counts.leave,
   };
 
   return (
@@ -318,7 +319,7 @@ function ApprovalNavSection() {
         >
           <span style={{ color: locked ? "#CBD5E1" : isActive ? "#3182F6" : "#8B95A1" }}>{IC.approval}</span>
           결재확인
-          {!locked && <PendingBadge count={counts.confirm + counts.payment + counts.expense} />}
+          {!locked && <PendingBadge count={counts.confirm + counts.payment + counts.expense + counts.leave} />}
           {locked && <span className="ml-auto text-xs" style={{ color: "#CBD5E1" }}>🔒</span>}
         </Link>
         <button

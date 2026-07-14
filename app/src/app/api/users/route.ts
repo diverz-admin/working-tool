@@ -3,8 +3,10 @@ import { db } from "@/db";
 import { users } from "@/db/schema";
 import { asc, eq } from "drizzle-orm";
 import { hashPassword } from "@/lib/password";
+import { ensureLeaveSchema } from "@/lib/leaveDb";
 
 export async function GET() {
+  await ensureLeaveSchema();
   const rows = await db.select().from(users).orderBy(asc(users.joinedAt), asc(users.name));
   return NextResponse.json({ users: rows.map(r => ({ ...r, passwordHash: undefined })) });
 }
@@ -15,6 +17,8 @@ export async function POST(req: NextRequest) {
     if (!body.name?.trim() || !body.email?.trim()) {
       return NextResponse.json({ error: "이름과 이메일은 필수입니다." }, { status: 400 });
     }
+
+    await ensureLeaveSchema();
 
     if (body.username?.trim()) {
       const [dup] = await db.select({ id: users.id }).from(users).where(eq(users.username, body.username.trim()));
@@ -35,6 +39,7 @@ export async function POST(req: NextRequest) {
       joinedAt:     body.joinedAt || new Date().toISOString().slice(0, 10),
       username:     body.username?.trim() || null,
       passwordHash: passwordHash,
+      annualLeaveDays: body.annualLeaveDays != null ? Number(body.annualLeaveDays) : 15,
     }).returning();
 
     return NextResponse.json({ user: { ...row, passwordHash: undefined } }, { status: 201 });

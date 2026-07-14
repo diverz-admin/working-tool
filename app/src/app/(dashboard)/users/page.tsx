@@ -18,6 +18,7 @@ interface AppUser {
   workPhone: string | null;
   status: Status;
   joinedAt: string;
+  annualLeaveDays: number;
 }
 
 const ROLES: Role[]       = ["Admin", "Manager", "Staff"];
@@ -42,7 +43,7 @@ function avatarColor(name: string) {
 interface FormState {
   name: string; email: string; role: Role;
   team: string; position: string; phone: string; workPhone: string; status: Status; joinedAt: string;
-  username: string; password: string;
+  username: string; password: string; annualLeaveDays: string;
 }
 
 function emptyForm(): FormState {
@@ -50,7 +51,7 @@ function emptyForm(): FormState {
     name: "", email: "", role: "Staff", team: "",
     position: "", phone: "", workPhone: "", status: "활성",
     joinedAt: new Date().toISOString().slice(0, 10),
-    username: "", password: "",
+    username: "", password: "", annualLeaveDays: "15",
   };
 }
 
@@ -68,7 +69,8 @@ function UserModal({
           team: initial.team ?? "", position: initial.position ?? "",
           phone: initial.phone ?? "", workPhone: initial.workPhone ?? "",
           status: initial.status, joinedAt: initial.joinedAt,
-          username: initial.username ?? "", password: "" }
+          username: initial.username ?? "", password: "",
+          annualLeaveDays: String(initial.annualLeaveDays ?? 15) }
       : emptyForm()
   );
   const [saving, setSaving] = useState(false);
@@ -89,6 +91,7 @@ function UserModal({
       team: form.team || null, position: form.position || null,
       phone: form.phone || null, workPhone: form.workPhone || null, status: form.status, joinedAt: form.joinedAt,
       username: form.username.trim() || null,
+      annualLeaveDays: form.annualLeaveDays === "" ? 15 : Number(form.annualLeaveDays),
     };
     if (form.password) body.password = form.password;
     const res = await fetch(url, {
@@ -178,6 +181,18 @@ function UserModal({
               <input type="tel" value={form.workPhone} onChange={e => set("workPhone", e.target.value)}
                 placeholder="02-0000-0000" className={inp} style={inpS} />
             </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 items-end">
+            <div>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: "#64748B" }}>연차 부여일수</label>
+              <input type="number" min="0" step="0.5" value={form.annualLeaveDays}
+                onChange={e => set("annualLeaveDays", e.target.value)}
+                placeholder="15" className={inp} style={inpS} />
+            </div>
+            <p className="text-xs pb-2.5" style={{ color: "#94A3B8" }}>
+              휴가 결재에서 차감 기준이 되는 연간 부여일수입니다.
+            </p>
           </div>
 
           <div style={{ borderTop: "1px solid #F1F5F9", paddingTop: "1rem" }}>
@@ -397,16 +412,16 @@ export default function UsersPage() {
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: "#F8FAFC", borderBottom: "1px solid #E9EBEF" }}>
-              {["사용자", "휴대폰 번호", "권한", "소속 팀", "직책", "입사일", "상태", ""].map(h => (
+              {["사용자", "휴대폰 번호", "권한", "소속 팀", "직책", "입사일", "연차", "상태", ""].map(h => (
                 <th key={h} className="px-5 py-3 text-left text-xs font-semibold" style={{ color: "#64748B" }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={8} className="py-16 text-center text-sm" style={{ color: "#94A3B8" }}>불러오는 중...</td></tr>
+              <tr><td colSpan={9} className="py-16 text-center text-sm" style={{ color: "#94A3B8" }}>불러오는 중...</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={8} className="py-16 text-center text-sm" style={{ color: "#94A3B8" }}>
+              <tr><td colSpan={9} className="py-16 text-center text-sm" style={{ color: "#94A3B8" }}>
                 {users.length === 0 ? "등록된 사용자가 없습니다." : "검색 결과가 없습니다."}
               </td></tr>
             ) : filtered.map(u => {
@@ -445,6 +460,7 @@ export default function UsersPage() {
                   <td className="px-5 py-3.5 text-xs" style={{ color: "#475569" }}>{u.team || "—"}</td>
                   <td className="px-5 py-3.5 text-xs" style={{ color: "#475569" }}>{u.position || "—"}</td>
                   <td className="px-5 py-3.5 text-xs" style={{ color: "#94A3B8" }}>{u.joinedAt}</td>
+                  <td className="px-5 py-3.5 text-xs font-medium" style={{ color: "#475569" }}>{u.annualLeaveDays ?? 15}일</td>
 
                   <td className="px-5 py-3.5">
                     <button onClick={() => handleToggleStatus(u)}

@@ -3,12 +3,15 @@ import { db } from "@/db";
 import { users } from "@/db/schema";
 import { eq, and, ne } from "drizzle-orm";
 import { hashPassword } from "@/lib/password";
+import { ensureLeaveSchema } from "@/lib/leaveDb";
 
 type Params = { params: Promise<{ id: string }> };
 
 export async function PATCH(req: NextRequest, { params }: Params) {
   const { id } = await params;
   const body = await req.json();
+
+  await ensureLeaveSchema();
 
   if (body.username?.trim()) {
     const [dup] = await db.select({ id: users.id }).from(users)
@@ -29,6 +32,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (body.joinedAt !== undefined) updateData.joinedAt = body.joinedAt || undefined;
   if ("username" in body)          updateData.username = body.username?.trim() || null;
   if (body.password)               updateData.passwordHash = await hashPassword(body.password);
+  if (body.annualLeaveDays !== undefined && body.annualLeaveDays !== null && body.annualLeaveDays !== "") {
+    updateData.annualLeaveDays = Number(body.annualLeaveDays);
+  }
 
   const [row] = await db.update(users).set(updateData).where(eq(users.id, id)).returning();
   if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
