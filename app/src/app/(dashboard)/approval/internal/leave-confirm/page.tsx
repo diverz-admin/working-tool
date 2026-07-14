@@ -198,6 +198,8 @@ export default function LeaveConfirmPage() {
   const [items, setItems]         = useState<LeaveItem[]>([]);
   const [balances, setBalances]   = useState<Record<string, LeaveBalance>>({});
   const [filterStatus, setStatus] = useState<LeaveStatus | "전체">("대기");
+  const [filterYear, setYear]     = useState<string>("전체");
+  const [filterUser, setUser]     = useState<string>("전체");
   const [selected, setSelected]   = useState<LeaveItem | null>(null);
   const [loading, setLoading]     = useState(true);
 
@@ -213,14 +215,27 @@ export default function LeaveConfirmPage() {
 
   useEffect(() => { loadItems(); }, []);
 
+  const years = Array.from(new Set(items.map((i) => i.startDate.slice(0, 4)))).sort().reverse();
+  const requesters = Array.from(new Set(items.map((i) => i.requester))).sort();
+
+  // 연도·담당자로 먼저 범위를 좁히고, 그 안에서 상태 탭 건수를 센다
+  const scoped = items.filter((i) =>
+    (filterYear === "전체" || i.startDate.startsWith(filterYear)) &&
+    (filterUser === "전체" || i.requester === filterUser)
+  );
+
   const counts = {
-    전체: items.length,
-    대기: items.filter((i) => i.status === "대기").length,
-    승인: items.filter((i) => i.status === "승인").length,
-    반려: items.filter((i) => i.status === "반려").length,
+    전체: scoped.length,
+    대기: scoped.filter((i) => i.status === "대기").length,
+    승인: scoped.filter((i) => i.status === "승인").length,
+    반려: scoped.filter((i) => i.status === "반려").length,
   };
 
-  const filtered = filterStatus === "전체" ? items : items.filter((i) => i.status === filterStatus);
+  const filtered = filterStatus === "전체" ? scoped : scoped.filter((i) => i.status === filterStatus);
+
+  const usedInScope = scoped
+    .filter((i) => i.status === "승인")
+    .reduce((sum, i) => sum + i.leaveDays, 0);
 
   async function handleAction(id: string, status: LeaveStatus, opts?: { reason?: string; force?: boolean }) {
     const res = await fetch(`/api/approvals/leave/${id}`, {
@@ -256,7 +271,8 @@ export default function LeaveConfirmPage() {
         </button>
       </div>
 
-      <div className="flex items-center gap-1 p-0.5 rounded-xl self-start" style={{ background: "#F1F5F9" }}>
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-1 p-0.5 rounded-xl" style={{ background: "#F1F5F9" }}>
         {(["대기", "승인", "반려", "전체"] as const).map((s) => {
           const isActive = filterStatus === s;
           const style = s !== "전체" ? STATUS_STYLE[s] : null;
@@ -270,18 +286,76 @@ export default function LeaveConfirmPage() {
               }}>
               {s}
               <span className="font-bold" style={{ color: isActive ? (style?.color ?? "#191F28") : "#CBD5E1" }}>
-                {counts[s as keyof typeof counts] ?? items.length}
+                {counts[s as keyof typeof counts] ?? scoped.length}
               </span>
             </button>
           );
         })}
+        </div>
+
+        <select value={filterYear} onChange={(e) => setYear(e.target.value)}
+          className="px-3 py-2 text-xs font-semibold rounded-xl border outline-none"
+          style={{ background: "#F8FAFC", borderColor: "#E9EBEF", color: "#64748B" }}>
+          <option value="전체">연도 전체</option>
+          {years.map((y) => <option key={y} value={y}>{y}년</option>)}
+        </select>
+
+        <select value={filterUser} onChange={(e) => setUser(e.target.value)}
+          className="px-3 py-2 text-xs font-semibold rounded-xl border outline-none"
+          style={{ background: "#F8FAFC", borderColor: "#E9EBEF", color: "#64748B" }}>
+          <option value="전체">담당자 전체</option>
+          {requesters.map((r) => <option key={r} value={r}>{r}</option>)}
+        </select>
+
+        {(filterYear !== "전체" || filterUser !== "전체") && (
+          <button onClick={() => { setYear("전체"); setUser("전체"); }}
+            className="text-xs font-semibold px-3 py-2 rounded-xl hover:opacity-80"
+            style={{ color: "#8B5CF6" }}>
+            필터 초기화
+          </button>
+        )}
       </div>
+
+      {filterUser !== "전체" && (
+        <div className="flex items-center gap-6 px-5 py-4 rounded-2xl" style={{ background: "#fff", border: "1px solid #E9EBEF" }}>
+          <div>
+            <p className="text-xs mb-1" style={{ color: "#94A3B8" }}>담당자</p>
+            <p className="text-base font-bold" style={{ color: "#191F28" }}>{filterUser}</p>
+          </div>
+          <div className="w-px h-8" style={{ background: "#F1F5F9" }} />
+          <div>
+            <p className="text-xs mb-1" style={{ color: "#94A3B8" }}>부여 연차</p>
+            <p className="text-lg font-bold" style={{ color: "#191F28" }}>
+              {fmtDays(balances[filterUser]?.granted ?? 0)}<span className="text-xs ml-0.5" style={{ color: "#94A3B8" }}>일</span>
+            </p>
+          </div>
+          <div className="w-px h-8" style={{ background: "#F1F5F9" }} />
+          <div>
+            <p className="text-xs mb-1" style={{ color: "#94A3B8" }}>
+              {filterYear === "전체" ? "승인 차감 합계" : `${filterYear}년 사용`}
+            </p>
+            <p className="text-lg font-bold" style={{ color: "#64748B" }}>
+              {fmtDays(usedInScope)}<span className="text-xs ml-0.5" style={{ color: "#94A3B8" }}>일</span>
+            </p>
+          </div>
+          <div className="w-px h-8" style={{ background: "#F1F5F9" }} />
+          <div>
+            <p className="text-xs mb-1" style={{ color: "#94A3B8" }}>현재 잔여</p>
+            <p className="text-lg font-bold" style={{ color: "#8B5CF6" }}>
+              {fmtDays(balances[filterUser]?.remaining ?? 0)}<span className="text-xs ml-0.5" style={{ color: "#94A3B8" }}>일</span>
+            </p>
+          </div>
+          <p className="ml-auto text-xs" style={{ color: "#CBD5E1" }}>
+            현재 잔여는 {new Date().getFullYear()}년 승인 건 기준입니다
+          </p>
+        </div>
+      )}
 
       <div className="rounded-2xl overflow-hidden" style={{ background: "#fff", border: "1px solid #E9EBEF" }}>
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: "#F8FAFC" }}>
-              {["구분", "제목", "요청자", "휴가기간", "차감", "잔여", "요청일", "상태", ""].map((h) => (
+              {["구분", "제목", "요청자", "휴가기간", "차감", "현재 잔여", "요청일", "상태", ""].map((h) => (
                 <th key={h} className="px-5 py-3 text-left text-xs font-semibold whitespace-nowrap" style={{ color: "#64748B" }}>{h}</th>
               ))}
             </tr>
