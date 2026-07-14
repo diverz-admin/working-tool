@@ -193,7 +193,9 @@ export default function DashboardPage() {
       {/* 기준 토글 */}
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold" style={{ color: "#94A3B8" }}>
-          {criteria === "캠페인 시작날짜" ? "캠페인 시작일 기준 · 입금확인 완료 매출" : "세금계산서 발행일 기준 · 입금확인 완료 매출"}
+          {criteria === "캠페인 시작날짜"
+            ? "매출: 캠페인 시작일 · 매입: 계산서 발행일"
+            : "매출: 계산서 발행일 · 매입: 계산서 발행일"}
         </p>
         <div className="flex gap-0.5 p-0.5 rounded-xl" style={{ background: "#F1F5F9" }}>
           {([
@@ -234,7 +236,7 @@ export default function DashboardPage() {
         {/* 이번달 승인 매입 */}
         <div className="rounded-2xl p-5 flex flex-col gap-3" style={{ background: "#fff", border: "1px solid #E9EBEF" }}>
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold" style={{ color: "#94A3B8" }}>이번달 매입<br/><span style={{ color: "#CBD5E1", fontWeight: 400 }}>입금요청 승인</span></span>
+            <span className="text-xs font-semibold" style={{ color: "#94A3B8" }}>이번달 매입<br/><span style={{ color: "#CBD5E1", fontWeight: 400 }}>승인 매입 · 계산서 발행일 기준</span></span>
             <span className="p-2 rounded-xl" style={{ background: "rgba(239,68,68,0.08)", color: "#EF4444" }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
             </span>

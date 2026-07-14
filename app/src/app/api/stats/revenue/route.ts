@@ -1,116 +1,27 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { projects, projectRevenues, projectCosts, kpiTargets } from "@/db/schema";
-import { eq, sql, and, isNotNull } from "drizzle-orm";
+import { kpiTargets } from "@/db/schema";
+import { eq } from "drizzle-orm";
+import { fetchRevenueStats, fetchCostStats, parseCriteria } from "@/lib/revenue-stats";
 
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
-    const year      = parseInt(searchParams.get("year")  ?? String(new Date().getFullYear()));
-    const teamParam = searchParams.get("team")     ?? "";
-    const criteria  = searchParams.get("criteria") ?? "캠페인 시작날짜";
+    const year      = parseInt(searchParams.get("year") ?? String(new Date().getFullYear()));
+    const teamParam = searchParams.get("team") ?? "";
+    const criteria  = parseCriteria(searchParams.get("criteria"));
 
-    // 확정 매출 집계 — 기준에 따라 그룹핑 컬럼 변경
-    // 두 기준 모두 invoiceDate IS NOT NULL (계산서 발급 완료)인 행만 집계 → 월간 리포트와 동일
-    let revenueRows: { dateMonth: string; assignedTeam: string | null; totalSum: number }[];
-
-    if (criteria === "계산서날짜") {
-      // 계산서 발행일 기준: invoiceDate 월로 그룹핑
-      const raw = await db
-        .select({
-          dateMonth:    sql<string>`TO_CHAR(${projectRevenues.invoiceDate}, 'YYYY-MM')`,
-          assignedTeam: projects.assignedTeam,
-          totalSum:     sql<number>`COALESCE(SUM(${projectRevenues.total}), 0)`,
-        })
-        .from(projectRevenues)
-        .innerJoin(projects, eq(projects.id, projectRevenues.projectId))
-        .where(
-          and(
-            // 계산서 발행일(invoiceDate)이 기록된 행 = 결재확인 발행완료된 매출 (입금 무관)
-            isNotNull(projectRevenues.invoiceDate),
-            sql`EXTRACT(YEAR FROM ${projectRevenues.invoiceDate}) = ${year}`,
-            teamParam ? eq(projects.assignedTeam, teamParam) : undefined,
-          )
-        )
-        .groupBy(
-          sql`TO_CHAR(${projectRevenues.invoiceDate}, 'YYYY-MM')`,
-          projects.assignedTeam,
-        );
-      revenueRows = raw.map(r => ({ ...r, totalSum: Number(r.totalSum ?? 0) }));
-    } else if (criteria === "통장") {
-      // 통장 기준: 입금 확인일(paymentDate = 결재확인 승인일) 월로 그룹핑
-      const raw = await db
-        .select({
-          dateMonth:    sql<string>`TO_CHAR(${projectRevenues.paymentDate}, 'YYYY-MM')`,
-          assignedTeam: projects.assignedTeam,
-          totalSum:     sql<number>`COALESCE(SUM(${projectRevenues.total}), 0)`,
-        })
-        .from(projectRevenues)
-        .innerJoin(projects, eq(projects.id, projectRevenues.projectId))
-        .where(
-          and(
-            // 입금 확인일(paymentDate)이 기록된 행 = 결재확인 입금 승인된 매출 (세금계산서 무관)
-            isNotNull(projectRevenues.paymentDate),
-            sql`EXTRACT(YEAR FROM ${projectRevenues.paymentDate}) = ${year}`,
-            teamParam ? eq(projects.assignedTeam, teamParam) : undefined,
-          )
-        )
-        .groupBy(
-          sql`TO_CHAR(${projectRevenues.paymentDate}, 'YYYY-MM')`,
-          projects.assignedTeam,
-        );
-      revenueRows = raw.map(r => ({ ...r, totalSum: Number(r.totalSum ?? 0) }));
-    } else {
-      // 캠페인 시작날짜 기준: project.startDate 월로 그룹핑
-      // 입금확인요청이 제출된 프로젝트(반려 제외)의 매출을 캠페인 시작월에 인식
-      const raw = await db
-        .select({
-          dateMonth:    sql<string>`TO_CHAR(${projects.startDate}, 'YYYY-MM')`,
-          assignedTeam: projects.assignedTeam,
-          totalSum:     sql<number>`COALESCE(SUM(${projectRevenues.total}), 0)`,
-        })
-        .from(projects)
-        .innerJoin(projectRevenues, eq(projectRevenues.projectId, projects.id))
-        .where(
-          and(
-            isNotNull(projects.startDate),
-            sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`,
-            sql`EXISTS (SELECT 1 FROM confirm_requests WHERE project_id = ${projects.id} AND status != '반려')`,
-            teamParam ? eq(projects.assignedTeam, teamParam) : undefined,
-          )
-        )
-        .groupBy(
-          sql`TO_CHAR(${projects.startDate}, 'YYYY-MM')`,
-          projects.assignedTeam,
-        );
-      revenueRows = raw.map(r => ({ ...r, totalSum: Number(r.totalSum ?? 0) }));
-    }
-
-    // 매입 날짜 기준: 통장 → 승인일(purchaseDate), 그 외 → 계산서 발행일(invoiceDate)
-    const costDateExpr = criteria === "통장" ? projectCosts.purchaseDate : projectCosts.invoiceDate;
-
-    const [kpiRows, costRows] = await Promise.all([
+    // 매출·매입 집계는 대시보드(/api/dashboard)와 동일한 모듈을 공유한다 (@/lib/revenue-stats)
+    const [revenueRows, costRows, kpiRows] = await Promise.all([
+      fetchRevenueStats(year, criteria, teamParam || undefined),
+      fetchCostStats(year, criteria, teamParam || undefined),
       db.select().from(kpiTargets).where(eq(kpiTargets.year, year)),
-
-      db.select({
-          month: sql<string>`TO_CHAR(${costDateExpr}, 'YYYY-MM')`,
-          total: sql<number>`COALESCE(SUM(${projectCosts.total}), 0)`,
-        })
-        .from(projectCosts)
-        .innerJoin(projects, eq(projects.id, projectCosts.projectId))
-        .where(and(
-          eq(projectCosts.isApproved, true),
-          isNotNull(costDateExpr),
-          sql`EXTRACT(YEAR FROM ${costDateExpr}) = ${year}`,
-          teamParam ? eq(projects.assignedTeam, teamParam) : undefined,
-        ))
-        .groupBy(sql`TO_CHAR(${costDateExpr}, 'YYYY-MM')`),
     ]);
 
     const monthlyCosts = Array.from({ length: 12 }, (_, i) => {
       const m = `${year}-${String(i + 1).padStart(2, "0")}`;
       const row = costRows.find((r) => r.month === m);
-      return row ? Number(row.total) : 0;
+      return row ? row.total : 0;
     });
 
     // 팀별 월별 매출 맵 구축
