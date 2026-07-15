@@ -17,7 +17,7 @@ async function enrichWithProjectData(rows: Record<string, unknown>[]) {
   if (projectIds.length === 0) return rows.map(r => ({ ...r, projectType: null, revenueLines: [] }));
 
   const projectRows = await db
-    .select({ id: projects.id, projectType: projects.projectType, product: projects.product, projectGroupId: projects.projectGroupId })
+    .select({ id: projects.id, projectType: projects.projectType, product: projects.product, projectGroupId: projects.projectGroupId, campaignName: projects.campaignName })
     .from(projects)
     .where(inArray(projects.id, projectIds));
 
@@ -52,6 +52,7 @@ async function enrichWithProjectData(rows: Record<string, unknown>[]) {
 
   const projectTypeMap    = new Map(projectRows.map(p => [p.id, p.projectType]));
   const projectProductMap = new Map(projectRows.map(p => [p.id, p.product]));
+  const campaignNameMap   = new Map(projectRows.map(p => [p.id, p.campaignName]));
   const revenueLinesMap   = new Map<string, { productName: string | null; quantity: number | null; total: number | null; depositAccount: string | null }[]>();
   for (const rv of revenueRows) {
     if (!rv.projectId) continue;
@@ -70,6 +71,7 @@ async function enrichWithProjectData(rows: Record<string, unknown>[]) {
     projectProduct: r.projectId ? (projectProductMap.get(r.projectId as string) ?? null) : null,
     revenueLines:   r.projectId ? (revenueLinesMap.get(r.projectId as string) ?? []) : [],
     campaignNumber: r.projectId ? (campaignNumberMap.get(r.projectId as string) ?? null) : null,
+    campaignName:   r.projectId ? (campaignNameMap.get(r.projectId as string) ?? null) : null,
   }));
 }
 

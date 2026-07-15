@@ -716,7 +716,7 @@ export default function ConfirmPage() {
                           >
                             <td className="px-4 py-3 font-semibold text-xs" style={{ color: "#191F28" }}>{item.clientName || item.projectName || "—"}</td>
                             <td className="px-4 py-3 text-xs" style={{ color: "#475569" }}>
-                              {item.campaignNumber != null ? `캠페인 ${item.campaignNumber}` : (item.projectName || "—")}
+                              {item.campaignName || (item.campaignNumber != null ? `캠페인 ${item.campaignNumber}` : (item.projectName || "—"))}
                             </td>
                             <td className="px-4 py-3 text-xs">
                               {item.projectType ? (

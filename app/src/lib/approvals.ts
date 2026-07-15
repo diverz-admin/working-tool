@@ -58,6 +58,7 @@ export interface ConfirmRequest {
   projectType?: string | null;
   projectProduct?: string | null;
   campaignNumber?: number | null;
+  campaignName?: string | null;
   revenueLines?: { productName: string | null; quantity: number | null; total: number | null; depositAccount: string | null }[];
   taxExempt?: boolean;
 }
