@@ -13,21 +13,20 @@ const MONTHS_SHORT = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct
 const TEAMS       = ["전체", "영업 1팀", "영업 2팀"];
 const TEAM_COLOR: Record<string, string> = { "영업 1팀": "#6366F1", "영업 2팀": "#10B981", "미지정": "#94A3B8" };
 type AnalysisTab = "overview" | "team" | "person" | "project";
-const WEEKS = [1, 2, 3, 4, 5] as const;
+const DOW = ["일", "월", "화", "수", "목", "금", "토"];
 
 // ─── 회의록 노트 타입 ─────────────────────────────────────────
 interface ReportNote { id: string; year: number; month: number; week: number|null; team: string; content: string; authorName: string|null; }
 
 // ─── 회의록 섹션 컴포넌트 ─────────────────────────────────────
 function MeetingSection({ year, month }: { year: number; month: number }) {
-  const [noteTeam,  setNoteTeam]  = useState("전체");
-  const [noteType,  setNoteType]  = useState<"월간" | "주간">("월간");
-  const [noteWeek,  setNoteWeek]  = useState(1);
-  const [notes,     setNotes]     = useState<ReportNote[]>([]);
-  const [content,   setContent]   = useState("");
-  const [author,    setAuthor]    = useState("");
-  const [saving,    setSaving]    = useState(false);
-  const [saved,     setSaved]     = useState(false);
+  const [noteTeam, setNoteTeam] = useState("전체");
+  const [notes,    setNotes]    = useState<ReportNote[]>([]);
+  const [expanded, setExpanded] = useState<string>("월간"); // "월간" | "주간-N" | "" (모두 닫힘)
+  const [draftContent, setDraftContent] = useState("");
+  const [draftAuthor,  setDraftAuthor]  = useState("");
+  const [saving,   setSaving]   = useState(false);
+  const [savedKey, setSavedKey] = useState<string | null>(null);
 
   // 노트 로드
   useEffect(() => {
@@ -36,183 +35,210 @@ function MeetingSection({ year, month }: { year: number; month: number }) {
       .then(r => r.json()).then(d => setNotes(d.notes ?? []));
   }, [year, month]);
 
-  // 현재 선택에 맞는 노트 찾기
-  const currentNote = notes.find(n =>
-    n.team === noteTeam &&
-    (noteType === "월간" ? n.week === null : n.week === noteWeek)
+  // 달력 주차 계산 (달마다 5~6주)
+  const firstDay    = new Date(year, month - 1, 1).getDay();
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const weekRows    = Math.max(1, Math.ceil((firstDay + daysInMonth) / 7));
+  const weekNums    = Array.from({ length: weekRows }, (_, i) => i + 1);
+
+  const getNote = useCallback(
+    (team: string, week: number | null) =>
+      notes.find(n => n.team === team && (week === null ? n.week === null : n.week === week)),
+    [notes],
   );
 
-  // 노트 변경 시 content 갱신
+  const keyOf   = (week: number | null) => (week === null ? "월간" : `주간-${week}`);
+  const weekOf  = (key: string): number | null => (key === "월간" ? null : parseInt(key.split("-")[1]));
+  const activeWeek = expanded ? weekOf(expanded) : null;
+  const activeNote = expanded ? getNote(noteTeam, activeWeek) : undefined;
+
+  // 선택 항목 / 팀 변경 시 편집 draft 로드
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    setContent(currentNote?.content ?? "");
-    setAuthor(currentNote?.authorName ?? "");
-  }, [currentNote?.id, noteTeam, noteType, noteWeek]);
+    setDraftContent(activeNote?.content ?? "");
+    setDraftAuthor(activeNote?.authorName ?? "");
+  }, [activeNote?.id, expanded, noteTeam]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   async function handleSave() {
+    if (!expanded) return;
+    const week = weekOf(expanded);
     setSaving(true);
     const res = await fetch("/api/report-meetings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        year, month,
-        week:       noteType === "월간" ? null : noteWeek,
-        team:       noteTeam,
-        content,
-        authorName: author || null,
-      }),
+      body: JSON.stringify({ year, month, week, team: noteTeam, content: draftContent, authorName: draftAuthor || null }),
     });
     const data = await res.json();
-    setNotes(p => {
-      const idx = p.findIndex(n => n.id === data.note.id);
-      if (idx >= 0) { const next = [...p]; next[idx] = data.note; return next; }
-      return [...p, data.note];
-    });
-    setSaving(false); setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    if (data?.note) {
+      setNotes(p => {
+        const idx = p.findIndex(n => n.id === data.note.id);
+        if (idx >= 0) { const next = [...p]; next[idx] = data.note; return next; }
+        return [...p, data.note];
+      });
+      const k = expanded;
+      setSavedKey(k);
+      setTimeout(() => setSavedKey(cur => (cur === k ? null : cur)), 2000);
+    }
+    setSaving(false);
   }
 
-  const hasContent = (team: string, type: "월간"|"주간", week?: number) =>
-    notes.some(n =>
-      n.team === team &&
-      (type === "월간" ? n.week === null : n.week === (week ?? 1)) &&
-      n.content.trim().length > 0
-    );
+  const filled     = (team: string, week: number | null) => {
+    const n = getNote(team, week);
+    return !!n && n.content.trim().length > 0;
+  };
+  const teamHasAny = (team: string) => notes.some(n => n.team === team && n.content.trim().length > 0);
+
+  const fullLabel  = (week: number | null) => (week === null ? `${month}월 월간회의` : `${month}월 ${week}주차 주간회의`);
+  const shortLabel = (week: number | null) => (week === null ? "월간회의" : `${week}주차`);
+  const accordionItems: (number | null)[] = [null, ...weekNums];
 
   return (
     <div className="rounded-2xl overflow-hidden" style={{ background: "#fff", border: "1px solid #E9EBEF" }}>
-      {/* 헤더 */}
-      <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid #F1F5F9", background: "#F8FAFC" }}>
+      {/* 헤더 + 팀 선택 */}
+      <div className="flex items-center justify-between px-5 py-4 flex-wrap gap-3" style={{ borderBottom: "1px solid #F1F5F9", background: "#F8FAFC" }}>
         <div>
           <h3 className="text-sm font-bold" style={{ color: "#191F28" }}>회의록</h3>
           <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>{year}년 {month}월 · 월간회의 및 주간회의 기록</p>
         </div>
+        <div className="flex gap-1">
+          {TEAMS.map(t => (
+            <button key={t} onClick={() => setNoteTeam(t)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
+              style={{
+                background: noteTeam === t ? `${TEAM_COLOR[t] ?? "#3182F6"}15` : "#fff",
+                color:      noteTeam === t ? (TEAM_COLOR[t] ?? "#3182F6") : "#64748B",
+                border:     `1px solid ${noteTeam === t ? `${TEAM_COLOR[t] ?? "#3182F6"}40` : "#E9EBEF"}`,
+              }}>
+              {t}
+              {teamHasAny(t) && <span className="w-1.5 h-1.5 rounded-full" style={{ background: TEAM_COLOR[t] ?? "#3182F6" }} />}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="p-5">
-        {/* 팀 선택 */}
-        <div className="flex items-center gap-2 mb-4">
-          <span className="text-xs font-semibold shrink-0" style={{ color: "#64748B" }}>팀</span>
-          <div className="flex gap-1">
-            {TEAMS.map(t => {
-              const monthHas  = hasContent(t, "월간");
-              const weekHas   = WEEKS.some(w => hasContent(t, "주간", w));
-              const hasSome   = monthHas || weekHas;
+      <div className="p-5 flex flex-col lg:flex-row gap-5">
+        {/* ── 왼쪽: 월 달력 ── */}
+        <div className="lg:w-[380px] lg:shrink-0">
+          {/* 월간회의 배너 */}
+          <button onClick={() => setExpanded("월간")}
+            className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl mb-2 transition-colors"
+            style={{
+              background: expanded === "월간" ? "rgba(49,130,246,0.1)" : "#F8FAFC",
+              border: `1px solid ${expanded === "월간" ? "rgba(49,130,246,0.35)" : "#E9EBEF"}`,
+            }}>
+            <span className="text-xs font-bold" style={{ color: expanded === "월간" ? "#3182F6" : "#475569" }}>월간회의</span>
+            {filled(noteTeam, null)
+              ? <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#3182F6" }} />
+              : <span className="text-xs" style={{ color: "#CBD5E1" }}>미작성</span>}
+          </button>
+
+          {/* 요일 헤더 */}
+          <div className="grid mb-1" style={{ gridTemplateColumns: "40px repeat(7, 1fr)" }}>
+            <div />
+            {DOW.map((d, i) => (
+              <div key={d} className="text-center text-xs font-semibold py-1"
+                style={{ color: i === 0 ? "#EF4444" : i === 6 ? "#3182F6" : "#94A3B8" }}>{d}</div>
+            ))}
+          </div>
+
+          {/* 주차 행 (클릭 시 오른쪽 아코디언 열림) */}
+          <div className="space-y-1">
+            {weekNums.map(w => {
+              const isSel = expanded === keyOf(w);
+              const has   = filled(noteTeam, w);
               return (
-                <button key={t} onClick={() => setNoteTeam(t)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
+                <button key={w} onClick={() => setExpanded(keyOf(w))}
+                  className="w-full grid items-center rounded-xl transition-colors hover:bg-slate-50"
                   style={{
-                    background: noteTeam === t ? `${TEAM_COLOR[t] ?? "#3182F6"}15` : "#F8FAFC",
-                    color:      noteTeam === t ? (TEAM_COLOR[t] ?? "#3182F6") : "#64748B",
-                    border:     `1px solid ${noteTeam === t ? `${TEAM_COLOR[t] ?? "#3182F6"}40` : "#E9EBEF"}`,
+                    gridTemplateColumns: "40px repeat(7, 1fr)",
+                    background: isSel ? "rgba(49,130,246,0.08)" : "transparent",
+                    border: `1px solid ${isSel ? "rgba(49,130,246,0.3)" : "transparent"}`,
                   }}>
-                  {t}
-                  {hasSome && <span className="w-1.5 h-1.5 rounded-full" style={{ background: TEAM_COLOR[t] ?? "#3182F6" }} />}
+                  <div className="flex flex-col items-center justify-center py-1.5">
+                    <span className="text-xs font-bold" style={{ color: isSel ? "#3182F6" : "#94A3B8" }}>{w}주</span>
+                    {has && <span className="w-1 h-1 rounded-full mt-0.5" style={{ background: "#3182F6" }} />}
+                  </div>
+                  {Array.from({ length: 7 }, (_, dow) => {
+                    const day = (w - 1) * 7 + dow - firstDay + 1;
+                    const inMonth = day >= 1 && day <= daysInMonth;
+                    return (
+                      <div key={dow} className="text-center text-xs py-1.5"
+                        style={{ color: !inMonth ? "transparent" : dow === 0 ? "#EF4444" : dow === 6 ? "#3182F6" : "#475569" }}>
+                        {inMonth ? day : ""}
+                      </div>
+                    );
+                  })}
                 </button>
               );
             })}
           </div>
+          <p className="text-xs mt-2 px-1" style={{ color: "#B0B8C1" }}>● 표시된 주차·월간을 클릭하면 오른쪽에서 열립니다.</p>
         </div>
 
-        {/* 회의 유형 */}
-        <div className="flex items-center gap-4 mb-4">
-          <div className="flex gap-1 p-0.5 rounded-xl" style={{ background: "#F1F5F9" }}>
-            {(["월간", "주간"] as const).map(t => (
-              <button key={t} onClick={() => setNoteType(t)}
-                className="px-4 py-1.5 rounded-lg text-xs font-semibold transition-all"
-                style={{
-                  background: noteType === t ? "#fff" : "transparent",
-                  color:      noteType === t ? "#191F28" : "#94A3B8",
-                  boxShadow:  noteType === t ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
-                }}>
-                {t}회의
-              </button>
-            ))}
-          </div>
-
-          {/* 주차 선택 (주간 모드) */}
-          {noteType === "주간" && (
-            <div className="flex gap-1">
-              {WEEKS.map(w => {
-                const has = hasContent(noteTeam, "주간", w);
-                return (
-                  <button key={w} onClick={() => setNoteWeek(w)}
-                    className="relative px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
-                    style={{
-                      background: noteWeek === w ? "rgba(49,130,246,0.1)" : "#F8FAFC",
-                      color:      noteWeek === w ? "#3182F6" : "#64748B",
-                      border:     `1px solid ${noteWeek === w ? "rgba(49,130,246,0.3)" : "#E9EBEF"}`,
-                    }}>
-                    {w}주차
-                    {has && <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-blue-400" />}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* 작성 제목 */}
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-bold" style={{ color: TEAM_COLOR[noteTeam] ?? "#3182F6" }}>
-              {noteTeam} — {noteType === "월간" ? `${month}월 월간회의` : `${month}월 ${noteWeek}주차 주간회의`}
-            </span>
-            {currentNote && (
-              <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "rgba(16,185,129,0.1)", color: "#059669" }}>
-                저장됨
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <input
-              value={author}
-              onChange={e => setAuthor(e.target.value)}
-              placeholder="작성자"
-              className="px-2.5 py-1.5 text-xs rounded-lg outline-none border transition-colors focus:border-[#3182F6]"
-              style={{ background: "#F8FAFC", borderColor: "#E9EBEF", color: "#191F28", width: 90 }}
-            />
-            <button onClick={handleSave} disabled={saving}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-              style={{ background: saved ? "#10B981" : "linear-gradient(135deg,#3182F6,#2462D8)" }}>
-              {saving ? "저장 중..." : saved ? "저장됨 ✓" : "저장"}
-            </button>
-          </div>
-        </div>
-
-        {/* 텍스트 에리어 */}
-        <textarea
-          value={content}
-          onChange={e => setContent(e.target.value)}
-          onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === "s") { e.preventDefault(); handleSave(); } }}
-          rows={24}
-          placeholder={noteType === "월간"
-            ? `${month}월 월간회의 내용을 입력하세요.\n\n예)\n• 이번 달 목표 달성 현황\n• 주요 이슈 및 액션 아이템\n• 다음 달 계획`
-            : `${month}월 ${noteWeek}주차 주간회의 내용을 입력하세요.\n\n예)\n• 금주 진행 현황\n• 이슈 사항\n• 다음 주 계획`
-          }
-          className="w-full px-4 py-3 text-sm rounded-xl outline-none border resize-none leading-relaxed transition-colors focus:border-[#3182F6]"
-          style={{ background: "#F8FAFC", borderColor: "#E9EBEF", color: "#191F28", minHeight: 560 }}
-        />
-        <p className="text-xs mt-1.5 px-1" style={{ color: "#B0B8C1" }}>⌘S / Ctrl+S 로 저장</p>
-
-        {/* 다른 팀/주차 미리보기 */}
-        {noteType === "주간" && notes.filter(n => n.week !== null && n.team === noteTeam && n.week !== noteWeek && n.content.trim()).length > 0 && (
-          <div className="mt-4 space-y-2">
-            <p className="text-xs font-semibold" style={{ color: "#94A3B8" }}>다른 주차 기록</p>
-            {notes
-              .filter(n => n.week !== null && n.team === noteTeam && n.week !== noteWeek && n.content.trim())
-              .sort((a, b) => (a.week ?? 0) - (b.week ?? 0))
-              .map(n => (
-                <button key={n.id} onClick={() => setNoteWeek(n.week!)}
-                  className="w-full text-left px-3 py-2.5 rounded-xl border transition-colors hover:bg-slate-50"
-                  style={{ borderColor: "#E9EBEF" }}>
-                  <p className="text-xs font-semibold mb-0.5" style={{ color: "#64748B" }}>{month}월 {n.week}주차</p>
-                  <p className="text-xs line-clamp-2" style={{ color: "#94A3B8" }}>{n.content}</p>
+        {/* ── 오른쪽: 아코디언 (보기 + 수정) ── */}
+        <div className="flex-1 min-w-0 space-y-2">
+          {accordionItems.map(w => {
+            const key    = keyOf(w);
+            const isOpen = expanded === key;
+            const note   = getNote(noteTeam, w);
+            const hasC   = !!note && note.content.trim().length > 0;
+            return (
+              <div key={key} className="rounded-xl overflow-hidden border" style={{ borderColor: isOpen ? "rgba(49,130,246,0.35)" : "#E9EBEF" }}>
+                {/* 아코디언 헤더 */}
+                <button onClick={() => setExpanded(isOpen ? "" : key)}
+                  className="w-full flex items-center justify-between px-4 py-3 transition-colors"
+                  style={{ background: isOpen ? "rgba(49,130,246,0.06)" : "#fff" }}>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={isOpen ? "#3182F6" : "#94A3B8"} strokeWidth="2.5" strokeLinecap="round"
+                      style={{ transform: isOpen ? "rotate(90deg)" : "none", transition: "transform .15s", flexShrink: 0 }}>
+                      <polyline points="9 18 15 12 9 6" />
+                    </svg>
+                    <span className="text-sm font-bold" style={{ color: isOpen ? "#3182F6" : "#191F28" }}>{shortLabel(w)}</span>
+                    {hasC
+                      ? <span className="text-xs px-2 py-0.5 rounded-full shrink-0" style={{ background: "rgba(16,185,129,0.1)", color: "#059669" }}>저장됨</span>
+                      : <span className="text-xs px-2 py-0.5 rounded-full shrink-0" style={{ background: "#F1F5F9", color: "#94A3B8" }}>미작성</span>}
+                    {!isOpen && hasC && <span className="text-xs truncate" style={{ color: "#94A3B8" }}>{note!.content.replace(/\s+/g, " ").trim()}</span>}
+                  </div>
+                  {note?.authorName && !isOpen && <span className="text-xs shrink-0 ml-2" style={{ color: "#94A3B8" }}>{note.authorName}</span>}
                 </button>
-              ))}
-          </div>
-        )}
+
+                {/* 본문 — 보기 + 수정 */}
+                {isOpen && (
+                  <div className="px-4 pb-4 pt-1" style={{ background: "#fff" }}>
+                    <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                      <span className="text-sm font-bold" style={{ color: TEAM_COLOR[noteTeam] ?? "#3182F6" }}>
+                        {noteTeam} — {fullLabel(w)}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <input value={draftAuthor} onChange={e => setDraftAuthor(e.target.value)} placeholder="작성자"
+                          className="px-2.5 py-1.5 text-xs rounded-lg outline-none border transition-colors focus:border-[#3182F6]"
+                          style={{ background: "#F8FAFC", borderColor: "#E9EBEF", color: "#191F28", width: 90 }} />
+                        <button onClick={handleSave} disabled={saving}
+                          className="px-3 py-1.5 rounded-xl text-xs font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                          style={{ background: savedKey === key ? "#10B981" : "linear-gradient(135deg,#3182F6,#2462D8)" }}>
+                          {saving ? "저장 중..." : savedKey === key ? "저장됨 ✓" : "저장"}
+                        </button>
+                      </div>
+                    </div>
+                    <textarea
+                      value={draftContent}
+                      onChange={e => setDraftContent(e.target.value)}
+                      onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === "s") { e.preventDefault(); handleSave(); } }}
+                      rows={16}
+                      placeholder={w === null
+                        ? `${month}월 월간회의 내용을 입력하세요.\n\n예)\n• 이번 달 목표 달성 현황\n• 주요 이슈 및 액션 아이템\n• 다음 달 계획`
+                        : `${month}월 ${w}주차 주간회의 내용을 입력하세요.\n\n예)\n• 금주 진행 현황\n• 이슈 사항\n• 다음 주 계획`}
+                      className="w-full px-4 py-3 text-sm rounded-xl outline-none border resize-none leading-relaxed transition-colors focus:border-[#3182F6]"
+                      style={{ background: "#F8FAFC", borderColor: "#E9EBEF", color: "#191F28", minHeight: 340 }}
+                    />
+                    <p className="text-xs mt-1.5 px-1" style={{ color: "#B0B8C1" }}>⌘S / Ctrl+S 로 저장</p>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
