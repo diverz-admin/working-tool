@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, integer, real, date, timestamp, boolean, index } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, integer, real, date, timestamp, boolean, index, unique } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id:           uuid("id").primaryKey().defaultRandom(),
@@ -526,3 +526,26 @@ export const appNotifications = pgTable("app_notifications", {
 });
 
 export type AppNotification = typeof appNotifications.$inferSelect;
+
+// ─── 클라이언트(광고주) 월별 리포트 ─────────────────────────────
+// 키워드 순위 성과는 keyword_rankings에서 렌더 시점에 집계하고,
+// 이 테이블에는 메타 + 수기 코멘트(활동·다음 달 계획)만 저장한다.
+export const clientReports = pgTable("client_reports", {
+  id:              uuid("id").primaryKey().defaultRandom(),
+  clientId:        uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+  year:            integer("year").notNull(),
+  month:           integer("month").notNull(),
+  managerName:     text("manager_name"),
+  summary:         text("summary"),                                  // 한 줄 요약
+  activityContent: text("activity_content").notNull().default(""),   // 이번 달 활동 (수기)
+  nextPlanContent: text("next_plan_content").notNull().default(""),  // 다음 달 계획 (수기)
+  comment:         text("comment"),                                  // 담당자 코멘트 (수기)
+  createdAt:       timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:       timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  unique("client_reports_client_year_month_uq").on(table.clientId, table.year, table.month),
+  index("client_reports_client_id_idx").on(table.clientId),
+]);
+
+export type ClientReport = typeof clientReports.$inferSelect;
+export type NewClientReport = typeof clientReports.$inferInsert;
