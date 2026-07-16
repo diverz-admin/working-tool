@@ -16,7 +16,15 @@ type AnalysisTab = "overview" | "team" | "person" | "project";
 const DOW = ["일", "월", "화", "수", "목", "금", "토"];
 
 // ─── 회의록 노트 타입 ─────────────────────────────────────────
-interface ReportNote { id: string; year: number; month: number; week: number|null; team: string; content: string; authorName: string|null; }
+interface ReportNote { id: string; year: number; month: number; week: number|null; team: string; content: string; authorName: string|null; createdAt?: string; updatedAt?: string; }
+
+function fmtNoteDate(iso?: string) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}.${p(d.getMonth() + 1)}.${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
 
 // ─── 회의록 섹션 컴포넌트 ─────────────────────────────────────
 function MeetingSection({ year, month }: { year: number; month: number }) {
@@ -81,6 +89,23 @@ function MeetingSection({ year, month }: { year: number; month: number }) {
       setTimeout(() => setSavedKey(cur => (cur === k ? null : cur)), 2000);
     }
     setSaving(false);
+  }
+
+  const [deleting, setDeleting] = useState(false);
+  async function handleDelete() {
+    if (!activeNote) return;
+    if (!confirm(`${noteTeam} — ${fullLabel(activeWeek)} 기록을 삭제할까요?`)) return;
+    setDeleting(true);
+    const res = await fetch(`/api/report-meetings/${activeNote.id}`, { method: "DELETE" });
+    if (res.ok) {
+      const delId = activeNote.id;
+      setNotes(p => p.filter(n => n.id !== delId));
+      setDraftContent("");
+      setDraftAuthor("");
+    } else {
+      alert("삭제에 실패했습니다.");
+    }
+    setDeleting(false);
   }
 
   const filled     = (team: string, week: number | null) => {
@@ -200,25 +225,44 @@ function MeetingSection({ year, month }: { year: number; month: number }) {
                       : <span className="text-xs px-2 py-0.5 rounded-full shrink-0" style={{ background: "#F1F5F9", color: "#94A3B8" }}>미작성</span>}
                     {!isOpen && hasC && <span className="text-xs truncate" style={{ color: "#94A3B8" }}>{note!.content.replace(/\s+/g, " ").trim()}</span>}
                   </div>
-                  {note?.authorName && !isOpen && <span className="text-xs shrink-0 ml-2" style={{ color: "#94A3B8" }}>{note.authorName}</span>}
+                  {!isOpen && hasC && (
+                    <span className="text-xs shrink-0 ml-2 whitespace-nowrap" style={{ color: "#94A3B8" }}>
+                      {fmtNoteDate(note!.updatedAt)}{note!.authorName ? ` · ${note!.authorName}` : ""}
+                    </span>
+                  )}
                 </button>
 
-                {/* 본문 — 보기 + 수정 */}
+                {/* 본문 — 보기 + 수정 + 삭제 */}
                 {isOpen && (
                   <div className="px-4 pb-4 pt-1" style={{ background: "#fff" }}>
                     <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-                      <span className="text-sm font-bold" style={{ color: TEAM_COLOR[noteTeam] ?? "#3182F6" }}>
-                        {noteTeam} — {fullLabel(w)}
-                      </span>
+                      <div className="min-w-0">
+                        <span className="text-sm font-bold" style={{ color: TEAM_COLOR[noteTeam] ?? "#3182F6" }}>
+                          {noteTeam} — {fullLabel(w)}
+                        </span>
+                        {note?.updatedAt && (
+                          <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>
+                            작성일 {fmtNoteDate(note.updatedAt)}
+                            {note.authorName ? ` · ${note.authorName}` : ""}
+                          </p>
+                        )}
+                      </div>
                       <div className="flex items-center gap-2">
                         <input value={draftAuthor} onChange={e => setDraftAuthor(e.target.value)} placeholder="작성자"
                           className="px-2.5 py-1.5 text-xs rounded-lg outline-none border transition-colors focus:border-[#3182F6]"
                           style={{ background: "#F8FAFC", borderColor: "#E9EBEF", color: "#191F28", width: 90 }} />
-                        <button onClick={handleSave} disabled={saving}
+                        <button onClick={handleSave} disabled={saving || deleting}
                           className="px-3 py-1.5 rounded-xl text-xs font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
                           style={{ background: savedKey === key ? "#10B981" : "linear-gradient(135deg,#3182F6,#2462D8)" }}>
-                          {saving ? "저장 중..." : savedKey === key ? "저장됨 ✓" : "저장"}
+                          {saving ? "저장 중..." : savedKey === key ? "저장됨 ✓" : note ? "수정 저장" : "저장"}
                         </button>
+                        {note && (
+                          <button onClick={handleDelete} disabled={deleting || saving}
+                            className="px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors disabled:opacity-50"
+                            style={{ background: "rgba(239,68,68,0.08)", color: "#EF4444", border: "1px solid rgba(239,68,68,0.2)" }}>
+                            {deleting ? "삭제 중..." : "삭제"}
+                          </button>
+                        )}
                       </div>
                     </div>
                     <textarea
