@@ -94,6 +94,7 @@ export default function ClientReportsPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving]   = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
+  const [deleting, setDeleting]     = useState(false);
 
   // 수기 폼
   const [manager, setManager]   = useState("");
@@ -148,10 +149,27 @@ export default function ClientReportsPage() {
     setSaving(false);
   }
 
+  async function handleDelete() {
+    const rep = data?.report;
+    if (!rep) return;
+    if (!confirm(`${data?.client.companyName ?? ""} ${year}년 ${month}월 리포트를 삭제할까요?\n(작성한 내용이 지워집니다. 키워드 성과는 자동 데이터라 유지됩니다.)`)) return;
+    setDeleting(true);
+    const res = await fetch(`/api/client-reports/${rep.id}`, { method: "DELETE" });
+    if (res.ok) {
+      setData(d => d ? { ...d, report: null } : d);
+      setManager(""); setSummary(""); setActivity(""); setNextPlan(""); setComment("");
+    } else {
+      alert("삭제에 실패했습니다.");
+    }
+    setDeleting(false);
+  }
+
   function openPdf() {
     if (!clientId) return;
     window.open(`/client-report-print?clientId=${clientId}&year=${year}&month=${month}`, "_blank");
   }
+
+  const hasReport = !!data?.report;
 
   return (
     <div className="space-y-5">
@@ -162,11 +180,18 @@ export default function ClientReportsPage() {
           <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>광고주에게 제공할 월별 성과 리포트를 작성하고 PDF로 내보냅니다.</p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={handleSave} disabled={saving || !clientId}
+          <button onClick={handleSave} disabled={saving || deleting || !clientId}
             className="px-4 py-2 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
             style={{ background: savedFlash ? "#10B981" : "linear-gradient(135deg,#3182F6,#2462D8)" }}>
-            {saving ? "저장 중..." : savedFlash ? "저장됨 ✓" : "저장"}
+            {saving ? "저장 중..." : savedFlash ? "저장됨 ✓" : hasReport ? "수정 저장" : "저장"}
           </button>
+          {hasReport && (
+            <button onClick={handleDelete} disabled={deleting || saving}
+              className="px-4 py-2 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50"
+              style={{ background: "rgba(239,68,68,0.08)", color: "#EF4444", border: "1px solid rgba(239,68,68,0.2)" }}>
+              {deleting ? "삭제 중..." : "삭제"}
+            </button>
+          )}
           <button onClick={openPdf} disabled={!clientId}
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold border transition-colors hover:bg-slate-50 disabled:opacity-50"
             style={{ borderColor: "#E9EBEF", color: "#3182F6" }}>
