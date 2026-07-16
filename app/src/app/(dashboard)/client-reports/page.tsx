@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { KeywordPerformance, type KeywordItem, type KeywordSummary } from "@/components/client-report/KeywordPerformance";
 
 interface ClientOpt { id: string; companyName: string; storeName: string | null; trackerCount: number; }
@@ -23,6 +23,66 @@ const inputCls = "w-full px-3 py-2 text-sm rounded-xl outline-none border transi
 const inputStyle = { background: "#F8FAFC", borderColor: "#E9EBEF", color: "#191F28" };
 const labelCls = "block text-xs font-semibold mb-1.5";
 const labelStyle = { color: "#64748B" };
+
+// 광고주 검색 콤보박스
+function ClientSearchSelect({ clients, clientId, onSelect }: {
+  clients: ClientOpt[]; clientId: string; onSelect: (id: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen]   = useState(false);
+  const [editing, setEditing] = useState(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  const selected = clients.find(c => c.id === clientId);
+  const display  = editing ? query : (selected?.companyName ?? "");
+
+  const q = query.trim().toLowerCase();
+  const filtered = (editing && q)
+    ? clients.filter(c => c.companyName.toLowerCase().includes(q) || (c.storeName ?? "").toLowerCase().includes(q))
+    : clients;
+
+  useEffect(() => {
+    function onDoc(e: MouseEvent) {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) { setOpen(false); setEditing(false); }
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+
+  function pick(id: string) { onSelect(id); setEditing(false); setQuery(""); setOpen(false); }
+
+  return (
+    <div ref={boxRef} className="relative">
+      <div className="relative">
+        <input
+          value={display}
+          onChange={e => { setQuery(e.target.value); setEditing(true); setOpen(true); }}
+          onFocus={() => { setEditing(true); setQuery(""); setOpen(true); }}
+          placeholder="광고주명 검색..."
+          className={`${inputCls} pr-8`} style={inputStyle} />
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2" strokeLinecap="round"
+          className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+          <circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+      </div>
+      {open && (
+        <div className="absolute z-20 mt-1 w-full max-h-64 overflow-y-auto rounded-xl"
+          style={{ background: "#fff", border: "1px solid #E9EBEF", boxShadow: "0 8px 24px rgba(0,0,0,0.10)" }}>
+          {filtered.length === 0 ? (
+            <p className="px-3 py-3 text-xs" style={{ color: "#94A3B8" }}>검색 결과가 없습니다.</p>
+          ) : filtered.map(c => (
+            <button key={c.id} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => pick(c.id)}
+              className="w-full text-left px-3 py-2 text-sm transition-colors hover:bg-slate-50 flex items-center justify-between gap-2"
+              style={{ background: c.id === clientId ? "rgba(49,130,246,0.06)" : "transparent" }}>
+              <span className="truncate" style={{ color: "#191F28", fontWeight: c.id === clientId ? 700 : 400 }}>{c.companyName}</span>
+              {c.trackerCount > 0 && <span className="text-xs shrink-0" style={{ color: "#3182F6" }}>키워드 {c.trackerCount}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function ClientReportsPage() {
   const [clients, setClients] = useState<ClientOpt[]>([]);
@@ -122,11 +182,7 @@ export default function ClientReportsPage() {
       <div className="rounded-2xl p-4 grid grid-cols-1 md:grid-cols-3 gap-3" style={{ background: "#fff", border: "1px solid #E9EBEF" }}>
         <div>
           <label className={labelCls} style={labelStyle}>광고주</label>
-          <select value={clientId} onChange={e => setClientId(e.target.value)} className={inputCls} style={inputStyle}>
-            {clients.map(c => (
-              <option key={c.id} value={c.id}>{c.companyName}{c.trackerCount > 0 ? ` · 키워드 ${c.trackerCount}` : ""}</option>
-            ))}
-          </select>
+          <ClientSearchSelect clients={clients} clientId={clientId} onSelect={setClientId} />
         </div>
         <div>
           <label className={labelCls} style={labelStyle}>연도</label>
