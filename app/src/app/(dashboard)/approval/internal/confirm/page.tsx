@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { resolveFileSrc, useFileSrc, isImageValue } from "@/lib/storage";
 
 type Status = "대기" | "승인" | "반려";
 
@@ -29,6 +30,13 @@ const STATUS_STYLE: Record<Status, { bg: string; color: string; border: string }
 function parseAttachments(raw: string | null): Attachment[] {
   if (!raw) return [];
   try { return JSON.parse(raw); } catch { return []; }
+}
+
+function AttachmentImage({ url, name }: { url: string; name: string }) {
+  const src = useFileSrc(url);
+  if (!src) return <div className="w-full h-32 flex items-center justify-center text-xs" style={{ color: "#CBD5E1" }}>미리보기 불러오는 중…</div>;
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={src} alt={name} className="w-full object-contain max-h-64" />;
 }
 
 function fmtAmount(v: number | null) {
@@ -105,9 +113,11 @@ function DetailModal({ item, onClose, onAction }: {
     setShowReject(false);
   }
 
-  function openAttachment(a: Attachment) {
+  async function openAttachment(a: Attachment) {
+    const href = await resolveFileSrc(a.url);
+    if (!href) { alert("파일을 불러오지 못했습니다."); return; }
     const link = document.createElement("a");
-    link.href = a.url;
+    link.href = href;
     link.download = a.name;
     link.target = "_blank";
     document.body.appendChild(link);
@@ -170,11 +180,10 @@ function DetailModal({ item, onClose, onAction }: {
                 <p className="text-xs font-semibold mb-2" style={{ color: "#64748B" }}>첨부파일</p>
                 <div className="space-y-2">
                   {attachments.map((a, i) => {
-                    const isImage = /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(a.name) || a.url.startsWith("data:image/");
+                    const isImage = isImageValue(a.url, a.name);
                     return isImage ? (
                       <div key={i} className="rounded-xl overflow-hidden border" style={{ borderColor: "#E9EBEF" }}>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={a.url} alt={a.name} className="w-full object-contain max-h-64" />
+                        <AttachmentImage url={a.url} name={a.name} />
                         <div className="flex items-center justify-between px-3 py-2" style={{ background: "#F8FAFC" }}>
                           <span className="text-xs truncate max-w-[200px]" style={{ color: "#64748B" }}>{a.name}</span>
                           <button onClick={() => openAttachment(a)} className="text-xs font-semibold hover:opacity-70" style={{ color: "#3182F6" }}>다운로드</button>

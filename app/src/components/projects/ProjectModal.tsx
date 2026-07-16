@@ -4,8 +4,22 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import ProjectReportSection from "@/components/projects/ProjectReportSection";
 import { addConfirmRequest, addPaymentRequest, updateConfirmRequest, updatePaymentRequest, deleteConfirmRequest, deletePaymentRequest, type ConfirmStatus, type PaymentStatus } from "@/lib/approvals";
+import { uploadAttachment, useFileSrc } from "@/lib/storage";
 
 type Status = "진행" | "종료";
+
+// 세금계산서 다운로드 링크 (스토리지 경로/레거시 data: 모두 대응)
+function InvoiceLink({ url, name }: { url: string; name: string | null }) {
+  const src = useFileSrc(url);
+  return (
+    <a href={src ?? undefined} target="_blank" rel="noopener noreferrer" title={name ?? undefined}
+      className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg transition-opacity hover:opacity-80"
+      style={{ background: "rgba(49,130,246,0.1)", color: src ? "#3182F6" : "#94A3B8", border: "1px solid rgba(49,130,246,0.2)", maxWidth: 90, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", pointerEvents: src ? "auto" : "none" }}>
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      {name || "파일"}
+    </a>
+  );
+}
 
 export interface ProjectFormData {
   id?: string;
@@ -389,23 +403,20 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
     }
   }, []);
 
-  /* ── 세금계산서 파일 첨부 (Base64 변환) ── */
-  const handleInvoiceUpload = useCallback((localId: number, file: File) => {
+  /* ── 세금계산서 파일 첨부 (Supabase Storage 업로드) ── */
+  const handleInvoiceUpload = useCallback(async (localId: number, file: File) => {
     setUploading(localId);
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const dataUrl = e.target?.result as string;
+    try {
+      const path = await uploadAttachment(file, "invoices");
       setCosts((prev) => prev.map((c) =>
-        c.localId === localId ? { ...c, invoiceFileUrl: dataUrl, invoiceFileName: file.name } : c
+        c.localId === localId ? { ...c, invoiceFileUrl: path, invoiceFileName: file.name } : c
       ));
       showToast("파일이 첨부되었습니다.");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "파일 업로드에 실패했습니다.");
+    } finally {
       setUploading(null);
-    };
-    reader.onerror = () => {
-      showToast("파일 읽기에 실패했습니다.");
-      setUploading(null);
-    };
-    reader.readAsDataURL(file);
+    }
   }, []);
 
   /* ── 매입 입금요청 반려 → 재요청 허용 ── */
@@ -685,12 +696,11 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
   async function ensureSavedInner(): Promise<string | null> {
     if (savedIdRef.current) {
       // 기존 프로젝트: 승인요청 전에 현재 costs/revenues를 DB에 저장
-      // invoiceFileUrl(base64)은 제외 — body 크기 초과 방지; API가 기존 DB 값으로 보존
+      // invoiceFileUrl은 이제 스토리지 경로(수십 바이트)라 그대로 전송해도 body 크기 문제 없음
       const pid = savedIdRef.current;
-      const costsWithoutFiles = costs.map((c) => ({ ...c, invoiceFileUrl: "" }));
       const [, costRes] = await Promise.all([
         fetch(`/api/projects/${pid}/revenues`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ revenues }) }),
-        fetch(`/api/projects/${pid}/costs`,    { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ costs: costsWithoutFiles }) }),
+        fetch(`/api/projects/${pid}/costs`,    { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ costs }) }),
       ]);
       if (!costRes.ok) {
         setError("매입 데이터 저장에 실패했습니다. 먼저 저장해주세요.");
@@ -1624,17 +1634,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                             <td className="px-1 py-1" style={{ minWidth: 130 }}>
                               {c.invoiceFileUrl ? (
                                 <div className="flex items-center gap-1">
-                                  <a
-                                    href={c.invoiceFileUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    title={c.invoiceFileName}
-                                    className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg transition-opacity hover:opacity-80"
-                                    style={{ background: "rgba(49,130,246,0.1)", color: "#3182F6", border: "1px solid rgba(49,130,246,0.2)", maxWidth: 90, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}
-                                  >
-                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                                    {c.invoiceFileName || "파일"}
-                                  </a>
+                                  <InvoiceLink url={c.invoiceFileUrl} name={c.invoiceFileName} />
                                   {!costDeleteBlocked && (
                                     <button
                                       type="button"

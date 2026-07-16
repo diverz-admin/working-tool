@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useUser } from "@/lib/UserContext";
+import { uploadAttachment, resolveFileSrc, useFileSrc, isImageValue } from "@/lib/storage";
 
 type Status = "대기" | "승인" | "반려";
 
@@ -37,6 +38,14 @@ function parseAttachments(raw: string | null): Attachment[] {
   try { return JSON.parse(raw); } catch { return []; }
 }
 
+// 스토리지 경로(또는 레거시 data:)를 서명 URL로 변환해 미리보기
+function AttachmentImage({ url, name }: { url: string; name: string }) {
+  const src = useFileSrc(url);
+  if (!src) return <div className="w-full h-32 flex items-center justify-center text-xs" style={{ color: "#CBD5E1" }}>미리보기 불러오는 중…</div>;
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={src} alt={name} className="w-full object-contain max-h-64" />;
+}
+
 function fmtAmount(v: number | null) {
   if (!v) return "—";
   return "₩" + v.toLocaleString();
@@ -48,19 +57,25 @@ function AttachmentUploader({ attachments, onChange }: {
   onChange: (next: Attachment[]) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
 
-  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
-    if (!files.length) return;
-    files.forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const url = ev.target?.result as string;
-        onChange([...attachments, { url, name: file.name }]);
-      };
-      reader.readAsDataURL(file);
-    });
     e.target.value = "";
+    if (!files.length) return;
+    setUploading(true);
+    try {
+      let next = [...attachments];
+      for (const file of files) {
+        const path = await uploadAttachment(file, "expense");
+        next = [...next, { url: path, name: file.name }];
+        onChange(next);
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "첨부 업로드에 실패했습니다.");
+    } finally {
+      setUploading(false);
+    }
   }
 
   return (
@@ -82,15 +97,15 @@ function AttachmentUploader({ attachments, onChange }: {
         ))}
       </div>
       <label className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold cursor-pointer hover:opacity-80 transition-opacity"
-        style={{ background: "#F1F5F9", border: "1px solid #E9EBEF", color: "#64748B" }}>
+        style={{ background: "#F1F5F9", border: "1px solid #E9EBEF", color: "#64748B", opacity: uploading ? 0.6 : 1, pointerEvents: uploading ? "none" : "auto" }}>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
           <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
         </svg>
-        파일 첨부
-        <input ref={inputRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.png" className="hidden" onChange={handleFile} />
+        {uploading ? "업로드 중…" : "파일 첨부"}
+        <input ref={inputRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.png" className="hidden" onChange={handleFile} disabled={uploading} />
       </label>
-      <p className="text-xs" style={{ color: "#CBD5E1" }}>PDF, JPG, PNG 형식 지원</p>
+      <p className="text-xs" style={{ color: "#CBD5E1" }}>PDF, JPG, PNG · 최대 50MB</p>
     </div>
   );
 }
@@ -292,9 +307,11 @@ function DetailModal({ item, onClose, onDelete, onResubmit }: {
   const [deleting, setDeleting] = useState(false);
   const ss = STATUS_STYLE[item.status];
 
-  function openAttachment(a: Attachment) {
+  async function openAttachment(a: Attachment) {
+    const href = await resolveFileSrc(a.url);
+    if (!href) { alert("파일을 불러오지 못했습니다."); return; }
     const link = document.createElement("a");
-    link.href = a.url;
+    link.href = href;
     link.download = a.name;
     link.target = "_blank";
     document.body.appendChild(link);
@@ -308,8 +325,7 @@ function DetailModal({ item, onClose, onDelete, onResubmit }: {
     try { await onDelete(item.id); } finally { setDeleting(false); }
   }
 
-  const isImage = (name: string, url: string) =>
-    /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(name) || url.startsWith("data:image/");
+  const isImage = (name: string, url: string) => isImageValue(url, name);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(25,31,40,0.45)" }} onClick={onClose}>
@@ -373,7 +389,7 @@ function DetailModal({ item, onClose, onDelete, onResubmit }: {
                 {attachments.map((a, i) =>
                   isImage(a.name, a.url) ? (
                     <div key={i} className="rounded-xl overflow-hidden border" style={{ borderColor: "#E9EBEF" }}>
-                      <img src={a.url} alt={a.name} className="w-full object-contain max-h-64" />
+                      <AttachmentImage url={a.url} name={a.name} />
                       <div className="flex items-center justify-between px-3 py-2" style={{ background: "#F8FAFC" }}>
                         <span className="text-xs truncate max-w-[200px]" style={{ color: "#64748B" }}>{a.name}</span>
                         <button onClick={() => openAttachment(a)} className="text-xs font-semibold hover:opacity-70" style={{ color: "#3182F6" }}>다운로드</button>

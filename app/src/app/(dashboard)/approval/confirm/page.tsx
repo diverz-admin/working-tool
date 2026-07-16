@@ -4,6 +4,28 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as XLSX from "xlsx";
+import { useFileSrc, isImageValue } from "@/lib/storage";
+
+// 사업자등록증(스토리지 경로/레거시 data:) 미리보기
+function BizRegView({ value }: { value: string }) {
+  const src = useFileSrc(value);
+  const isImg = isImageValue(value);
+  if (!src) return <p className="text-xs" style={{ color: "#CBD5E1" }}>불러오는 중…</p>;
+  if (isImg) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={src} alt="사업자등록증" className="w-full rounded-lg" />;
+  }
+  return (
+    <a href={src} target="_blank" rel="noopener noreferrer"
+      className="flex items-center gap-2 text-sm font-semibold" style={{ color: "#3182F6" }}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+      </svg>
+      사업자등록증 보기
+    </a>
+  );
+}
 import {
   type ConfirmRequest, type ConfirmStatus,
   getConfirmRequests, updateConfirmRequest, deleteConfirmRequest,
@@ -994,19 +1016,7 @@ export default function ConfirmPage() {
                 <div className="rounded-xl overflow-hidden" style={{ border: "1px solid #ECEEF2" }}>
                   <p className="px-4 py-3 text-xs font-bold" style={{ color: "#94A3B8", background: "#F8FAFC", borderBottom: "1px solid #ECEEF2" }}>사업자등록증</p>
                   <div className="p-3">
-                    {clientBizRegUrl.startsWith("data:image") ? (
-                      <img src={clientBizRegUrl} alt="사업자등록증" className="w-full rounded-lg" />
-                    ) : (
-                      <a href={clientBizRegUrl} target="_blank" rel="noopener noreferrer"
-                        className="flex items-center gap-2 text-sm font-semibold"
-                        style={{ color: "#3182F6" }}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                          <polyline points="14 2 14 8 20 8"/>
-                        </svg>
-                        사업자등록증 보기
-                      </a>
-                    )}
+                    <BizRegView value={clientBizRegUrl} />
                   </div>
                 </div>
               )}

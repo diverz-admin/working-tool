@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { uploadAttachment, useFileSrc } from "@/lib/storage";
 
 // ─── 타입 ────────────────────────────────────────────────
 
@@ -247,23 +248,31 @@ function CreateChannelModal({ onClose, onCreated }: { onClose: () => void; onCre
 function FileMessage({ data }: { data: FileAttachment }) {
   const isImage = data.mimeType.startsWith("image/");
   const isPdf   = data.mimeType === "application/pdf";
+  const src     = useFileSrc(data.url);
 
   return (
     <div className="mt-1 space-y-1.5" style={{ maxWidth: 360 }}>
       {isImage ? (
-        <a href={data.url} download={data.name} target="_blank" rel="noopener noreferrer">
-          <img src={data.url} alt={data.name}
-            className="rounded-lg border object-cover"
-            style={{ borderColor: "#D6D0D0", cursor: "pointer", maxHeight: 300, maxWidth: "100%" }} />
+        <a href={src ?? undefined} download={data.name} target="_blank" rel="noopener noreferrer"
+          style={{ pointerEvents: src ? "auto" : "none" }}>
+          {src
+            // eslint-disable-next-line @next/next/no-img-element
+            ? <img src={src} alt={data.name}
+                className="rounded-lg border object-cover"
+                style={{ borderColor: "#D6D0D0", cursor: "pointer", maxHeight: 300, maxWidth: "100%" }} />
+            : <div className="rounded-lg border flex items-center justify-center text-xs"
+                style={{ borderColor: "#D6D0D0", color: "#97979C", height: 120, width: 200 }}>불러오는 중…</div>}
         </a>
       ) : isPdf ? (
         <div className="rounded-lg border overflow-hidden" style={{ borderColor: "#D6D0D0" }}>
-          <iframe src={data.url} title={data.name} className="w-full" style={{ height: 200 }} />
+          {src
+            ? <iframe src={src} title={data.name} className="w-full" style={{ height: 200 }} />
+            : <div className="flex items-center justify-center text-xs" style={{ color: "#97979C", height: 200 }}>불러오는 중…</div>}
         </div>
       ) : (
-        <a href={data.url} download={data.name}
+        <a href={src ?? undefined} download={data.name}
           className="flex items-center gap-3 px-4 py-3 rounded-lg border-2 transition-colors hover:bg-slate-50"
-          style={{ borderColor: "#D6D0D0", background: "#F8F8F8", textDecoration: "none" }}>
+          style={{ borderColor: "#D6D0D0", background: "#F8F8F8", textDecoration: "none", pointerEvents: src ? "auto" : "none" }}>
           <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
             style={{ background: "rgba(29,155,209,0.12)" }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1D9BD1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -486,6 +495,19 @@ function MessageList({ messages, profile, actions }: {
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
 
+// 컴포저 미리보기 썸네일 (스토리지 경로 → 서명 URL)
+function PendingThumb({ url, name }: { url: string; name: string }) {
+  const src = useFileSrc(url);
+  return (
+    <div className="w-9 h-9 rounded-lg object-cover shrink-0 overflow-hidden" style={{ background: "#ECECEC" }}>
+      {src && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={src} alt={name} className="w-9 h-9 object-cover" />
+      )}
+    </div>
+  );
+}
+
 function MessageInput({ channelName, onSend, disabled, users }: {
   channelName: string;
   onSend: (content: string) => void;
@@ -495,6 +517,7 @@ function MessageInput({ channelName, onSend, disabled, users }: {
   const [value, setValue]               = useState("");
   const [pendingFiles, setPendingFiles] = useState<Omit<FileAttachment, "__type" | "caption">[]>([]);
   const [fileError, setFileError]       = useState<string | null>(null);
+  const [uploadingCount, setUploadingCount] = useState(0);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionIdx, setMentionIdx]     = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -538,14 +561,18 @@ function MessageInput({ channelName, onSend, disabled, users }: {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
   }
 
-  function attachFile(file: File) {
+  async function attachFile(file: File) {
     if (file.size > MAX_FILE_SIZE) { setFileError("5MB 이하 파일만 첨부할 수 있습니다."); return; }
     setFileError(null);
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      setPendingFiles((prev) => [...prev, { url: ev.target!.result as string, name: file.name, size: file.size, mimeType: file.type }]);
-    };
-    reader.readAsDataURL(file);
+    setUploadingCount((n) => n + 1);
+    try {
+      const path = await uploadAttachment(file, "chat");
+      setPendingFiles((prev) => [...prev, { url: path, name: file.name, size: file.size, mimeType: file.type }]);
+    } catch (err) {
+      setFileError(err instanceof Error ? err.message : "첨부 업로드에 실패했습니다.");
+    } finally {
+      setUploadingCount((n) => n - 1);
+    }
   }
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -596,7 +623,7 @@ function MessageInput({ channelName, onSend, disabled, users }: {
     el.style.height = Math.min(el.scrollHeight, 160) + "px";
   }
 
-  const canSend = !disabled && (pendingFiles.length > 0 || !!value.trim());
+  const canSend = !disabled && uploadingCount === 0 && (pendingFiles.length > 0 || !!value.trim());
 
   return (
     <div className="px-4 pb-4 pt-1">
@@ -635,7 +662,7 @@ function MessageInput({ channelName, onSend, disabled, users }: {
               <div key={idx} className="relative flex items-center gap-2 px-2.5 py-2 rounded-xl border-2"
                 style={{ borderColor: "#D6D0D0", background: "#F8F8F8", maxWidth: 220 }}>
                 {isImg ? (
-                  <img src={f.url} alt={f.name} className="w-9 h-9 rounded-lg object-cover shrink-0" />
+                  <PendingThumb url={f.url} name={f.name} />
                 ) : (
                   <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
                     style={{ background: "rgba(29,155,209,0.12)" }}>
@@ -661,6 +688,7 @@ function MessageInput({ channelName, onSend, disabled, users }: {
         </div>
       )}
       {fileError && <p className="mb-2 text-xs px-1" style={{ color: "#E01E5A" }}>{fileError}</p>}
+      {uploadingCount > 0 && <p className="mb-2 text-xs px-1" style={{ color: "#97979C" }}>파일 업로드 중…</p>}
 
       {/* Slack 스타일 입력 박스 */}
       <div className="rounded-xl border-2 transition-colors focus-within:border-[#1264A3] overflow-hidden"

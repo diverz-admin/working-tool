@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { uploadAttachment, removeAttachment, useFileSrc, isPdfValue, isImageValue } from "@/lib/storage";
 
 const TEAMS        = ["전체", "영업 1팀", "영업 2팀"];
 const MEETING_TYPES = ["회의록", "미팅록", "기타"];
@@ -125,11 +126,20 @@ function ProposalUpload({ fileUrl, fileName, onChange }: {
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  function handleFile(file: File) {
-    const reader = new FileReader();
-    reader.onload = (e) => onChange(e.target?.result as string, file.name);
-    reader.readAsDataURL(file);
+  async function handleFile(file: File) {
+    setError(null);
+    setUploading(true);
+    try {
+      const path = await uploadAttachment(file, "meeting-notes");
+      onChange(path, file.name);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "업로드에 실패했습니다.");
+    } finally {
+      setUploading(false);
+    }
   }
 
   function onInputChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -140,12 +150,14 @@ function ProposalUpload({ fileUrl, fileName, onChange }: {
 
   function onDrop(e: React.DragEvent) {
     e.preventDefault(); setDragging(false);
+    if (uploading) return;
     const file = e.dataTransfer.files?.[0];
     if (file) handleFile(file);
   }
 
-  const isPdf = fileUrl.startsWith("data:application/pdf");
-  const isImg = fileUrl.startsWith("data:image/");
+  const previewSrc = useFileSrc(fileUrl || null);
+  const isPdf = isPdfValue(fileUrl, fileName);
+  const isImg = isImageValue(fileUrl, fileName);
 
   return (
     <div>
@@ -180,9 +192,9 @@ function ProposalUpload({ fileUrl, fileName, onChange }: {
               </div>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
-              <a href={fileUrl} download={fileName}
+              <a href={previewSrc ?? undefined} download={fileName} target="_blank" rel="noopener noreferrer"
                 className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors hover:bg-blue-50"
-                style={{ color: "#3182F6" }}>
+                style={{ color: previewSrc ? "#3182F6" : "#94A3B8", pointerEvents: previewSrc ? "auto" : "none" }}>
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                   <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
@@ -202,45 +214,59 @@ function ProposalUpload({ fileUrl, fileName, onChange }: {
           {/* 미리보기 */}
           {isImg && (
             <div className="p-3" style={{ background: "#fff" }}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={fileUrl} alt={fileName} className="max-h-48 rounded-xl object-contain mx-auto" style={{ maxWidth: "100%" }} />
+              {previewSrc
+                // eslint-disable-next-line @next/next/no-img-element
+                ? <img src={previewSrc} alt={fileName} className="max-h-48 rounded-xl object-contain mx-auto" style={{ maxWidth: "100%" }} />
+                : <p className="text-xs text-center py-6" style={{ color: "#CBD5E1" }}>미리보기 불러오는 중…</p>}
             </div>
           )}
           {isPdf && (
             <div className="p-3" style={{ background: "#fff" }}>
-              <iframe src={fileUrl} className="w-full rounded-xl" style={{ height: 300, border: "none" }} />
+              {previewSrc
+                ? <iframe src={previewSrc} className="w-full rounded-xl" style={{ height: 300, border: "none" }} />
+                : <p className="text-xs text-center py-6" style={{ color: "#CBD5E1" }}>미리보기 불러오는 중…</p>}
             </div>
           )}
         </div>
       ) : (
         <div
-          onClick={() => fileInputRef.current?.click()}
-          onDragOver={e => { e.preventDefault(); setDragging(true); }}
+          onClick={() => { if (!uploading) fileInputRef.current?.click(); }}
+          onDragOver={e => { e.preventDefault(); if (!uploading) setDragging(true); }}
           onDragLeave={() => setDragging(false)}
           onDrop={onDrop}
-          className="cursor-pointer rounded-2xl transition-all"
+          className="rounded-2xl transition-all"
           style={{
+            cursor: uploading ? "default" : "pointer",
             border: `2px dashed ${dragging ? "#3182F6" : "#E9EBEF"}`,
             background: dragging ? "rgba(49,130,246,0.04)" : "#FAFBFC",
             padding: "28px 20px",
           }}>
           <div className="flex flex-col items-center gap-2.5">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center"
-              style={{ background: dragging ? "rgba(49,130,246,0.1)" : "#F1F5F9" }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={dragging ? "#3182F6" : "#94A3B8"} strokeWidth="1.8" strokeLinecap="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-              </svg>
+              style={{ background: dragging || uploading ? "rgba(49,130,246,0.1)" : "#F1F5F9" }}>
+              {uploading ? (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3182F6" strokeWidth="2" strokeLinecap="round" className="animate-spin">
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                </svg>
+              ) : (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={dragging ? "#3182F6" : "#94A3B8"} strokeWidth="1.8" strokeLinecap="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+              )}
             </div>
             <div className="text-center">
-              <p className="text-sm font-semibold" style={{ color: dragging ? "#3182F6" : "#475569" }}>
-                {dragging ? "여기에 놓으세요" : "파일을 끌어다 놓거나 클릭해 업로드"}
+              <p className="text-sm font-semibold" style={{ color: dragging || uploading ? "#3182F6" : "#475569" }}>
+                {uploading ? "업로드 중…" : dragging ? "여기에 놓으세요" : "파일을 끌어다 놓거나 클릭해 업로드"}
               </p>
-              <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>PDF, PNG, JPG, JPEG 지원</p>
+              <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>PDF, PNG, JPG, JPEG · 최대 50MB</p>
             </div>
           </div>
-          <input ref={fileInputRef} type="file" accept=".pdf,image/*" className="hidden" onChange={onInputChange} />
+          <input ref={fileInputRef} type="file" accept=".pdf,image/*" className="hidden" onChange={onInputChange} disabled={uploading} />
         </div>
+      )}
+      {error && (
+        <p className="text-xs mt-2 font-medium" style={{ color: "#EF4444" }}>{error}</p>
       )}
     </div>
   );
@@ -370,6 +396,9 @@ function NoteDetail({ note, clients, projects, onEdit, onDelete }: {
   const tc = typeColor(note.meetingType);
   const clientName  = note.clientId  ? clients.find((c) => c.id === note.clientId)?.companyName  : null;
   const projectName = note.projectId ? projects.find((p) => p.id === note.projectId)?.campaignName : null;
+  const proposalSrc = useFileSrc(note.proposalFileUrl);
+  const proposalIsPdf = isPdfValue(note.proposalFileUrl, note.proposalFileName);
+  const proposalIsImg = isImageValue(note.proposalFileUrl, note.proposalFileName);
 
   return (
     <div className="space-y-5">
@@ -435,8 +464,8 @@ function NoteDetail({ note, clients, projects, onEdit, onDelete }: {
             <div className="flex items-center justify-between px-4 py-3" style={{ background: "#F8FAFC", borderBottom: "1px solid #E9EBEF" }}>
               <div className="flex items-center gap-2.5 min-w-0">
                 <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-                  style={{ background: note.proposalFileUrl.startsWith("data:application/pdf") ? "rgba(239,68,68,0.1)" : "rgba(49,130,246,0.1)" }}>
-                  {note.proposalFileUrl.startsWith("data:application/pdf") ? (
+                  style={{ background: proposalIsPdf ? "rgba(239,68,68,0.1)" : "rgba(49,130,246,0.1)" }}>
+                  {proposalIsPdf ? (
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2" strokeLinecap="round">
                       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                       <polyline points="14 2 14 8 20 8"/><path d="M9 13h6M9 17h4"/>
@@ -451,13 +480,13 @@ function NoteDetail({ note, clients, projects, onEdit, onDelete }: {
                 <div className="min-w-0">
                   <p className="text-xs font-semibold truncate" style={{ color: "#191F28" }}>{note.proposalFileName}</p>
                   <p className="text-xs" style={{ color: "#94A3B8" }}>
-                    {note.proposalFileUrl.startsWith("data:application/pdf") ? "PDF 문서" : "이미지"}
+                    {proposalIsPdf ? "PDF 문서" : "이미지"}
                   </p>
                 </div>
               </div>
-              <a href={note.proposalFileUrl} download={note.proposalFileName}
+              <a href={proposalSrc ?? undefined} download={note.proposalFileName} target="_blank" rel="noopener noreferrer"
                 className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors hover:bg-blue-50"
-                style={{ color: "#3182F6" }}>
+                style={{ color: proposalSrc ? "#3182F6" : "#94A3B8", pointerEvents: proposalSrc ? "auto" : "none" }}>
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                   <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
@@ -465,15 +494,19 @@ function NoteDetail({ note, clients, projects, onEdit, onDelete }: {
                 다운로드
               </a>
             </div>
-            {note.proposalFileUrl.startsWith("data:image/") && (
+            {proposalIsImg && (
               <div className="p-3" style={{ background: "#fff" }}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={note.proposalFileUrl} alt={note.proposalFileName ?? "제안서"} className="max-h-64 rounded-xl object-contain mx-auto" style={{ maxWidth: "100%" }} />
+                {proposalSrc
+                  // eslint-disable-next-line @next/next/no-img-element
+                  ? <img src={proposalSrc} alt={note.proposalFileName ?? "제안서"} className="max-h-64 rounded-xl object-contain mx-auto" style={{ maxWidth: "100%" }} />
+                  : <p className="text-xs text-center py-8" style={{ color: "#CBD5E1" }}>미리보기 불러오는 중…</p>}
               </div>
             )}
-            {note.proposalFileUrl.startsWith("data:application/pdf") && (
+            {proposalIsPdf && (
               <div className="p-3" style={{ background: "#fff" }}>
-                <iframe src={note.proposalFileUrl} className="w-full rounded-xl" style={{ height: 360, border: "none" }} />
+                {proposalSrc
+                  ? <iframe src={proposalSrc} className="w-full rounded-xl" style={{ height: 360, border: "none" }} />
+                  : <p className="text-xs text-center py-8" style={{ color: "#CBD5E1" }}>미리보기 불러오는 중…</p>}
               </div>
             )}
           </div>
@@ -601,17 +634,24 @@ export default function MeetingNotesPage() {
         proposalFileUrl:  form.proposalFileUrl  || null,
         proposalFileName: form.proposalFileName || null,
       };
-      if (rightMode === "create") {
-        const res  = await fetch("/api/meeting-notes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-        const data = await res.json();
-        setNotes((p) => [data.note, ...p]);
-        openDetail(data.note);
-      } else if (rightMode === "edit" && activeNote) {
-        const res  = await fetch(`/api/meeting-notes/${activeNote.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-        const data = await res.json();
-        setNotes((p) => p.map((n) => n.id === data.note.id ? data.note : n));
-        openDetail(data.note);
+      const url    = rightMode === "create" ? "/api/meeting-notes" : `/api/meeting-notes/${activeNote?.id}`;
+      const method = rightMode === "create" ? "POST" : "PATCH";
+      if (rightMode === "edit" && !activeNote) return;
+
+      const res  = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.note) {
+        alert(`저장에 실패했습니다.\n${data?.error ?? `오류 코드 ${res.status}`}`);
+        return;
       }
+      if (rightMode === "create") {
+        setNotes((p) => [data.note, ...p]);
+      } else {
+        setNotes((p) => p.map((n) => n.id === data.note.id ? data.note : n));
+      }
+      openDetail(data.note);
+    } catch (e) {
+      alert(`저장 중 오류가 발생했습니다.\n${e instanceof Error ? e.message : ""}`);
     } finally {
       setSaving(false);
     }
@@ -619,7 +659,9 @@ export default function MeetingNotesPage() {
 
   async function handleDelete(note: MeetingNote) {
     if (!confirm(`"${note.title}" 을(를) 삭제할까요?`)) return;
-    await fetch(`/api/meeting-notes/${note.id}`, { method: "DELETE" });
+    const res = await fetch(`/api/meeting-notes/${note.id}`, { method: "DELETE" });
+    if (!res.ok) { alert("삭제에 실패했습니다."); return; }
+    void removeAttachment(note.proposalFileUrl);   // 첨부 스토리지 정리 (best-effort)
     setNotes((p) => p.filter((n) => n.id !== note.id));
     setRightMode("empty");
     setActiveNote(null);

@@ -8,6 +8,41 @@ import {
   getPaymentRequests, updatePaymentRequest,
 } from "@/lib/approvals";
 import { invalidateProjectCache } from "@/components/projects/ProjectModal";
+import { useFileSrc, isImageValue, isPdfValue } from "@/lib/storage";
+
+// 세금계산서(스토리지 경로/레거시 data:) 미리보기
+function InvoiceView({ url, name }: { url: string; name: string | null | undefined }) {
+  const src = useFileSrc(url);
+  const isImg = isImageValue(url, name);
+  const isPdf = isPdfValue(url, name);
+  return (
+    <div className="rounded-xl overflow-hidden" style={{ border: "1px solid #E9EBEF" }}>
+      <div className="flex items-center justify-between px-3 py-2" style={{ background: "#F8FAFC", borderBottom: "1px solid #F1F5F9" }}>
+        <p className="text-xs font-bold" style={{ color: "#64748B" }}>세금계산서</p>
+        <a href={src ?? undefined} download={name || "세금계산서"} target="_blank" rel="noopener noreferrer"
+          className="text-xs font-semibold flex items-center gap-1 hover:opacity-70 transition-opacity"
+          style={{ color: src ? "#3182F6" : "#94A3B8", pointerEvents: src ? "auto" : "none" }}>
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          다운로드
+        </a>
+      </div>
+      {!src ? (
+        <div className="px-4 py-6 text-center text-xs" style={{ color: "#CBD5E1" }}>불러오는 중…</div>
+      ) : isImg ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={src} alt={name || "세금계산서"} className="w-full object-contain" style={{ maxHeight: 480, background: "#FAFAFA" }} />
+      ) : isPdf ? (
+        <embed src={src} type="application/pdf" width="100%" style={{ height: 480 }} />
+      ) : (
+        <div className="px-4 py-6 text-center">
+          <a href={src} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold" style={{ color: "#3182F6" }}>파일 열기</a>
+        </div>
+      )}
+    </div>
+  );
+}
 
 const STATUS_STYLE: Record<PaymentStatus, { bg: string; color: string; border: string }> = {
   대기: { bg: "rgba(234,179,8,0.1)",  color: "#CA8A04", border: "rgba(234,179,8,0.25)" },
@@ -581,46 +616,9 @@ export default function RequestPage() {
             <div className="overflow-y-auto px-6 py-5 space-y-4">
               <h3 className="text-base font-bold" style={{ color: "#191F28" }}>{selected.projectName}</h3>
 
-              {/* 세금계산서 이미지 — 상단에 크게 */}
+              {/* 세금계산서 — 상단에 크게 */}
               {selected.invoiceFileUrl && (
-                <div className="rounded-xl overflow-hidden" style={{ border: "1px solid #E9EBEF" }}>
-                  <div className="flex items-center justify-between px-3 py-2" style={{ background: "#F8FAFC", borderBottom: "1px solid #F1F5F9" }}>
-                    <p className="text-xs font-bold" style={{ color: "#64748B" }}>세금계산서</p>
-                    <a
-                      href={selected.invoiceFileUrl}
-                      download={selected.invoiceFileName || "세금계산서"}
-                      className="text-xs font-semibold flex items-center gap-1 hover:opacity-70 transition-opacity"
-                      style={{ color: "#3182F6" }}
-                    >
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-                      </svg>
-                      다운로드
-                    </a>
-                  </div>
-                  {selected.invoiceFileUrl.startsWith("data:image/") ? (
-                    <img
-                      src={selected.invoiceFileUrl}
-                      alt={selected.invoiceFileName || "세금계산서"}
-                      className="w-full object-contain"
-                      style={{ maxHeight: 480, background: "#FAFAFA" }}
-                    />
-                  ) : selected.invoiceFileUrl.startsWith("data:application/pdf") ? (
-                    <embed
-                      src={selected.invoiceFileUrl}
-                      type="application/pdf"
-                      width="100%"
-                      style={{ height: 480 }}
-                    />
-                  ) : (
-                    <div className="px-4 py-6 text-center">
-                      <a href={selected.invoiceFileUrl} target="_blank" rel="noopener noreferrer"
-                        className="text-sm font-semibold" style={{ color: "#3182F6" }}>
-                        파일 열기
-                      </a>
-                    </div>
-                  )}
-                </div>
+                <InvoiceView url={selected.invoiceFileUrl} name={selected.invoiceFileName} />
               )}
 
               {/* 정보 그리드 */}

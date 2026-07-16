@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import DeleteConfirmModal from "./DeleteConfirmModal";
+import { uploadAttachment, useFileSrc, isImageValue } from "@/lib/storage";
 
 type Status = "리드" | "진행" | "종료";
 
@@ -109,8 +110,12 @@ export default function ClientModal({ initial, onClose, onSaved, onDelete, onVie
   const [saving, setSaving]               = useState(false);
   const [error, setError]                 = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [bizRegUploading, setBizRegUploading] = useState(false);
   const backdropRef    = useRef<HTMLDivElement>(null);
   const bizRegInputRef = useRef<HTMLInputElement>(null);
+
+  const bizRegSrc     = useFileSrc(form.bizRegFileUrl);
+  const bizRegIsImage = isImageValue(form.bizRegFileUrl, form.bizRegFileName);
 
   const isEdit = Boolean(initial?.id);
 
@@ -182,20 +187,32 @@ export default function ClientModal({ initial, onClose, onSaved, onDelete, onVie
     );
   }
 
+  async function uploadBizReg(fileOrBlob: Blob, name: string) {
+    setError(null);
+    setBizRegUploading(true);
+    try {
+      const f = fileOrBlob instanceof File ? fileOrBlob : new File([fileOrBlob], name, { type: fileOrBlob.type });
+      const path = await uploadAttachment(f, "clients");
+      setForm((prev) => ({ ...prev, bizRegFileUrl: path, bizRegFileName: name }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "첨부 업로드에 실패했습니다.");
+    } finally {
+      setBizRegUploading(false);
+    }
+  }
+
   function handleBizRegFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = "";
 
-    // PDF는 압축 없이 그대로 사용
+    // PDF는 압축 없이 그대로 업로드
     if (file.type === "application/pdf") {
-      const reader = new FileReader();
-      reader.onload = () => setForm((prev) => ({ ...prev, bizRegFileUrl: reader.result as string, bizRegFileName: file.name }));
-      reader.readAsDataURL(file);
+      void uploadBizReg(file, file.name);
       return;
     }
 
-    // 이미지: 최대 1400px / JPEG 82% 품질로 압축 후 저장
+    // 이미지: 최대 1400px / JPEG 82% 품질로 압축 후 업로드
     const objectUrl = URL.createObjectURL(file);
     const img = new Image();
     img.onload = () => {
@@ -209,8 +226,10 @@ export default function ClientModal({ initial, onClose, onSaved, onDelete, onVie
       const canvas = document.createElement("canvas");
       canvas.width = width; canvas.height = height;
       canvas.getContext("2d")!.drawImage(img, 0, 0, width, height);
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
-      setForm((prev) => ({ ...prev, bizRegFileUrl: dataUrl, bizRegFileName: file.name }));
+      canvas.toBlob(
+        (blob) => { if (blob) void uploadBizReg(blob, file.name.replace(/\.[^.]+$/, "") + ".jpg"); },
+        "image/jpeg", 0.82,
+      );
     };
     img.src = objectUrl;
   }
@@ -571,12 +590,13 @@ export default function ClientModal({ initial, onClose, onSaved, onDelete, onVie
             <input ref={bizRegInputRef} type="file" accept="image/*,.pdf" className="hidden" onChange={handleBizRegFile} />
             {form.bizRegFileUrl ? (
               <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl border" style={{ background: "#F8FAFC", borderColor: "#E9EBEF" }}>
-                {form.bizRegFileUrl.startsWith("data:image") && (
-                  <img src={form.bizRegFileUrl} alt="사업자등록증" className="w-14 h-14 object-cover rounded-lg border flex-shrink-0" style={{ borderColor: "#E9EBEF" }} />
+                {bizRegIsImage && bizRegSrc && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={bizRegSrc} alt="사업자등록증" className="w-14 h-14 object-cover rounded-lg border flex-shrink-0" style={{ borderColor: "#E9EBEF" }} />
                 )}
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate" style={{ color: "#191F28" }}>{form.bizRegFileName}</p>
-                  <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>첨부됨</p>
+                  <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>{bizRegUploading ? "업로드 중…" : "첨부됨"}</p>
                 </div>
                 <div className="flex gap-2 flex-shrink-0">
                   <button type="button" onClick={() => bizRegInputRef.current?.click()}
@@ -588,14 +608,14 @@ export default function ClientModal({ initial, onClose, onSaved, onDelete, onVie
                 </div>
               </div>
             ) : (
-              <button type="button" onClick={() => bizRegInputRef.current?.click()}
-                className="w-full flex items-center justify-center gap-2 py-4 rounded-xl border-2 transition-colors hover:bg-slate-50"
+              <button type="button" onClick={() => bizRegInputRef.current?.click()} disabled={bizRegUploading}
+                className="w-full flex items-center justify-center gap-2 py-4 rounded-xl border-2 transition-colors hover:bg-slate-50 disabled:opacity-60"
                 style={{ borderColor: "#E9EBEF", borderStyle: "dashed", color: "#94A3B8" }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                   <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
                 </svg>
-                <span className="text-sm font-medium">사업자등록증 첨부</span>
+                <span className="text-sm font-medium">{bizRegUploading ? "업로드 중…" : "사업자등록증 첨부"}</span>
               </button>
             )}
           </div>
