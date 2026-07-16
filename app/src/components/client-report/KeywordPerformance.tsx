@@ -1,4 +1,7 @@
 // 빌더 미리보기·인쇄 리포트 공용 — 키워드 순위 성과 렌더
+"use client";
+
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
 export interface KeywordTrendPoint { date: string; rank: number | null; }
 export interface KeywordItem {
@@ -60,6 +63,56 @@ function Sparkline({ trend }: { trend: KeywordTrendPoint[] }) {
   );
 }
 
+const LINE_COLORS = ["#3182F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899", "#0EA5E9", "#F97316"];
+
+function fmtDate(d: string) {
+  const parts = d.split("-");
+  return `${parseInt(parts[1])}.${parseInt(parts[2])}`;
+}
+
+// 순위 추이 라인 차트 (순위축 반전 — 1위가 위)
+function RankChart({ items }: { items: KeywordItem[] }) {
+  const allDates = Array.from(new Set(items.flatMap(k => k.trend.map(p => p.date)))).sort();
+  if (allDates.length < 2) return null; // 데이터가 1일 이하면 그래프 생략
+
+  const data = allDates.map(date => {
+    const row: Record<string, number | string | null> = { date: fmtDate(date) };
+    items.forEach(k => {
+      const pt = k.trend.find(p => p.date === date);
+      row[k.id] = pt && pt.rank != null ? pt.rank : null;
+    });
+    return row;
+  });
+  const maxRank = Math.max(10, ...items.flatMap(k => k.trend.map(p => p.rank ?? 0)));
+
+  return (
+    <div className="rounded-xl px-3 pt-3 pb-1" style={{ border: "1px solid #E9EBEF", background: "#fff" }}>
+      <p className="text-xs font-bold mb-2" style={{ color: "#64748B" }}>
+        순위 추이 <span className="font-normal" style={{ color: "#B0B8C1" }}>(위로 갈수록 상위)</span>
+      </p>
+      <ResponsiveContainer width="100%" height={240}>
+        <LineChart data={data} margin={{ top: 6, right: 14, bottom: 4, left: -6 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
+          <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#94A3B8" }} tickLine={false} axisLine={{ stroke: "#E9EBEF" }} />
+          <YAxis reversed domain={[1, maxRank]} allowDecimals={false} width={46}
+            tick={{ fontSize: 11, fill: "#94A3B8" }} tickLine={false} axisLine={false}
+            tickFormatter={(v) => `${v}위`} />
+          <Tooltip
+            formatter={(v, name) => [`${v}위`, name]}
+            labelStyle={{ fontSize: 12, color: "#64748B" }}
+            contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #E9EBEF" }} />
+          <Legend wrapperStyle={{ fontSize: 11 }} iconType="plainline" />
+          {items.map((k, i) => (
+            <Line key={k.id} type="monotone" dataKey={k.id} name={k.keyword}
+              stroke={LINE_COLORS[i % LINE_COLORS.length]} strokeWidth={2}
+              dot={{ r: 2 }} activeDot={{ r: 4 }} connectNulls={false} isAnimationActive={false} />
+          ))}
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
 export function KeywordPerformance({ items, summary }: { items: KeywordItem[]; summary: KeywordSummary }) {
   if (items.length === 0) {
     return (
@@ -84,6 +137,9 @@ export function KeywordPerformance({ items, summary }: { items: KeywordItem[]; s
           </div>
         ))}
       </div>
+
+      {/* 순위 추이 그래프 */}
+      <RankChart items={items} />
 
       {/* 키워드 표 */}
       <div className="rounded-xl overflow-hidden" style={{ border: "1px solid #E9EBEF" }}>
