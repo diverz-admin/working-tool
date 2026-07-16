@@ -118,6 +118,19 @@ function MeetingSection({ year, month }: { year: number; month: number }) {
   const shortLabel = (week: number | null) => (week === null ? "월간회의" : `${week}주차`);
   const accordionItems: (number | null)[] = [null, ...weekNums];
 
+  // 현재 팀의 회의록이 "작성(저장)된 날짜"를 달력에 표시 — day → 라벨 목록
+  const writtenDays = new Map<number, string[]>();
+  notes
+    .filter(n => n.team === noteTeam && n.content.trim().length > 0 && n.updatedAt)
+    .forEach(n => {
+      const d = new Date(n.updatedAt!);
+      if (isNaN(d.getTime()) || d.getFullYear() !== year || d.getMonth() + 1 !== month) return;
+      const day = d.getDate();
+      const arr = writtenDays.get(day) ?? [];
+      arr.push(shortLabel(n.week));
+      writtenDays.set(day, arr);
+    });
+
   return (
     <div className="rounded-2xl overflow-hidden" style={{ background: "#fff", border: "1px solid #E9EBEF" }}>
       {/* 헤더 + 팀 선택 */}
@@ -187,10 +200,22 @@ function MeetingSection({ year, month }: { year: number; month: number }) {
                   {Array.from({ length: 7 }, (_, dow) => {
                     const day = (w - 1) * 7 + dow - firstDay + 1;
                     const inMonth = day >= 1 && day <= daysInMonth;
+                    const written = inMonth ? writtenDays.get(day) : undefined;
                     return (
-                      <div key={dow} className="text-center text-xs py-1.5"
-                        style={{ color: !inMonth ? "transparent" : dow === 0 ? "#EF4444" : dow === 6 ? "#3182F6" : "#475569" }}>
-                        {inMonth ? day : ""}
+                      <div key={dow} className="flex items-center justify-center py-1">
+                        {inMonth ? (
+                          <span
+                            title={written ? `${written.join(", ")} 작성` : undefined}
+                            className="inline-flex items-center justify-center rounded-full"
+                            style={{
+                              width: 22, height: 22, fontSize: 11,
+                              fontWeight: written ? 700 : 400,
+                              background: written ? "#3182F6" : "transparent",
+                              color: written ? "#fff" : dow === 0 ? "#EF4444" : dow === 6 ? "#3182F6" : "#475569",
+                            }}>
+                            {day}
+                          </span>
+                        ) : null}
                       </div>
                     );
                   })}
@@ -198,7 +223,10 @@ function MeetingSection({ year, month }: { year: number; month: number }) {
               );
             })}
           </div>
-          <p className="text-xs mt-2 px-1" style={{ color: "#B0B8C1" }}>● 표시된 주차·월간을 클릭하면 오른쪽에서 열립니다.</p>
+          <div className="flex items-center gap-1.5 mt-2 px-1">
+            <span className="inline-flex items-center justify-center rounded-full shrink-0" style={{ width: 16, height: 16, fontSize: 9, fontWeight: 700, background: "#3182F6", color: "#fff" }}>N</span>
+            <p className="text-xs" style={{ color: "#B0B8C1" }}>파란 날짜 = 회의록 작성일. 주차·월간 클릭 시 오른쪽에서 열립니다.</p>
+          </div>
         </div>
 
         {/* ── 오른쪽: 아코디언 (보기 + 수정) ── */}
