@@ -184,7 +184,6 @@ function MeetingSection({ year, month }: { year: number; month: number }) {
           <div className="space-y-1">
             {weekNums.map(w => {
               const isSel = expanded === keyOf(w);
-              const has   = filled(noteTeam, w);
               return (
                 <button key={w} onClick={() => setExpanded(keyOf(w))}
                   className="w-full grid items-center rounded-xl transition-colors hover:bg-slate-50"
@@ -193,28 +192,26 @@ function MeetingSection({ year, month }: { year: number; month: number }) {
                     background: isSel ? "rgba(49,130,246,0.08)" : "transparent",
                     border: `1px solid ${isSel ? "rgba(49,130,246,0.3)" : "transparent"}`,
                   }}>
-                  <div className="flex flex-col items-center justify-center py-1.5">
+                  <div className="flex items-center justify-center py-1.5">
                     <span className="text-xs font-bold" style={{ color: isSel ? "#3182F6" : "#94A3B8" }}>{w}주</span>
-                    {has && <span className="w-1 h-1 rounded-full mt-0.5" style={{ background: "#3182F6" }} />}
                   </div>
                   {Array.from({ length: 7 }, (_, dow) => {
                     const day = (w - 1) * 7 + dow - firstDay + 1;
                     const inMonth = day >= 1 && day <= daysInMonth;
                     const written = inMonth ? writtenDays.get(day) : undefined;
                     return (
-                      <div key={dow} className="flex items-center justify-center py-1">
+                      <div key={dow} className="flex flex-col items-center justify-center py-1" style={{ minHeight: 30 }}
+                        title={written ? `${written.join(", ")} 작성일` : undefined}>
                         {inMonth ? (
-                          <span
-                            title={written ? `${written.join(", ")} 작성` : undefined}
-                            className="inline-flex items-center justify-center rounded-full"
-                            style={{
-                              width: 22, height: 22, fontSize: 11,
+                          <>
+                            <span style={{
+                              fontSize: 11,
                               fontWeight: written ? 700 : 400,
-                              background: written ? "#3182F6" : "transparent",
-                              color: written ? "#fff" : dow === 0 ? "#EF4444" : dow === 6 ? "#3182F6" : "#475569",
-                            }}>
-                            {day}
-                          </span>
+                              color: written ? "#3182F6" : dow === 0 ? "#EF4444" : dow === 6 ? "#3182F6" : "#475569",
+                            }}>{day}</span>
+                            {/* 작성된 날짜 밑에 점 표시 */}
+                            {written && <span className="rounded-full mt-0.5" style={{ width: 4, height: 4, background: "#3182F6" }} />}
+                          </>
                         ) : null}
                       </div>
                     );
@@ -224,8 +221,11 @@ function MeetingSection({ year, month }: { year: number; month: number }) {
             })}
           </div>
           <div className="flex items-center gap-1.5 mt-2 px-1">
-            <span className="inline-flex items-center justify-center rounded-full shrink-0" style={{ width: 16, height: 16, fontSize: 9, fontWeight: 700, background: "#3182F6", color: "#fff" }}>N</span>
-            <p className="text-xs" style={{ color: "#B0B8C1" }}>파란 날짜 = 회의록 작성일. 주차·월간 클릭 시 오른쪽에서 열립니다.</p>
+            <span className="flex flex-col items-center shrink-0">
+              <span style={{ fontSize: 9, fontWeight: 700, color: "#3182F6", lineHeight: 1 }}>16</span>
+              <span className="rounded-full mt-0.5" style={{ width: 3, height: 3, background: "#3182F6" }} />
+            </span>
+            <p className="text-xs" style={{ color: "#B0B8C1" }}>날짜 밑 점 = 회의록 작성일. 주차·월간 클릭 시 오른쪽에서 열립니다.</p>
           </div>
         </div>
 
