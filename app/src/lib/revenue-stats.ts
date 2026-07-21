@@ -7,7 +7,7 @@ import { eq, and, sql, isNotNull } from "drizzle-orm";
  * 매출·매입 월별 집계를 이 모듈 한 곳에서만 정의한다.
  *
  * 기준(criteria)별 귀속 월
- *   캠페인 시작날짜 → 매출: projects.start_date        / 매입: project_costs.invoice_date
+ *   캠페인 시작날짜 → 매출: projects.start_date        / 매입: project_costs.work_start_date (작업시작일)
  *   계산서날짜      → 매출: revenues.invoice_date      / 매입: project_costs.invoice_date
  *   통장            → 매출: revenues.payment_date      / 매입: project_costs.purchase_date
  */
@@ -84,13 +84,16 @@ export async function fetchRevenueStats(
   }));
 }
 
-/** 승인된 매입만. 귀속 월은 매입 행의 계산서 발행일(통장 기준일 때는 승인일)이며, 날짜가 없는 행은 제외된다. */
+/** 승인된 매입만. 귀속 월은 계산서날짜 기준→계산서 발행일, 통장 기준→입금승인일, 캠페인 시작날짜 기준→작업시작일이며, 해당 날짜가 없는 행은 제외된다. */
 export async function fetchCostStats(
   year: number,
   criteria: StatsCriteria,
   team?: string,
 ): Promise<CostStatRow[]> {
-  const dateExpr = criteria === "통장" ? projectCosts.purchaseDate : projectCosts.invoiceDate;
+  const dateExpr =
+    criteria === "통장"       ? projectCosts.purchaseDate
+    : criteria === "계산서날짜" ? projectCosts.invoiceDate
+    : projectCosts.workStartDate;   // 캠페인 시작날짜 기준 → 매입은 작업시작일
 
   const raw = await db
     .select({

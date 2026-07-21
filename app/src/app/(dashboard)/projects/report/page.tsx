@@ -479,7 +479,7 @@ export default function ProjectReportPage() {
               ? "매출: 입금 승인일 기준 · 매입: 승인일 기준"
               : criteria === "계산서날짜"
               ? "매출: 계산서 발행일 기준 · 매입: 계산서 발행일 기준"
-              : "매출: 캠페인 시작일 기준 · 매입: 계산서 발행일 기준"}
+              : "매출: 캠페인 시작일 기준 · 매입: 작업시작일 기준"}
           </p>
         </div>
         <button onClick={exportExcel} disabled={!total || total.projectCount === 0}

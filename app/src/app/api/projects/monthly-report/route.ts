@@ -102,25 +102,25 @@ export async function GET(req: NextRequest) {
         )
       );
 
-    // 승인 매입 — 통장 기준: 승인일(purchaseDate) / 그 외: 계산서 발행일(invoiceDate)
+    // 승인 매입 — 통장: 승인일(purchaseDate) / 계산서: 발행일(invoiceDate) / 캠페인 시작(그 외): 작업시작일(workStartDate)
+    const costDate = useBank ? projectCosts.purchaseDate : useInvoice ? projectCosts.invoiceDate : projectCosts.workStartDate;
     const costRows = await db
       .select({
-        projectId:    projectCosts.projectId,
-        invoiceDate:  projectCosts.invoiceDate,
-        purchaseDate: projectCosts.purchaseDate,
-        total:        projectCosts.total,
-        supplyPrice:  projectCosts.supplyPrice,
-        productName:  projectCosts.productName,
-        vendor:       projectCosts.vendor,
+        projectId:     projectCosts.projectId,
+        invoiceDate:   projectCosts.invoiceDate,
+        purchaseDate:  projectCosts.purchaseDate,
+        workStartDate: projectCosts.workStartDate,
+        total:         projectCosts.total,
+        supplyPrice:   projectCosts.supplyPrice,
+        productName:   projectCosts.productName,
+        vendor:        projectCosts.vendor,
       })
       .from(projectCosts)
       .where(
         and(
           inArray(projectCosts.projectId, projectIds),
           eq(projectCosts.isApproved, true),
-          useBank
-            ? and(isNotNull(projectCosts.purchaseDate), gte(projectCosts.purchaseDate, from), lte(projectCosts.purchaseDate, to))
-            : and(isNotNull(projectCosts.invoiceDate), gte(projectCosts.invoiceDate, from), lte(projectCosts.invoiceDate, to)),
+          and(isNotNull(costDate), gte(costDate, from), lte(costDate, to)),
         )
       );
 
@@ -154,9 +154,9 @@ export async function GET(req: NextRequest) {
       monthly[m].supplyPrice += r.supplyPrice ?? 0;
       monthly[m].count      += 1;
     }
-    // 매입은 통장 기준 승인일(purchaseDate), 그 외 계산서 발행일(invoiceDate) 월 기준
+    // 매입 귀속 월 — 통장: 승인일(purchaseDate) / 계산서: 발행일(invoiceDate) / 캠페인 시작: 작업시작일(workStartDate)
     for (const c of costRows) {
-      const cd = useBank ? c.purchaseDate : c.invoiceDate;
+      const cd = useBank ? c.purchaseDate : useInvoice ? c.invoiceDate : c.workStartDate;
       if (!cd) continue;
       const m = parseInt(cd.substring(5, 7)) - 1;
       monthly[m].cost += c.total ?? 0;
@@ -190,7 +190,7 @@ export async function GET(req: NextRequest) {
           }
         }
         for (const c of p.costRows) {
-          const cd = useBank ? c.purchaseDate : c.invoiceDate;
+          const cd = useBank ? c.purchaseDate : useInvoice ? c.invoiceDate : c.workStartDate;
           const cm = cd ? parseInt(cd.substring(5, 7)) - 1 : -1;
           if (cm >= 0) teamMonthly[cm].cost += c.total ?? 0;
         }
