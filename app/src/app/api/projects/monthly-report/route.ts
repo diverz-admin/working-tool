@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { projects, projectRevenues, projectCosts } from "@/db/schema";
 import { eq, and, gte, lte, isNotNull, inArray, sql } from "drizzle-orm";
+import { monthRange } from "@/lib/month-range";
 
 export async function GET(req: NextRequest) {
   try {
@@ -13,12 +14,8 @@ export async function GET(req: NextRequest) {
     const useBank    = criteria === "통장";
     const useInvoice = criteria === "계산서날짜";
 
-    const from = month > 0
-      ? `${year}-${String(month).padStart(2, "0")}-01`
-      : `${year}-01-01`;
-    const to = month > 0
-      ? new Date(year, month, 0).toISOString().slice(0, 10)
-      : `${year}-12-31`;
+    const from = month > 0 ? monthRange(year, month).from : `${year}-01-01`;
+    const to   = month > 0 ? monthRange(year, month).to   : `${year}-12-31`;
 
     // 프로젝트 목록 — 캠페인 시작일 기준 필터링
     const projectRows = await db

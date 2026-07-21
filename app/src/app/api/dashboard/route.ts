@@ -39,9 +39,10 @@ export async function GET(req: NextRequest) {
 
     const { revenue: monthly, cost: costMonthly } = toMonthlyBuckets(revRows, costRows);
 
-    const yearTotal       = monthly.reduce((s, m) => s + m.total, 0);
+    // 매출·매입 모두 공급가 기준 (프로젝트관리 KPI·경영관리와 동일)
     const yearSupplyPrice = monthly.reduce((s, m) => s + m.supplyPrice, 0);
-    const costYearTotal   = costMonthly.reduce((s, m) => s + m.total, 0);
+    const yearTotal       = yearSupplyPrice;
+    const costYearTotal   = costMonthly.reduce((s, m) => s + m.supplyPrice, 0);
 
     return NextResponse.json({
       agg:      { year, criteria, monthly, yearTotal, yearSupplyPrice },

@@ -25,7 +25,7 @@ interface Project {
 interface Notice { id: string; title: string; content: string; isPinned: boolean; }
 interface DashboardData {
   agg: AggregateData;
-  costAgg: { monthly: { total: number }[]; yearTotal: number };
+  costAgg: { monthly: { total: number; supplyPrice: number }[]; yearTotal: number };
   projects: Project[];
   notices: Notice[];
 }
@@ -71,7 +71,7 @@ export default function DashboardPage() {
 
   const _initHit = _dashCache.get(`${year}-캠페인 시작날짜`);
   const [agg,      setAgg]      = useState<AggregateData | null>(_initHit?.data.agg ?? null);
-  const [costAgg,  setCostAgg]  = useState<{ monthly: { total: number }[]; yearTotal: number } | null>(_initHit?.data.costAgg ?? null);
+  const [costAgg,  setCostAgg]  = useState<{ monthly: { total: number; supplyPrice: number }[]; yearTotal: number } | null>(_initHit?.data.costAgg ?? null);
   const [projects, setProjects] = useState<Project[]>((_initHit?.data.projects ?? []).filter((p: Project) => p.status === "진행"));
   const [notices,  setNotices]  = useState<Notice[]>(_initHit?.data.notices ?? []);
   const [loading,  setLoading]  = useState(!_initHit);
@@ -103,10 +103,11 @@ export default function DashboardPage() {
 
   const thisM      = agg?.monthly?.[thisMonth];
   const prevM      = agg?.monthly?.[prevMonth];
-  const thisTot    = thisM?.total ?? 0;
-  const prevTot    = prevM?.total ?? 0;
+  // 매출·매입 모두 공급가 기준으로 통일 (프로젝트관리 KPI·경영관리와 동일)
+  const thisTot    = thisM?.supplyPrice ?? 0;
+  const prevTot    = prevM?.supplyPrice ?? 0;
   const diff       = prevTot > 0 ? ((thisTot - prevTot) / prevTot * 100) : 0;
-  const thisCost   = costAgg?.monthly?.[thisMonth]?.total ?? 0;
+  const thisCost   = costAgg?.monthly?.[thisMonth]?.supplyPrice ?? 0;
   const profit     = thisTot - thisCost;
   const yearProfit = (agg?.yearTotal ?? 0) - (costAgg?.yearTotal ?? 0);
 
@@ -329,8 +330,8 @@ export default function DashboardPage() {
                       <td className="px-4 py-2 font-medium" style={{ color: i === thisMonth ? "#3182F6" : "#475569" }}>
                         {MONTHS[i]}{i === thisMonth && <span className="ml-1 text-xs" style={{ color: "#3182F6" }}>●</span>}
                       </td>
-                      <td className="px-4 py-2 text-right font-bold" style={{ color: m.total > 0 ? "#191F28" : "#CBD5E1" }}>
-                        {m.total > 0 ? wonFmt(m.total) : "—"}
+                      <td className="px-4 py-2 text-right font-bold" style={{ color: m.supplyPrice > 0 ? "#191F28" : "#CBD5E1" }}>
+                        {m.supplyPrice > 0 ? wonFmt(m.supplyPrice) : "—"}
                       </td>
                       <td className="px-4 py-2 text-right" style={{ color: "#94A3B8" }}>{m.count > 0 ? `${m.count}건` : "—"}</td>
                     </tr>

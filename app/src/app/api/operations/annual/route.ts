@@ -7,7 +7,6 @@ export async function GET(req: NextRequest) {
   try {
     const year       = parseInt(req.nextUrl.searchParams.get("year") ?? String(new Date().getFullYear()));
     const criteria  = req.nextUrl.searchParams.get("criteria") ?? "캠페인 시작날짜";
-    const useSupply  = criteria === "공급가";
     const useBank    = criteria === "통장";
     const useInvoice = criteria === "계산서날짜";
 
@@ -18,22 +17,17 @@ export async function GET(req: NextRequest) {
         assignedTeam:   projects.assignedTeam,
         assignedPerson: projects.assignedPerson,
         startDate:      projects.startDate,
-        contractAmount: projects.contractAmount,
         kpiSupply:      projects.kpiSupply,
-        totalSum:       sql<number>`COALESCE(SUM(${projectRevenues.total}), 0)`,
         supplySum:      sql<number>`COALESCE(SUM(${projectRevenues.supplyPrice}), 0)`,
       })
       .from(projects)
-      .innerJoin(projectRevenues, eq(projectRevenues.projectId, projects.id))
-      .where(and(
-        sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`,
-        sql`EXISTS (SELECT 1 FROM confirm_requests WHERE project_id = ${projects.id} AND status != '반려')`,
-      ))
-      .groupBy(projects.id, projects.assignedTeam, projects.assignedPerson, projects.startDate, projects.contractAmount, projects.kpiSupply),
+      .leftJoin(projectRevenues, eq(projectRevenues.projectId, projects.id))
+      .where(sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`)
+      .groupBy(projects.id, projects.assignedTeam, projects.assignedPerson, projects.startDate, projects.kpiSupply),
 
       db.select().from(annualCosts).where(eq(annualCosts.year, year)),
 
-      db.select({ invoiceDate: projectCosts.invoiceDate, purchaseDate: projectCosts.purchaseDate, workStartDate: projectCosts.workStartDate, total: projectCosts.total })
+      db.select({ invoiceDate: projectCosts.invoiceDate, purchaseDate: projectCosts.purchaseDate, workStartDate: projectCosts.workStartDate, supplyPrice: projectCosts.supplyPrice })
         .from(projectCosts).where(eq(projectCosts.isApproved, true)),
     ]);
 
@@ -43,7 +37,7 @@ export async function GET(req: NextRequest) {
           assignedTeam:   projects.assignedTeam,
           assignedPerson: projects.assignedPerson,
           paymentDate:    projectRevenues.paymentDate,
-          total:          projectRevenues.total,
+          supplyPrice:    projectRevenues.supplyPrice,
         })
         .from(projectRevenues)
         .innerJoin(projects, eq(projects.id, projectRevenues.projectId))
@@ -59,7 +53,7 @@ export async function GET(req: NextRequest) {
           assignedTeam:   projects.assignedTeam,
           assignedPerson: projects.assignedPerson,
           invoiceDate:    projectRevenues.invoiceDate,
-          total:          projectRevenues.total,
+          supplyPrice:    projectRevenues.supplyPrice,
         })
         .from(projectRevenues)
         .innerJoin(projects, eq(projects.id, projectRevenues.projectId))
@@ -73,24 +67,26 @@ export async function GET(req: NextRequest) {
     const teamMap = new Map<string, Map<string, number[]>>();
     const other   = new Array(12).fill(0);
 
-    // 통장: 입금 확인일·실제 입금액 / 계산서: 발행일·실제 매출 / 그 외: 캠페인 시작일·계약금(또는 공급가)
+    // 금액은 항상 공급가 기준.
+    // 통장·계산서(실적 기준): 실제 매출 행 공급가를 입금 확인일·발행일 월에 귀속
+    // 캠페인 시작일(수주 기준): 프로젝트 계약 공급가를 시작일 월에 귀속
     const revEntries = useBank
       ? bankRevRows.map(r => ({
           month:  r.paymentDate ? parseInt(r.paymentDate.substring(5, 7)) - 1 : -1,
-          amount: r.total ?? 0,
+          amount: r.supplyPrice ?? 0,
           team:   r.assignedTeam   ?? "",
           person: r.assignedPerson ?? "",
         }))
       : useInvoice
       ? invoiceRevRows.map(r => ({
           month:  r.invoiceDate ? parseInt(r.invoiceDate.substring(5, 7)) - 1 : -1,
-          amount: r.total ?? 0,
+          amount: r.supplyPrice ?? 0,
           team:   r.assignedTeam   ?? "",
           person: r.assignedPerson ?? "",
         }))
       : projectData.map(p => ({
           month:  p.startDate ? parseInt(p.startDate.substring(5, 7)) - 1 : -1,
-          amount: useSupply ? (p.kpiSupply ?? Number(p.supplySum)) : (p.contractAmount ?? Number(p.totalSum)),
+          amount: p.kpiSupply ?? Number(p.supplySum),
           team:   p.assignedTeam   ?? "",
           person: p.assignedPerson ?? "",
         }));
@@ -124,7 +120,7 @@ export async function GET(req: NextRequest) {
       const dateStr = useBank ? r.purchaseDate : useInvoice ? r.invoiceDate : r.workStartDate;
       if (!dateStr) continue;
       if (parseInt(dateStr.substring(0, 4)) !== year) continue;
-      directMonthly[parseInt(dateStr.substring(5, 7)) - 1] += r.total ?? 0;
+      directMonthly[parseInt(dateStr.substring(5, 7)) - 1] += r.supplyPrice ?? 0;
     }
     const directRows = directMonthly
       .map((amount, i) => ({ year, month: i + 1, category: "직접매입(상품)", item: "합계", amount }))

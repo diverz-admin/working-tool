@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { projects, projectCosts } from "@/db/schema";
 import { eq, and, gte, lte, isNotNull } from "drizzle-orm";
+import { monthRange } from "@/lib/month-range";
 
 export async function GET(req: NextRequest) {
   try {
@@ -12,8 +13,7 @@ export async function GET(req: NextRequest) {
     const useInvoice = criteria === "계산서날짜";
     const dateField  = useInvoice ? projectCosts.invoiceDate : projects.startDate;
 
-    const from = `${year}-${String(month).padStart(2, "0")}-01`;
-    const to   = new Date(year, month, 0).toISOString().slice(0, 10);
+    const { from, to } = monthRange(year, month);
 
     const rows = await db
       .select({

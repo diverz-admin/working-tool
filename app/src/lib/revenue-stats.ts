@@ -10,6 +10,10 @@ import { eq, and, sql, isNotNull } from "drizzle-orm";
  *   캠페인 시작날짜 → 매출: projects.start_date        / 매입: project_costs.work_start_date (작업시작일)
  *   계산서날짜      → 매출: revenues.invoice_date      / 매입: project_costs.invoice_date
  *   통장            → 매출: revenues.payment_date      / 매입: project_costs.purchase_date
+ *
+ * 금액은 항상 공급가(VAT 제외) 기준이며, 매출 금액의 출처는 기준에 따라 다르다.
+ *   캠페인 시작날짜 → 수주 기준: 프로젝트의 계약 공급가(projects.kpi_supply)
+ *   계산서날짜·통장 → 실적 기준: 실제 매출 행(project_revenues.supply_price)
  */
 export type StatsCriteria = "캠페인 시작날짜" | "계산서날짜" | "통장";
 
@@ -35,19 +39,67 @@ export interface CostStatRow {
 }
 
 /**
- * 확정 매출 행 집계. 금액은 항상 SUM(project_revenues.total) — 계약금액(contract_amount)은 쓰지 않는다.
- * 캠페인 시작날짜 기준일 때만 "반려가 아닌 입금확인요청이 존재하는 프로젝트"로 제한한다
- * (다른 두 기준은 계산서 발행일/입금일 자체가 확정 여부를 뜻하므로 NOT NULL 조건이 그 역할을 한다).
+ * 캠페인 시작날짜 기준 = 수주 기준.
+ * 해당 월에 시작한 모든 프로젝트를 계약 공급가(kpi_supply)로 집계한다.
+ * 매출 행이 아직 입력되지 않았거나 입금확인요청이 없는 프로젝트도 빠짐없이 포함하며,
+ * 계약 금액이 비어 있는 프로젝트만 실제 매출 행 합계로 대체한다.
+ */
+async function fetchContractRevenueStats(
+  year: number,
+  team?: string,
+): Promise<RevenueStatRow[]> {
+  const rows = await db.execute<{
+    date_month: string;
+    assigned_team: string | null;
+    total_sum: string | number;
+    supply_sum: string | number;
+    tax_sum: string | number;
+    project_count: string | number;
+  }>(sql`
+    SELECT TO_CHAR(p.start_date, 'YYYY-MM')                          AS date_month,
+           p.assigned_team                                           AS assigned_team,
+           COALESCE(SUM(COALESCE(p.contract_amount, rv.total_sum, 0)), 0)  AS total_sum,
+           COALESCE(SUM(COALESCE(p.kpi_supply,      rv.supply_sum, 0)), 0) AS supply_sum,
+           COALESCE(SUM(COALESCE(p.kpi_tax,         rv.tax_sum, 0)), 0)    AS tax_sum,
+           COUNT(*)                                                  AS project_count
+    FROM projects p
+    LEFT JOIN (
+      SELECT project_id,
+             SUM(total)        AS total_sum,
+             SUM(supply_price) AS supply_sum,
+             SUM(tax)          AS tax_sum
+      FROM project_revenues
+      GROUP BY project_id
+    ) rv ON rv.project_id = p.id
+    WHERE p.start_date IS NOT NULL
+      AND EXTRACT(YEAR FROM p.start_date) = ${year}
+      ${team ? sql`AND p.assigned_team = ${team}` : sql``}
+    GROUP BY 1, p.assigned_team
+  `);
+
+  return Array.from(rows).map(r => ({
+    dateMonth:    r.date_month,
+    assignedTeam: r.assigned_team,
+    totalSum:     Number(r.total_sum     ?? 0),
+    supplySum:    Number(r.supply_sum    ?? 0),
+    taxSum:       Number(r.tax_sum       ?? 0),
+    projectCount: Number(r.project_count ?? 0),
+  }));
+}
+
+/**
+ * 계산서날짜·통장 기준 = 실적 기준. 실제 매출 행을 그 행에 기록된 날짜로 귀속시킨다
+ * (날짜가 기록돼 있다는 것 자체가 발행·입금 확정을 뜻하므로 별도 확정 조건은 두지 않는다).
  */
 export async function fetchRevenueStats(
   year: number,
   criteria: StatsCriteria,
   team?: string,
 ): Promise<RevenueStatRow[]> {
+  if (criteria === "캠페인 시작날짜") return fetchContractRevenueStats(year, team);
+
   const dateExpr =
-    criteria === "계산서날짜" ? projectRevenues.invoiceDate
-    : criteria === "통장"     ? projectRevenues.paymentDate
-    : projects.startDate;
+    criteria === "계산서날짜" ? projectRevenues.invoiceDate : projectRevenues.paymentDate;
 
   const teamFilter = team ? eq(projects.assignedTeam, team) : undefined;
 
@@ -66,9 +118,6 @@ export async function fetchRevenueStats(
       and(
         isNotNull(dateExpr),
         sql`EXTRACT(YEAR FROM ${dateExpr}) = ${year}`,
-        criteria === "캠페인 시작날짜"
-          ? sql`EXISTS (SELECT 1 FROM confirm_requests WHERE project_id = ${projects.id} AND status != '반려')`
-          : undefined,
         teamFilter,
       ),
     )

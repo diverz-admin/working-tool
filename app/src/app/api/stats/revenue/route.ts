@@ -21,7 +21,7 @@ export async function GET(req: Request) {
     const monthlyCosts = Array.from({ length: 12 }, (_, i) => {
       const m = `${year}-${String(i + 1).padStart(2, "0")}`;
       const row = costRows.find((r) => r.month === m);
-      return row ? row.total : 0;
+      return row ? row.supplyPrice : 0;
     });
 
     // 팀별 월별 매출 맵 구축
@@ -32,7 +32,7 @@ export async function GET(req: Request) {
       const monthIdx = parseInt(r.dateMonth.substring(5, 7)) - 1;
       const team = r.assignedTeam ?? "";
       if (!teamMonthRevMap.has(team)) teamMonthRevMap.set(team, new Array(12).fill(0));
-      teamMonthRevMap.get(team)![monthIdx] += r.totalSum;
+      teamMonthRevMap.get(team)![monthIdx] += r.supplySum;
     }
 
     // KPI 설정된 팀도 포함 (매출 없어도 KPI 목표가 있으면 표시)

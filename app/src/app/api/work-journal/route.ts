@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { workJournals, clients, projects } from "@/db/schema";
 import { eq, and, gte, lte, desc } from "drizzle-orm";
+import { monthRange } from "@/lib/month-range";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -9,8 +10,7 @@ export async function GET(req: NextRequest) {
   const month = parseInt(searchParams.get("month") ?? String(new Date().getMonth() + 1));
   const team  = searchParams.get("team");
 
-  const from = `${year}-${String(month).padStart(2, "0")}-01`;
-  const to   = new Date(year, month, 0).toISOString().slice(0, 10); // last day of month
+  const { from, to } = monthRange(year, month);
 
   const conditions = [gte(workJournals.date, from), lte(workJournals.date, to)];
   if (team) conditions.push(eq(workJournals.assignedTeam, team));
