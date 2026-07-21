@@ -223,6 +223,16 @@ function DetailModal({ item, onClose, onAction }: {
               </button>
             </div>
           )}
+
+          {item.status === "승인" && (
+            <div className="px-6 py-4" style={{ borderTop: "1px solid #F1F5F9" }}>
+              <button onClick={() => setShowReject(true)} disabled={loading}
+                className="w-full py-2.5 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-50"
+                style={{ background: "rgba(239,68,68,0.1)", color: "#DC2626" }}>
+                {loading ? "처리 중..." : "승인 취소 (반려 처리)"}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -357,13 +367,18 @@ export default function InternalConfirmPage() {
                     </span>
                   </td>
                   <td className="px-3 py-3.5">
-                    {item.status === "대기" && (
-                      <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {item.status === "대기" && (
                         <button onClick={(e) => { e.stopPropagation(); setSelected(item); }}
                           className="text-xs font-semibold px-3 py-1 rounded-lg text-white"
                           style={{ background: "#8B5CF6" }}>검토</button>
-                      </div>
-                    )}
+                      )}
+                      {item.status === "승인" && (
+                        <button onClick={(e) => { e.stopPropagation(); setSelected(item); }}
+                          className="text-xs font-semibold px-3 py-1 rounded-lg"
+                          style={{ background: "rgba(239,68,68,0.1)", color: "#DC2626" }}>반려 처리</button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               );
