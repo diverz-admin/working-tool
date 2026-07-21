@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
 
       db.select().from(annualCosts).where(eq(annualCosts.year, year)),
 
-      db.select({ invoiceDate: projectCosts.invoiceDate, purchaseDate: projectCosts.purchaseDate, total: projectCosts.total })
+      db.select({ invoiceDate: projectCosts.invoiceDate, purchaseDate: projectCosts.purchaseDate, workStartDate: projectCosts.workStartDate, total: projectCosts.total })
         .from(projectCosts).where(eq(projectCosts.isApproved, true)),
     ]);
 
@@ -120,8 +120,8 @@ export async function GET(req: NextRequest) {
     const filtered     = manualRows.filter(r => r.category !== "직접매입(상품)");
     const directMonthly = new Array(12).fill(0);
     for (const r of directCostRows) {
-      // 통장 기준: 승인일(purchaseDate) / 그 외: 계산서 발행일(invoiceDate, 없으면 매입일)
-      const dateStr = useBank ? r.purchaseDate : (r.invoiceDate ?? r.purchaseDate);
+      // 통장: 승인일(purchaseDate) / 계산서: 발행일(invoiceDate) / 그 외(캠페인 시작·공급가): 작업시작일(workStartDate)
+      const dateStr = useBank ? r.purchaseDate : useInvoice ? r.invoiceDate : r.workStartDate;
       if (!dateStr) continue;
       if (parseInt(dateStr.substring(0, 4)) !== year) continue;
       directMonthly[parseInt(dateStr.substring(5, 7)) - 1] += r.total ?? 0;

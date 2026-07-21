@@ -23,12 +23,12 @@ function revDateLabel(criteria: string) {
 function revDateVal(r: { startDate: string | null; invoiceDate: string | null; paymentDate: string | null }, criteria: string) {
   return criteria === "통장" ? r.paymentDate : criteria === "계산서날짜" ? r.invoiceDate : r.startDate;
 }
-// 매입 표시 날짜: 통장→승인일(purchaseDate), 그 외→계산서 발행일(invoiceDate)
+// 매입 표시 날짜: 통장→승인일(purchaseDate), 계산서→발행일(invoiceDate), 그 외(캠페인 시작)→작업시작일(workStartDate)
 function costDateLabel(criteria: string) {
-  return criteria === "통장" ? "통장(승인일)" : "계산서날짜";
+  return criteria === "통장" ? "통장(승인일)" : criteria === "계산서날짜" ? "계산서날짜" : "작업시작일";
 }
-function costDateVal(r: { invoiceDate: string | null; purchaseDate: string | null }, criteria: string) {
-  return criteria === "통장" ? r.purchaseDate : r.invoiceDate;
+function costDateVal(r: { invoiceDate: string | null; purchaseDate: string | null; workStartDate: string | null }, criteria: string) {
+  return criteria === "통장" ? r.purchaseDate : criteria === "계산서날짜" ? r.invoiceDate : r.workStartDate;
 }
 
 // ─── 타입 ────────────────────────────────────────────────
@@ -62,6 +62,7 @@ interface CostRow {
   startDate: string | null;
   invoiceDate: string | null;
   purchaseDate: string | null;
+  workStartDate: string | null;
 }
 
 interface SgaRow {
@@ -517,7 +518,7 @@ export default function MonthlyManagePage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold" style={{ color:"#191F28" }}>월간 손익관리</h1>
-          <p className="text-xs mt-0.5" style={{ color:"#94A3B8" }}>{criteria === "통장" ? "매출: 입금 승인일 기준 · 매입: 승인일 기준" : criteria === "계산서날짜" ? "매출: 계산서 발행일 기준 · 매입: 계산서 발행일 기준" : "매출: 캠페인 시작일 기준 · 매입: 계산서 발행일 기준"}</p>
+          <p className="text-xs mt-0.5" style={{ color:"#94A3B8" }}>{criteria === "통장" ? "매출: 입금 승인일 기준 · 매입: 승인일 기준" : criteria === "계산서날짜" ? "매출: 계산서 발행일 기준 · 매입: 계산서 발행일 기준" : "매출: 캠페인 시작일 기준 · 매입: 작업시작일 기준"}</p>
         </div>
         <div className="flex items-center gap-2">
           <select value={criteria} onChange={e => setCriteria(e.target.value)}

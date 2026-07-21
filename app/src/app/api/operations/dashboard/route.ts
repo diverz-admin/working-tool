@@ -34,8 +34,8 @@ export async function GET(req: NextRequest) {
       // 2. 연간 수동 비용
       db.select().from(annualCosts).where(eq(annualCosts.year, year)),
 
-      // 3. 연간 직접매입 (승인된 매입)
-      db.select({ invoiceDate: projectCosts.invoiceDate, purchaseDate: projectCosts.purchaseDate, total: projectCosts.total })
+      // 3. 연간 직접매입 (승인된 매입) — 캠페인 시작일 기준이므로 귀속 월은 작업시작일(workStartDate)
+      db.select({ invoiceDate: projectCosts.invoiceDate, purchaseDate: projectCosts.purchaseDate, workStartDate: projectCosts.workStartDate, total: projectCosts.total })
         .from(projectCosts).where(eq(projectCosts.isApproved, true)),
 
       // 4. 월간 매출 요약 (캠페인 시작날짜 기준)
@@ -57,7 +57,7 @@ export async function GET(req: NextRequest) {
       ))
       .groupBy(projects.id, projects.assignedTeam, projects.contractAmount, projects.kpiSupply, projects.kpiTax),
 
-      // 5. 월간 매입 요약 (계산서날짜 기준)
+      // 5. 월간 매입 요약 (캠페인 시작일 기준 → 작업시작일)
       db.select({
         id:           projectCosts.id,
         assignedTeam: projects.assignedTeam,
@@ -68,9 +68,9 @@ export async function GET(req: NextRequest) {
       .innerJoin(projects, eq(projectCosts.projectId, projects.id))
       .where(and(
         eq(projectCosts.isApproved, true),
-        isNotNull(projectCosts.invoiceDate),
-        gte(projectCosts.invoiceDate, from),
-        lte(projectCosts.invoiceDate, to),
+        isNotNull(projectCosts.workStartDate),
+        gte(projectCosts.workStartDate, from),
+        lte(projectCosts.workStartDate, to),
       )),
     ]);
 
@@ -105,7 +105,7 @@ export async function GET(req: NextRequest) {
     const filtered      = annualManualRows.filter(r => r.category !== "직접매입(상품)");
     const directMonthly = new Array(12).fill(0);
     for (const r of annualDirectCostRows) {
-      const dateStr = r.invoiceDate ?? r.purchaseDate;
+      const dateStr = r.workStartDate;   // 캠페인 시작일 기준 → 작업시작일
       if (!dateStr) continue;
       if (parseInt(dateStr.substring(0, 4)) !== year) continue;
       directMonthly[parseInt(dateStr.substring(5, 7)) - 1] += r.total ?? 0;

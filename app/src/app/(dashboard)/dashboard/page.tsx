@@ -194,7 +194,7 @@ export default function DashboardPage() {
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold" style={{ color: "#94A3B8" }}>
           {criteria === "캠페인 시작날짜"
-            ? "매출: 캠페인 시작일 · 매입: 계산서 발행일"
+            ? "매출: 캠페인 시작일 · 매입: 작업시작일"
             : "매출: 계산서 발행일 · 매입: 계산서 발행일"}
         </p>
         <div className="flex gap-0.5 p-0.5 rounded-xl" style={{ background: "#F1F5F9" }}>

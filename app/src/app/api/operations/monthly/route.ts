@@ -13,11 +13,13 @@ export async function GET(req: NextRequest) {
     const useActual  = useBank || useInvoice; // 실제 매출 행 금액 기준
 
     // 매출 날짜: 통장 → 입금 확인일(paymentDate), 계산서 → 발행일(invoiceDate), 그 외 → 캠페인 시작일(startDate)
-    // 매입 날짜: 통장 → 승인일(purchaseDate),    그 외 → 계산서 발행일(invoiceDate)
+    // 매입 날짜: 통장 → 승인일(purchaseDate), 계산서 → 발행일(invoiceDate), 그 외(캠페인 시작) → 작업시작일(workStartDate)
     const revDateField  = useBank ? projectRevenues.paymentDate
                         : useInvoice ? projectRevenues.invoiceDate
                         : projects.startDate;
-    const costDateField = useBank ? projectCosts.purchaseDate : projectCosts.invoiceDate;
+    const costDateField = useBank ? projectCosts.purchaseDate
+                        : useInvoice ? projectCosts.invoiceDate
+                        : projectCosts.workStartDate;
 
     const from = `${year}-${String(month).padStart(2, "0")}-01`;
     const to   = new Date(year, month, 0).toISOString().slice(0, 10);
@@ -71,6 +73,7 @@ export async function GET(req: NextRequest) {
         startDate:    projects.startDate,
         invoiceDate:  projectCosts.invoiceDate,
         purchaseDate: projectCosts.purchaseDate,
+        workStartDate: projectCosts.workStartDate,
       })
       .from(projectCosts)
       .innerJoin(projects, eq(projectCosts.projectId, projects.id))
