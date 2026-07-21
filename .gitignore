@@ -1,2 +1,5 @@
 .DS_Store
 .vercel
+
+# 로컬 일회성 스크립트 (평문 비밀번호 등이 들어가므로 커밋 금지)
+app/set-pw.ts
