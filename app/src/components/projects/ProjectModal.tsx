@@ -194,6 +194,35 @@ interface ManagedProduct {
   salePrice: number | null;
 }
 
+/* ── 행을 상품관리의 올바른 상품(이름+매입처)에 연결 ──
+   동명 상품(매입처만 다른 경우)이 이름만으로 잘못 매칭돼 다른 개당 단가로 표시되던 문제를 바로잡는다.
+   productId·unitPrice(개당 단가)만 채워 표시·이후 개수 변경 재계산에 쓰고,
+   기존에 저장된 공급가·세액·합계 금액은 건드리지 않는다(승인 금액 보존). */
+function findRevProduct(productName: string, products: ManagedProduct[]): ManagedProduct | undefined {
+  return products.find((p) => (p.vendor ? `${p.name} · ${p.vendor}` : p.name) === productName)
+      ?? products.find((p) => p.name === productName);
+}
+function findCostProduct(productName: string, vendor: string, products: ManagedProduct[]): ManagedProduct | undefined {
+  return products.find((p) => p.name === productName && (p.vendor ?? "") === (vendor ?? ""))
+      ?? products.find((p) => p.name === productName);
+}
+function normalizeRevRows(rows: RevenueRow[], products: ManagedProduct[]): RevenueRow[] {
+  if (!products.length) return rows;
+  return rows.map((r) => {
+    const p = findRevProduct(r.productName, products);
+    if (!p || (p.salePrice ?? 0) <= 0) return r;
+    return { ...r, productId: p.id, unitPrice: p.salePrice ?? 0 };
+  });
+}
+function normalizeCostRows(rows: CostRow[], products: ManagedProduct[]): CostRow[] {
+  if (!products.length) return rows;
+  return rows.map((c) => {
+    const p = findCostProduct(c.productName, c.vendor, products);
+    if (!p || (p.costPrice ?? 0) <= 0) return c;
+    return { ...c, productId: p.id, unitPrice: p.costPrice ?? 0 };
+  });
+}
+
 interface Props {
   initial?: ProjectFormData | null;
   onClose: () => void;
@@ -243,8 +272,12 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
   const initFormSnap  = useRef(JSON.stringify({ ...form, id: undefined }));
   const initRevSnap   = useRef("[]");
   const initCostSnap  = useRef("[]");
-  const serRev  = (rows: RevenueRow[])  => JSON.stringify(rows.map(({ localId: _l, ...r }) => r));
-  const serCost = (rows: CostRow[])     => JSON.stringify(rows.map(({ localId: _l, ...r }) => r));
+  const [rowsLoaded, setRowsLoaded] = useState(false);
+  const normalizedRef = useRef(false);
+  // productId·unitPrice 는 상품 매칭으로 파생되는 내부값 — 변경 감지에서 제외해
+  // (로드 후 자동 정규화가 이 값만 채워도 '변경됨'으로 오인되지 않게 한다)
+  const serRev  = (rows: RevenueRow[])  => JSON.stringify(rows.map(({ localId: _l, productId: _p, unitPrice: _u, ...r }) => r));
+  const serCost = (rows: CostRow[])     => JSON.stringify(rows.map(({ localId: _l, productId: _p, unitPrice: _u, ...r }) => r));
   const isDirty = !isEdit || (
     // eslint-disable-next-line react-hooks/refs
     JSON.stringify({ ...form, id: undefined }) !== initFormSnap.current ||
@@ -328,7 +361,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
             setPaymentStatuses(m);
           }
           const projectEndDate = initial?.endDate ?? "";
-          setRevenues((rv ?? []).map((r: Record<string, unknown>) => {
+          const mappedRev: RevenueRow[] = (rv ?? []).map((r: Record<string, unknown>) => {
             const completed = Boolean(r.workCompleted);
             return {
             localId:        nid(),
@@ -351,8 +384,8 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
             workCompleted:  Boolean(r.workCompleted),
             depositAccount: String(r.depositAccount ?? ""),
             settingDate:    String(r.settingDate ?? ""),
-          }; }));
-          setCosts((cs ?? []).map((c: Record<string, unknown>) => ({
+          }; });
+          const mappedCost: CostRow[] = (cs ?? []).map((c: Record<string, unknown>) => ({
             localId:    nid(),
             costRowId:  c.costRowId ? String(c.costRowId) : crypto.randomUUID(),
             sectionLabel: String(c.sectionLabel ?? "1주"),
@@ -374,19 +407,28 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
             settingDate:     String(c.settingDate ?? ""),
             invoiceFileUrl:  String(c.invoiceFileUrl ?? ""),
             invoiceFileName: String(c.invoiceFileName ?? ""),
-          })));
-        })
-        .then(() => {
-          // 로드 완료 후 초기 스냅샷 갱신 (다음 프레임에서 state 반영)
-          setTimeout(() => {
-            setRevenues((rv) => { initRevSnap.current = serRev(rv); return rv; });
-            setCosts((cs) => { initCostSnap.current = serCost(cs); return cs; });
-          }, 0);
+          }));
+          // 원본(raw) 값을 초기 스냅샷으로 캡처 (productId·unitPrice는 serRev/serCost에서 제외돼 상품 연결만으로는 '변경됨' 아님)
+          initRevSnap.current  = serRev(mappedRev);
+          initCostSnap.current = serCost(mappedCost);
+          setRevenues(mappedRev);
+          setCosts(mappedCost);
+          setRowsLoaded(true);
         })
         .catch(() => {});
     }
     return () => { document.body.style.overflow = ""; };
   }, [isEdit, initial?.id]);
+
+  // 로드된 행을 상품관리의 올바른 상품(이름+매입처)에 1회 연결한다.
+  // (상품 목록과 프로젝트 행이 모두 준비된 뒤 실행. productId·개당 단가만 채우고 저장 금액은 보존.)
+  useEffect(() => {
+    if (!isEdit || normalizedRef.current) return;
+    if (!rowsLoaded || managedProducts.length === 0) return;
+    normalizedRef.current = true;
+    setRevenues((rows) => normalizeRevRows(rows, managedProducts));
+    setCosts((rows) => normalizeCostRows(rows, managedProducts));
+  }, [isEdit, rowsLoaded, managedProducts]);
 
   // 결재 상태는 /api/projects/{id} 응답에 포함되어 별도 로드 불필요
 
@@ -612,7 +654,8 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
         const qty = parseInt(qtyStr) || 0;
         if (c.unitPrice > 0 && qty > 0) {
           const supply = c.unitPrice * qty;
-          const tax    = Math.round(supply * 0.1);
+          const taxed  = (parseWon(c.tax) ?? 0) > 0;
+          const tax    = taxed ? Math.round(supply * 0.1) : 0;
           return { ...c, quantity: qtyStr, supplyPrice: String(supply), tax: String(tax), total: String(supply + tax) };
         }
         return { ...c, quantity: qtyStr };
@@ -624,7 +667,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
       const qty = parseInt(qtyStr) || 0;
       if (r.unitPrice > 0 && qty > 0) {
         const supply = r.unitPrice * qty;
-        const noTax  = r.depositAccount === "전재민";
+        const noTax  = r.depositAccount === "전재민" || (parseWon(r.tax) ?? 0) === 0;
         const tax    = noTax ? 0 : Math.round(supply * 0.1);
         return { ...r, quantity: qtyStr, supplyPrice: String(supply), tax: String(tax), total: String(supply + tax) };
       }
@@ -662,7 +705,8 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
       const qty = parseInt(qtyStr) || 0;
       if (c.unitPrice > 0 && qty > 0) {
         const supply = c.unitPrice * qty;
-        const tax    = Math.round(supply * 0.1);
+        const taxed  = (parseWon(c.tax) ?? 0) > 0;
+        const tax    = taxed ? Math.round(supply * 0.1) : 0;
         const total  = supply + tax;
         return { ...c, quantity: qtyStr, supplyPrice: String(supply), tax: String(tax), total: String(total) };
       }
@@ -1369,7 +1413,13 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                                 </select>
                               </td>
                               <td className="px-1 py-1"><input type="number" value={r.quantity} onChange={(e) => handleRevQuantity(r.localId, e.target.value)} className={inputCls} style={{...inputStyle, width:50}} /></td>
-                              <td className="px-1 py-1"><input type="text" value={wonFmt(r.supplyPrice)} onChange={(e) => updateRev(r.localId,"supplyPrice",e.target.value)} onBlur={(e) => autoTaxRev(r.localId, e.target.value)} className={inputCls} style={{...inputStyle, width:80}} /></td>
+                              <td className="px-1 py-1">
+                                {r.unitPrice > 0 ? (
+                                  <input type="text" value={wonFmt(r.supplyPrice)} readOnly title="상품 등록 개당 단가 × 개수로 자동 계산됩니다. 금액은 개수로 조정하세요." className={inputCls} style={{...inputStyle, width:80, background:"#F1F5F9", color:"#64748B", cursor:"not-allowed"}} />
+                                ) : (
+                                  <input type="text" value={wonFmt(r.supplyPrice)} onChange={(e) => updateRev(r.localId,"supplyPrice",e.target.value)} onBlur={(e) => autoTaxRev(r.localId, e.target.value)} className={inputCls} style={{...inputStyle, width:80}} />
+                                )}
+                              </td>
                               <td className="px-1 py-1"><input type="text" value={wonFmt(r.tax)} onChange={(e) => updateRev(r.localId,"tax",e.target.value)} className={inputCls} style={{...inputStyle, width:65}} /></td>
                               <td className="px-1 py-1"><input type="text" value={wonFmt(r.total)} onChange={(e) => updateRev(r.localId,"total",e.target.value)} className={inputCls} style={{...inputStyle, width:80}} /></td>
                               <td className="px-1 py-1">
@@ -1609,7 +1659,13 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                               </select>
                             </td>
                             <td className="px-1 py-1"><input type="number" value={c.quantity} onChange={(e) => handleCostQuantity(c.localId, e.target.value)} disabled={costDeleteBlocked} className={inputCls} style={{...inputStyle, width:50, opacity: costDeleteBlocked ? 0.45 : 1}} /></td>
-                            <td className="px-1 py-1"><input type="text" value={wonFmt(c.supplyPrice)} onChange={(e) => updateCost(c.localId,"supplyPrice",e.target.value)} onBlur={(e) => autoTaxCost(c.localId, e.target.value)} disabled={costDeleteBlocked} className={inputCls} style={{...inputStyle, width:80, opacity: costDeleteBlocked ? 0.45 : 1}} /></td>
+                            <td className="px-1 py-1">
+                              {c.unitPrice > 0 ? (
+                                <input type="text" value={wonFmt(c.supplyPrice)} readOnly title="상품 등록 개당 단가 × 개수로 자동 계산됩니다. 금액은 개수로 조정하세요." className={inputCls} style={{...inputStyle, width:80, background:"#F1F5F9", color:"#64748B", cursor:"not-allowed", opacity: costDeleteBlocked ? 0.45 : 1}} />
+                              ) : (
+                                <input type="text" value={wonFmt(c.supplyPrice)} onChange={(e) => updateCost(c.localId,"supplyPrice",e.target.value)} onBlur={(e) => autoTaxCost(c.localId, e.target.value)} disabled={costDeleteBlocked} className={inputCls} style={{...inputStyle, width:80, opacity: costDeleteBlocked ? 0.45 : 1}} />
+                              )}
+                            </td>
                             <td className="px-1 py-1"><input type="text" value={wonFmt(c.tax)} onChange={(e) => updateCost(c.localId,"tax",e.target.value)} disabled={costDeleteBlocked} className={inputCls} style={{...inputStyle, width:65, opacity: costDeleteBlocked ? 0.45 : 1}} /></td>
                             <td className="px-1 py-1"><input type="text" value={wonFmt(c.total)} onChange={(e) => updateCost(c.localId,"total",e.target.value)} disabled={costDeleteBlocked} className={inputCls} style={{...inputStyle, width:80, opacity: costDeleteBlocked ? 0.45 : 1}} /></td>
                             <td className="px-1 py-1">
