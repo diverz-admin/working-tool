@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { fetchJson } from "@/lib/fetch-json";
 
 interface PeriodStats {
   achieved: number;
@@ -100,6 +101,7 @@ export default function SalesTargetBanner({ team }: { team: string }) {
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [data,  setData]  = useState<BannerData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error,   setError]   = useState<string | null>(null);
 
   const [showModal,         setShowModal]         = useState(false);
   const [showCriteriaModal, setShowCriteriaModal] = useState(false);
@@ -109,13 +111,15 @@ export default function SalesTargetBanner({ team }: { team: string }) {
 
   const load = useCallback(() => {
     setLoading(true);
-    fetch(`/api/sales-targets?team=${encodeURIComponent(team)}&year=${year}&month=${month}`)
-      .then((r) => r.json())
+    setError(null);
+    // 실패를 0원 실적으로 바꾸지 않는다 — 목표/달성 금액이 0으로 오인되면 안 되므로 오류로 표시
+    fetchJson<BannerData>(`/api/sales-targets?team=${encodeURIComponent(team)}&year=${year}&month=${month}`)
       .then((d: BannerData) => {
         setData(d);
         setCriteria(d.criteria ?? "캠페인 시작날짜");
         setTargetInput(d.annualTarget ? d.annualTarget.toLocaleString() : "");
       })
+      .catch((e: Error) => { setError(e.message); setData(null); })
       .finally(() => setLoading(false));
   }, [team, year, month]);
 
@@ -158,6 +162,19 @@ export default function SalesTargetBanner({ team }: { team: string }) {
 
   const remaining = data ? Math.max(0, data.monthlyTarget - data.monthly.achieved) : 0;
   const parsedInput = parseWon(targetInput);
+
+  // 실패 시 금액을 한 자리도 렌더하지 않는다 (0원 목표·0원 달성으로 오인 방지)
+  if (error) {
+    return (
+      <div className="rounded-2xl p-5 flex items-center justify-between gap-4" style={{ background: "#FFFFFF", border: "1px solid #E5E8EB" }}>
+        <div>
+          <p className="text-sm font-semibold" style={{ color: "#EF4444" }}>{error}</p>
+          <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>금액이 0으로 잘못 보이지 않도록 표시를 중단했습니다.</p>
+        </div>
+        <button onClick={load} className="shrink-0 px-4 py-1.5 text-sm font-semibold rounded-xl text-white" style={{ background: "#3182F6" }}>다시 시도</button>
+      </div>
+    );
+  }
 
   return (
     <>

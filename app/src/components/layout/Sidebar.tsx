@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useState, useEffect, Suspense } from "react";
 import { useUser } from "@/lib/UserContext";
+import { fetchJson } from "@/lib/fetch-json";
 
 const TEAMS = ["경영", "영업 1팀", "영업 2팀"];
 
@@ -172,13 +173,13 @@ function ProjectsNavSection() {
         setTeamBadges(_workBadgeCache.data);
         return;
       }
-      fetch("/api/projects-page/work-badge")
-        .then((r) => r.json())
+      fetchJson<Record<string, number>>("/api/projects-page/work-badge")
         .then((d) => {
           _workBadgeCache = { data: d, ts: Date.now() };
           setTeamBadges(d);
         })
-        .catch(() => {});
+        // 실패 시 배지를 감춘다 (0으로 표시하지 않음) — 사이드바 자체는 정상 렌더
+        .catch(() => setTeamBadges({}));
     }
     fetchBadges();
     const forceRefetch = () => { _workBadgeCache = null; fetchBadges(true); };
@@ -291,14 +292,14 @@ function ApprovalNavSection() {
         setCounts({ confirm: _pendingCache.confirm, payment: _pendingCache.payment, expense: _pendingCache.expense, leave: _pendingCache.leave });
         return;
       }
-      fetch("/api/approvals/pending-counts")
-        .then((r) => r.json())
+      fetchJson<{ confirm?: number; payment?: number; expense?: number; leave?: number }>("/api/approvals/pending-counts")
         .then((d) => {
           const next = { confirm: d.confirm ?? 0, payment: d.payment ?? 0, expense: d.expense ?? 0, leave: d.leave ?? 0 };
           _pendingCache = { ...next, ts: Date.now() };
           setCounts(next);
         })
-        .catch(() => {});
+        // 실패 시 배지를 감춘다 (0 배지는 렌더되지 않음) — 사이드바 자체는 정상 렌더
+        .catch(() => setCounts({ confirm: 0, payment: 0, expense: 0, leave: 0 }));
     }
     fetchCounts();
     const forceRefetch = () => { _pendingCache = null; fetchCounts(true); };

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as XLSX from "xlsx";
 import { useFileSrc, isImageValue } from "@/lib/storage";
+import { fetchJson } from "@/lib/fetch-json";
 
 // 사업자등록증(스토리지 경로/레거시 data:) 미리보기
 function BizRegView({ value }: { value: string }) {
@@ -156,6 +157,7 @@ async function updateRevenueField(
 export default function ConfirmPage() {
   const router = useRouter();
   const [items, setItems]               = useState<ConfirmRequest[]>([]);
+  const [error, setError]               = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<ConfirmStatus | "전체">("대기");
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -177,7 +179,8 @@ export default function ConfirmPage() {
     setTimeout(() => setApprovedToast(false), 5000);
   }, []);
 
-  useEffect(() => {
+  const load = useCallback(() => {
+    setError(null);
     getConfirmRequests().then((data) => {
       const orphaned = data.filter(i =>
         i.status === "대기" &&
@@ -194,8 +197,13 @@ export default function ConfirmPage() {
       } else {
         setItems(data);
       }
-    });
+    })
+    // 실패를 빈 목록으로 렌더하지 않는다 — "요청 없음"으로 오인되면 안 되므로 오류를 표시
+    .catch((e: Error) => { setError(e.message); setItems([]); });
   }, []);
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { load(); }, [load]);
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
@@ -209,8 +217,7 @@ export default function ConfirmPage() {
   useEffect(() => {
     setClientBizRegUrl(null);
     if (selected?.clientId) {
-      fetch(`/api/clients/${selected.clientId}`)
-        .then((r) => r.json())
+      fetchJson<{ client?: { bizRegFileUrl?: string | null } }>(`/api/clients/${selected.clientId}`)
         .then(({ client }) => setClientBizRegUrl(client?.bizRegFileUrl ?? null))
         .catch(() => {});
     }
@@ -681,7 +688,13 @@ export default function ConfirmPage() {
       </div>
 
       {/* 날짜별 그룹 */}
-      {items.length === 0 ? (
+      {error ? (
+        <div className="rounded-2xl py-20 text-center" style={{ background: "#fff", border: "1px solid #E9EBEF" }}>
+          <p className="text-sm font-semibold" style={{ color: "#EF4444" }}>{error}</p>
+          <p className="text-xs mt-1" style={{ color: "#94A3B8" }}>목록을 표시할 수 없습니다. 데이터가 없는 것으로 잘못 보이지 않도록 표시를 중단했습니다.</p>
+          <button onClick={load} className="mt-3 px-4 py-1.5 text-sm font-semibold rounded-lg" style={{ background: "#3182F6", color: "#fff" }}>다시 시도</button>
+        </div>
+      ) : items.length === 0 ? (
         <div className="rounded-2xl py-20 text-center" style={{ background: "#fff", border: "1px solid #E9EBEF" }}>
           <p className="text-sm font-medium" style={{ color: "#94A3B8" }}>요청 내역이 없습니다.</p>
           <p className="text-xs mt-1" style={{ color: "#CBD5E1" }}>프로젝트 관리 → 매출 행의 <span style={{ color: "#3182F6" }}>입금확인요청</span> 버튼으로 추가하세요.</p>

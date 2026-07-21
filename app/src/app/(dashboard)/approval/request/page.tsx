@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import * as XLSX from "xlsx";
 import {
@@ -9,6 +9,7 @@ import {
 } from "@/lib/approvals";
 import { invalidateProjectCache } from "@/components/projects/ProjectModal";
 import { useFileSrc, isImageValue, isPdfValue } from "@/lib/storage";
+import { fetchJson } from "@/lib/fetch-json";
 
 // 세금계산서(스토리지 경로/레거시 data:) 미리보기
 function InvoiceView({ url, name }: { url: string; name: string | null | undefined }) {
@@ -54,6 +55,7 @@ const formatDate = (d: string) => { const [y, m, day] = d.split("-"); return `${
 
 export default function RequestPage() {
   const [items, setItems]               = useState<PaymentRequest[]>([]);
+  const [error, setError]               = useState<string | null>(null);
   const [filter, setFilter]             = useState<PaymentStatus | "전체">("대기");
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -77,11 +79,17 @@ export default function RequestPage() {
   }, [selected?.id]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  useEffect(() => {
+  const load = useCallback(() => {
+    setError(null);
     getPaymentRequests().then((data) =>
       setItems(data.map((i) => ({ ...i, requestedAt: (i.requestedAt ?? "").slice(0, 10) })))
-    );
+    )
+    // 실패를 빈 목록으로 렌더하지 않는다 — "요청 없음"으로 오인되면 안 되므로 오류를 표시
+    .catch((e: Error) => { setError(e.message); setItems([]); });
   }, []);
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { load(); }, [load]);
 
   const months = useMemo(() => {
     const set = new Set(items.map((i) => i.requestedAt.slice(0, 7)));
@@ -203,12 +211,13 @@ export default function RequestPage() {
           const year  = parseInt(yearStr);
           const month = parseInt(monthStr);
           if (!isNaN(year) && !isNaN(month)) {
-            // 기존 값 조회 후 누적
-            const existing = await fetch(`/api/annual/costs?year=${year}`).then(r => r.json()).catch(() => ({ costs: [] }));
+            // 기존 값 조회 후 누적.
+            // 조회가 실패하면 기존 누계를 0으로 오인해 덮어쓰게 되므로, 쓰지 않고 중단한다.
+            const existing = await fetchJson<{ costs?: Record<string, unknown>[] }>(`/api/annual/costs?year=${year}`);
             const current  = (existing.costs ?? []).find(
               (c: Record<string, unknown>) => c.category === "직접매입(상품)" && c.item === "합계" && c.month === month
             );
-            const newAmount = (current?.amount ?? 0) + rawAmount;
+            const newAmount = ((current?.amount as number | undefined) ?? 0) + rawAmount;
             await fetch("/api/annual/costs", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -288,11 +297,12 @@ export default function RequestPage() {
         const year  = parseInt(yearStr);
         const month = parseInt(monthStr);
         if (!isNaN(year) && !isNaN(month)) {
-          const existing = await fetch(`/api/annual/costs?year=${year}`).then(r => r.json()).catch(() => ({ costs: [] }));
+          // 조회가 실패하면 기존 누계를 0으로 오인해 덮어쓰게 되므로, 쓰지 않고 중단한다.
+          const existing = await fetchJson<{ costs?: Record<string, unknown>[] }>(`/api/annual/costs?year=${year}`);
           const current  = (existing.costs ?? []).find(
             (c: Record<string, unknown>) => c.category === "직접매입(상품)" && c.item === "합계" && c.month === month
           );
-          const newAmount = Math.max(0, (current?.amount ?? 0) - rawAmount);
+          const newAmount = Math.max(0, ((current?.amount as number | undefined) ?? 0) - rawAmount);
           await fetch("/api/annual/costs", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -525,7 +535,13 @@ export default function RequestPage() {
 
       {/* 테이블 */}
       <div className="rounded-2xl overflow-hidden" style={{ background: "#fff", border: "1px solid #E9EBEF" }}>
-        {items.length === 0 ? (
+        {error ? (
+          <div className="py-20 text-center">
+            <p className="text-sm font-semibold" style={{ color: "#EF4444" }}>{error}</p>
+            <p className="text-xs mt-1" style={{ color: "#94A3B8" }}>목록을 표시할 수 없습니다. 데이터가 없는 것으로 잘못 보이지 않도록 표시를 중단했습니다.</p>
+            <button onClick={load} className="mt-3 px-4 py-1.5 text-sm font-semibold rounded-lg" style={{ background: "#3182F6", color: "#fff" }}>다시 시도</button>
+          </div>
+        ) : items.length === 0 ? (
           <div className="py-20 text-center">
             <p className="text-sm font-medium" style={{ color: "#94A3B8" }}>요청 내역이 없습니다.</p>
             <p className="text-xs mt-1" style={{ color: "#CBD5E1" }}>프로젝트 관리 → 매입 행의 <span style={{ color: "#059669" }}>입금요청</span> 버튼으로 추가하세요.</p>

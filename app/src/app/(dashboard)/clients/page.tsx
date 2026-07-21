@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { fetchJson } from "@/lib/fetch-json";
 import ClientModal, { ClientFormData, LinkedProject } from "@/components/clients/ClientModal";
 import DeleteConfirmModal from "@/components/clients/DeleteConfirmModal";
 import ProjectModal, { ProjectFormData } from "@/components/projects/ProjectModal";
@@ -144,27 +145,29 @@ let _pending: Promise<Client[]> | null = null;
 
 function fetchClientList(): Promise<Client[]> {
   if (_pending) return _pending;
-  _pending = fetch("/api/clients")
-    .then((r) => r.json())
+  _pending = fetchJson<{ clients?: Client[] }>("/api/clients")
     .then((d) => {
       const data: Client[] = d.clients ?? [];
       _cache = { data, ts: Date.now() };
       _pending = null;
       return data;
     })
-    .catch(() => { _pending = null; return []; });
+    // 실패를 빈 목록으로 바꾸지 않는다 — "광고주 없음"으로 오인되면 안 되므로 그대로 throw
+    .catch((e) => { _pending = null; throw e; });
   return _pending;
 }
 
-// 모듈 로드 즉시 백그라운드 fetch 시작 (cold start 선행)
-fetchClientList();
+// 모듈 로드 즉시 백그라운드 fetch 시작 (cold start 선행) — 브라우저에서만.
+// 서버 렌더 중에는 상대 URL fetch가 반드시 실패해 하이드레이션을 깨뜨린다.
+if (typeof window !== "undefined") fetchClientList().catch(() => {});
 
 export default function ClientsPage() {
   const [role] = useCurrentRole();
   const isAdmin = role === "Admin";
 
-  const [clients,      setClients]      = useState<Client[]>(_cache?.data ?? []);
-  const [loading,      setLoading]      = useState(!_cache);
+  // 모듈 캐시를 useState 초기값으로 읽지 않는다 (하이드레이션 불일치 방지) — load()가 마운트 직후 채운다
+  const [clients,      setClients]      = useState<Client[]>([]);
+  const [loading,      setLoading]      = useState(true);
   const [error,        setError]        = useState<string | null>(null);
   const [activeTab,    setActiveTab]    = useState<TabKey>("전체");
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("전체");
@@ -185,12 +188,12 @@ export default function ClientsPage() {
     }
     if (invalidate) _cache = null;
     setLoading(true);
+    setError(null);
     fetchClientList()
-      .then((data) => {
-        if (!data.length && !_cache) throw new Error("데이터 로드 실패");
-        setClients(data);
-      })
-      .catch((e) => setError(e.message))
+      // 빈 목록인지로 실패를 추측하지 않는다 — 실제로 광고주가 0건일 수도 있다.
+      // 실패는 fetchJson이 예외로 만들어 주므로 그것만 오류로 처리한다.
+      .then((data) => { setClients(data); setError(null); })
+      .catch((e: Error) => { setError(e.message); setClients([]); })
       .finally(() => setLoading(false));
   }, []);
 
@@ -513,7 +516,13 @@ export default function ClientsPage() {
 
         {/* 본문 */}
         {loading && <div className="py-16 text-center text-sm" style={{ color: "#94A3B8" }}>데이터를 불러오는 중...</div>}
-        {error   && <div className="py-16 text-center text-sm" style={{ color: "#EF4444" }}>데이터 로드 실패: {error}</div>}
+        {!loading && error && (
+          <div className="py-16 flex flex-col items-center gap-3">
+            <p className="text-sm font-semibold" style={{ color: "#EF4444" }}>{error}</p>
+            <p className="text-xs" style={{ color: "#94A3B8" }}>광고주 목록을 표시할 수 없습니다. &quot;광고주 없음&quot;으로 잘못 보이지 않도록 표시를 중단했습니다.</p>
+            <button onClick={() => load(true)} className="px-4 py-1.5 text-sm font-semibold rounded-lg" style={{ background: "#3182F6", color: "#fff" }}>다시 시도</button>
+          </div>
+        )}
         {!loading && !error && (
           <div className="overflow-x-auto">
             {activeTab === "전체" && <AllTable    data={filtered} onEdit={(c) => openEdit(c)} onDelete={(c) => setDeleteTarget(c)} deleting={deleting} canDelete={canDelete} />}

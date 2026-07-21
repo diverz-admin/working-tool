@@ -6,6 +6,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend,
 } from "recharts";
+import { fetchJson } from "@/lib/fetch-json";
 
 // ─── 타입 & 상수 ─────────────────────────────────────────────
 type Tab = "meta" | "instagram" | "blog";
@@ -209,6 +210,7 @@ interface IgStats   { connected: boolean; error?: string; profile?: IgProfile; m
 function InstagramTab() {
   const [stats, setStats]         = useState<IgStats | null>(null);
   const [loading, setLoading]     = useState(true);
+  const [error, setError]         = useState<string | null>(null);
   const [showSetup, setShowSetup] = useState(false);
   const [token, setToken]         = useState("");
   const [userId, setUserId]       = useState("");
@@ -217,10 +219,11 @@ function InstagramTab() {
 
   const fetchStats = useCallback(() => {
     setLoading(true);
-    fetch("/api/instagram/stats")
-      .then((r) => r.json())
-      .then((d: IgStats) => { setStats(d); setLoading(false); })
-      .catch(() => { setStats({ connected: false }); setLoading(false); });
+    setError(null);
+    fetchJson<IgStats>("/api/instagram/stats")
+      .then((d) => { setStats(d); setLoading(false); })
+      // 실패를 "미연결"로 보여주면 안 된다 — 오류를 그대로 노출한다
+      .catch((e: Error) => { setError(e.message); setStats(null); setLoading(false); });
   }, []);
 
   useEffect(() => { fetchStats(); }, [fetchStats]);
@@ -250,6 +253,17 @@ function InstagramTab() {
       <div className="flex items-center justify-center py-20">
         <svg className="animate-spin" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#E1306C" strokeWidth="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
         <span className="ml-3 text-sm" style={{ color: "#94A3B8" }}>Instagram 데이터 불러오는 중...</span>
+      </div>
+    );
+  }
+
+  // ── 조회 실패 ───────────────────────────────────────────────
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-20">
+        <p className="text-sm font-semibold" style={{ color: "#EF4444" }}>{error}</p>
+        <p className="text-xs" style={{ color: "#94A3B8" }}>데이터가 없는 것으로 잘못 보이지 않도록 표시를 중단했습니다.</p>
+        <button onClick={fetchStats} className="px-4 py-1.5 text-sm font-semibold rounded-lg text-white" style={{ background: "linear-gradient(135deg, #E1306C, #833AB4)" }}>다시 시도</button>
       </div>
     );
   }

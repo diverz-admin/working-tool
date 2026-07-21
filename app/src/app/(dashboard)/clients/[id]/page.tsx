@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { fetchJson } from "@/lib/fetch-json";
 
 type Status = "리드" | "진행" | "종료";
 
@@ -23,6 +24,26 @@ interface FormData {
   assignedTeam: string;
   assignedPerson: string;
   notes: string;
+}
+
+interface ClientRes {
+  status: Status;
+  companyName: string;
+  industry: string | null;
+  advertiserName: string | null;
+  advertiserContact: string | null;
+  contactEmail: string | null;
+  businessNumber: string | null;
+  category: string | null;
+  products: string[] | null;
+  monthlyAvg: number | null;
+  inboundDate: string | null;
+  inboundRoute: string | null;
+  endDate: string | null;
+  endReason: string | null;
+  assignedTeam: string | null;
+  assignedPerson: string | null;
+  notes: string | null;
 }
 
 interface AccountRow {
@@ -68,12 +89,16 @@ export default function ClientDetailPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  useEffect(() => {
+  // 실패를 빈 폼으로 바꾸지 않는다 — 빈 값으로 덮어쓰기 저장되는 사고를 막기 위해 오류로 표시
+  const load = useCallback(() => {
+    setLoading(true);
+    setLoadError(null);
     Promise.all([
-      fetch(`/api/clients/${id}`).then((r) => r.json()),
-      fetch(`/api/clients/${id}/accounts`).then((r) => r.json()),
+      fetchJson<{ client?: ClientRes | null }>(`/api/clients/${id}`),
+      fetchJson<{ accounts?: Record<string, string>[] }>(`/api/clients/${id}/accounts`),
     ])
       .then(([{ client }, { accounts: rows }]) => {
         if (client) {
@@ -104,9 +129,12 @@ export default function ClientDetailPage() {
           }))
         );
       })
-      .catch(() => {})
+      .catch((e: Error) => { setLoadError(e.message); setAccounts([]); })
       .finally(() => setLoading(false));
   }, [id]);
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { load(); }, [load]);
 
   function setField(f: keyof FormData, v: string | string[]) {
     setForm((p) => ({ ...p, [f]: v }));
@@ -146,6 +174,16 @@ export default function ClientDetailPage() {
 
   if (loading) {
     return <div className="py-32 text-center text-sm" style={{ color: "#94A3B8" }}>데이터를 불러오는 중...</div>;
+  }
+
+  if (loadError) {
+    return (
+      <div className="py-32 flex flex-col items-center gap-3">
+        <p className="text-sm font-semibold" style={{ color: "#EF4444" }}>{loadError}</p>
+        <p className="text-xs" style={{ color: "#94A3B8" }}>데이터가 없는 것으로 잘못 보이지 않도록 표시를 중단했습니다.</p>
+        <button onClick={load} className="px-4 py-1.5 text-sm font-semibold rounded-lg" style={{ background: "#3182F6", color: "#fff" }}>다시 시도</button>
+      </div>
+    );
   }
 
   const s = STATUS_STYLE[form.status];

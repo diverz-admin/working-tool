@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import DeleteConfirmModal from "./DeleteConfirmModal";
 import { uploadAttachment, useFileSrc, isImageValue } from "@/lib/storage";
+import { fetchJson } from "@/lib/fetch-json";
 
 type Status = "리드" | "진행" | "종료";
 
@@ -109,6 +110,8 @@ export default function ClientModal({ initial, onClose, onSaved, onDelete, onVie
   const [users, setUsers]                 = useState<{ id: string; name: string; team: string | null }[]>([]);
   const [saving, setSaving]               = useState(false);
   const [error, setError]                 = useState<string | null>(null);
+  // 상세(계정·URL) 로드 실패 여부 — 빈 값으로 덮어쓰기 저장되는 사고를 막는다
+  const [detailFailed, setDetailFailed]   = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [bizRegUploading, setBizRegUploading] = useState(false);
   const backdropRef    = useRef<HTMLDivElement>(null);
@@ -120,23 +123,24 @@ export default function ClientModal({ initial, onClose, onSaved, onDelete, onVie
   const isEdit = Boolean(initial?.id);
 
   useEffect(() => {
-    fetch("/api/users")
-      .then((r) => r.json())
+    fetchJson<{ users?: { id: string; name: string; team: string | null }[] }>("/api/users")
       .then((d) => setUsers(d.users ?? []))
-      .catch(() => {});
+      .catch((e: Error) => setError(e.message));
   }, []);
 
   // 편집 모드일 때 계정·프로젝트·파일 정보를 1번 fetch로 처리 (기존: 3 cold start)
   useEffect(() => {
     document.body.style.overflow = "hidden";
     if (isEdit && initial?.id) {
-      fetch(`/api/clients/${initial.id}/detail`)
-        .then((r) => r.json())
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      fetchJson<{
+        client?: { bizRegFileUrl?: string | null; bizRegFileName?: string | null } | null;
+        accounts?: { platform?: string; username?: string; password?: string }[];
+        urls?: { label?: string; url?: string }[];
+        projects?: LinkedProject[];
+      }>(`/api/clients/${initial.id}/detail`)
         .then(({ client, accounts: rows, urls: urlRows, projects }) => {
           setAccounts(
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (rows ?? []).map((r: any) => ({
+            (rows ?? []).map((r) => ({
               localId: nextId(),
               platform: r.platform ?? "",
               username: r.username ?? "",
@@ -144,8 +148,7 @@ export default function ClientModal({ initial, onClose, onSaved, onDelete, onVie
               showPassword: false,
             }))
           );
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          setUrls((urlRows ?? []).map((u: any) => ({ localId: nextId(), label: u.label ?? "", url: u.url ?? "" })));
+          setUrls((urlRows ?? []).map((u) => ({ localId: nextId(), label: u.label ?? "", url: u.url ?? "" })));
           setLinkedProjects(projects ?? []);
           if (client) {
             setForm((prev) => ({
@@ -155,7 +158,8 @@ export default function ClientModal({ initial, onClose, onSaved, onDelete, onVie
             }));
           }
         })
-        .catch(() => {});
+        // 실패를 빈 계정·URL 목록으로 바꾸지 않는다 — 그대로 저장하면 기존 데이터가 지워진다
+        .catch((e: Error) => { setDetailFailed(true); setError(e.message); });
     }
     return () => { document.body.style.overflow = ""; };
   }, [isEdit, initial?.id]);
@@ -258,6 +262,8 @@ export default function ClientModal({ initial, onClose, onSaved, onDelete, onVie
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.companyName.trim()) { setError("플레이스/스토어명은 필수입니다."); return; }
+    // 상세를 못 불러온 상태로 저장하면 계정·URL이 빈 값으로 덮어써진다
+    if (detailFailed) { setError("고객사 정보를 불러오지 못해 저장할 수 없습니다. 창을 닫고 다시 열어주세요."); return; }
     if (!validateFields()) return;
     setSaving(true);
     setError(null);

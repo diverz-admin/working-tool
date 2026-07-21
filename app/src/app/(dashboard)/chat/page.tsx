@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { uploadAttachment, useFileSrc } from "@/lib/storage";
+import { fetchJson } from "@/lib/fetch-json";
 
 // ─── 타입 ────────────────────────────────────────────────
 
@@ -803,9 +804,8 @@ const MSG_TTL = 30_000;
 function fetchChatInit(): Promise<ChatInitData> {
   if (_chatCache && Date.now() - _chatCache.ts < CHAT_TTL) return Promise.resolve(_chatCache.data);
   if (_chatPending) return _chatPending;
-  _chatPending = fetch("/api/chat-init")
-    .then(r => r.json())
-    .then((d: ChatInitData) => {
+  _chatPending = fetchJson<ChatInitData>("/api/chat-init")
+    .then((d) => {
       _chatCache = { data: d, ts: Date.now() };
       _chatPending = null;
       // 첫 채널 메시지도 캐시에 저장
@@ -823,9 +823,8 @@ function fetchChannelMessages(channelId: string, force = false): Promise<Message
     const hit = _msgCacheMap.get(channelId);
     if (hit && Date.now() - hit.ts < MSG_TTL) return Promise.resolve(hit.data);
   }
-  return fetch(`/api/chat/messages?channelId=${channelId}`)
-    .then(r => r.json())
-    .then((d: { messages?: Message[] }) => {
+  return fetchJson<{ messages?: Message[] }>(`/api/chat/messages?channelId=${channelId}`)
+    .then((d) => {
       const msgs = d.messages ?? [];
       _msgCacheMap.set(channelId, { data: msgs, ts: Date.now() });
       return msgs;
@@ -833,7 +832,7 @@ function fetchChannelMessages(channelId: string, force = false): Promise<Message
 }
 
 // 사이드바 Link hover 시 즉시 프리패치
-if (typeof window !== "undefined") fetchChatInit();
+if (typeof window !== "undefined") fetchChatInit().catch(() => {});
 
 // ─── 메인 페이지 ──────────────────────────────────────────
 
@@ -850,6 +849,8 @@ export default function ChatPage() {
     return [];
   });
   const [loadingMsgs, setLoadingMsgs]     = useState(!_chatCache);
+  // 초기 로드 실패만 오류로 표시한다 (이후 갱신 실패는 표시 중인 메시지를 유지)
+  const [initError, setInitError]         = useState<string | null>(null);
   const [showAddChannel, setShowAddChannel] = useState(false);
   const [sending, setSending]             = useState(false);
   const [editingId, setEditingId]         = useState<string | null>(null);
@@ -866,6 +867,10 @@ export default function ChatPage() {
   const subRef      = useRef<ReturnType<typeof supabaseRef.current.channel> | null>(null);
   const allChSubRef       = useRef<ReturnType<typeof supabaseRef.current.channel> | null>(null);
   const activeChannelRef  = useRef<Channel | null>(null);
+  const messagesRef       = useRef<Message[]>([]);
+
+  // 폴링/재조회 실패 시 "표시 중인 메시지가 있는지" 판단용
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
 
   useEffect(() => {
     fetchProfile().then((p) => {
@@ -883,7 +888,8 @@ export default function ChatPage() {
   }, []);
 
   // 채널 + 첫 메시지 + 유저 — 캐시 히트 시 즉시, 미스 시 단일 cold start
-  useEffect(() => {
+  const loadInit = useCallback(() => {
+    setInitError(null);
     fetchChatInit().then((d) => {
       const chs = d.channels;
       setChannels(chs);
@@ -903,8 +909,13 @@ export default function ChatPage() {
           return next;
         });
       }
-    });
+    })
+    // 초기 로드 실패 — 빈 채널 목록으로 렌더하지 않고 오류를 노출한다
+    .catch((e: Error) => { setInitError(e.message); setLoadingMsgs(false); });
   }, []);
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { loadInit(); }, [loadInit]);
 
   // 모든 채널의 새 메시지를 postgres_changes로 감지 → latestMsgAt 업데이트
   useEffect(() => {
@@ -947,9 +958,10 @@ export default function ChatPage() {
   }, [markChannelRead]);
 
   const loadNotifications = useCallback((name: string) => {
-    fetch(`/api/chat/notifications?name=${encodeURIComponent(name)}`)
-      .then((r) => r.json())
-      .then((d) => setNotifications(d.mentions ?? []));
+    fetchJson<{ mentions?: MentionNotification[] }>(`/api/chat/notifications?name=${encodeURIComponent(name)}`)
+      .then((d) => setNotifications(d.mentions ?? []))
+      // 알림 조회 실패 시 기존 알림을 지우지 않는다 (0건으로 오인 방지)
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -975,7 +987,9 @@ export default function ChatPage() {
     }
     setLoadingMsgs(true);
     fetchChannelMessages(channelId, force)
-      .then(msgs => setMessages(msgs))
+      .then(msgs => { setMessages(msgs); setInitError(null); })
+      // 갱신 실패 시에는 표시 중인 메시지를 지우지 않는다. 보여줄 메시지가 없을 때만 오류로 표시
+      .catch((e: Error) => { if (messagesRef.current.length === 0) setInitError(e.message); })
       .finally(() => setLoadingMsgs(false));
   }, []);
 
@@ -1300,6 +1314,13 @@ export default function ChatPage() {
                     <span className="text-sm">불러오는 중...</span>
                   </div>
                 </div>
+              ) : initError ? (
+                <div className="h-full flex flex-col items-center justify-center gap-3">
+                  <p className="text-sm font-semibold" style={{ color: "#EF4444" }}>{initError}</p>
+                  <p className="text-xs" style={{ color: "#94A3B8" }}>데이터가 없는 것으로 잘못 보이지 않도록 표시를 중단했습니다.</p>
+                  <button onClick={() => activeChannel && loadMessages(activeChannel.id, true)}
+                    className="px-4 py-1.5 text-sm font-semibold rounded-lg" style={{ background: "#3182F6", color: "#fff" }}>다시 시도</button>
+                </div>
               ) : messages.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center gap-3">
                   <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl font-black"
@@ -1340,6 +1361,12 @@ export default function ChatPage() {
               users={userList}
             />
           </>
+        ) : initError ? (
+          <div className="flex-1 flex flex-col items-center justify-center gap-3">
+            <p className="text-sm font-semibold" style={{ color: "#EF4444" }}>{initError}</p>
+            <p className="text-xs" style={{ color: "#94A3B8" }}>데이터가 없는 것으로 잘못 보이지 않도록 표시를 중단했습니다.</p>
+            <button onClick={loadInit} className="px-4 py-1.5 text-sm font-semibold rounded-lg" style={{ background: "#3182F6", color: "#fff" }}>다시 시도</button>
+          </div>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center gap-3">
             <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl font-black"

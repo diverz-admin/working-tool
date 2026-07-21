@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useUser } from "@/lib/UserContext";
+import { fetchJson } from "@/lib/fetch-json";
 import {
   LEAVE_TYPES, calcLeaveDays, fmtDays, fmtPeriod,
   type LeaveBalance, type LeaveItem, type LeaveStatus, type LeaveType,
@@ -331,17 +332,27 @@ export default function LeavePage() {
   const [editItem, setEditItem]   = useState<LeaveItem | null>(null);
   const [showForm, setShowForm]   = useState(false);
   const [loading, setLoading]     = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   async function loadItems() {
-    const res = await fetch("/api/approvals/leave")
-      .then((r) => r.json())
-      .catch(() => ({ items: [], balances: {} }));
-    const all: LeaveItem[] = res.items ?? [];
-    setItems(all.filter((i) => i.requester === currentUser));
-    setBalance(res.balances?.[currentUser] ?? null);
-    setLoading(false);
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const res = await fetchJson<{ items?: LeaveItem[]; balances?: Record<string, LeaveBalance> }>("/api/approvals/leave");
+      const all: LeaveItem[] = res.items ?? [];
+      setItems(all.filter((i) => i.requester === currentUser));
+      setBalance(res.balances?.[currentUser] ?? null);
+    } catch (e) {
+      // 실패를 빈 목록·잔여연차 0으로 렌더하지 않는다 — 오류를 그대로 표시
+      setLoadError((e as Error).message);
+      setItems([]);
+      setBalance(null);
+    } finally {
+      setLoading(false);
+    }
   }
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadItems(); }, [currentUser]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const counts = {
@@ -416,7 +427,8 @@ export default function LeavePage() {
         </button>
       </div>
 
-      <BalanceCard balance={balance} />
+      {/* 로드 실패 시 연차 0일로 잘못 보이지 않도록 카드 자체를 감춘다 */}
+      {!loadError && <BalanceCard balance={balance} />}
 
       <div className="flex items-center gap-1 p-0.5 rounded-xl self-start" style={{ background: "#F1F5F9" }}>
         {(["전체", "대기", "승인", "반려"] as const).map((s) => {
@@ -447,6 +459,12 @@ export default function LeavePage() {
           <tbody>
             {loading ? (
               <tr><td colSpan={6} className="py-16 text-center text-sm" style={{ color: "#94A3B8" }}>불러오는 중...</td></tr>
+            ) : loadError ? (
+              <tr><td colSpan={6} className="py-16 text-center">
+                <p className="text-sm font-semibold" style={{ color: "#EF4444" }}>{loadError}</p>
+                <p className="text-xs mt-1" style={{ color: "#94A3B8" }}>목록을 표시할 수 없습니다. 데이터가 없는 것으로 잘못 보이지 않도록 표시를 중단했습니다.</p>
+                <button onClick={() => loadItems()} className="mt-3 px-4 py-1.5 text-sm font-semibold rounded-lg" style={{ background: "#3182F6", color: "#fff" }}>다시 시도</button>
+              </td></tr>
             ) : filtered.length === 0 ? (
               <tr><td colSpan={6} className="py-16 text-center text-sm" style={{ color: "#94A3B8" }}>요청 내역이 없습니다.</td></tr>
             ) : filtered.map((item) => {

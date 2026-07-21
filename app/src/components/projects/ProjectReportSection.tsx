@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
+import { fetchJson } from "@/lib/fetch-json";
 
 /* ── 타입 ── */
 interface RankingEntry {
@@ -218,6 +219,7 @@ export default function ProjectReportSection({
 }) {
   const [trackers,    setTrackers]    = useState<Tracker[]>([]);
   const [loading,     setLoading]     = useState(false);
+  const [loadError,   setLoadError]   = useState<string | null>(null);
   const [guaranteeResult, setGuaranteeResult] = useState<{ endDate: string | null; qualifyingDays: number; missedDays: number } | null>(null);
   const [checking,    setChecking]    = useState<string | null>(null);
   const [checkingAll, setCheckingAll] = useState(false);
@@ -240,9 +242,11 @@ export default function ProjectReportSection({
   const load = useCallback(() => {
     if (!projectId) return;
     setLoading(true);
-    fetch(`/api/reports/trackers?projectId=${projectId}&withHistory=true`)
-      .then((r) => r.json())
+    setLoadError(null);
+    // 실패를 빈 트래커 목록으로 바꾸지 않는다 — "추적 키워드 없음"으로 오인되면 안 되므로 오류로 표시
+    fetchJson<{ trackers?: Tracker[] }>(`/api/reports/trackers?projectId=${projectId}&withHistory=true`)
       .then((d) => setTrackers(d.trackers ?? []))
+      .catch((e: Error) => { setLoadError(e.message); setTrackers([]); })
       .finally(() => setLoading(false));
   }, [projectId]);
 
@@ -343,7 +347,8 @@ export default function ProjectReportSection({
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ trackerId: t.id }),
-          }).then((r) => r.json())
+          // 실패 응답은 오류 1건으로 집계 — 성공한 것처럼 조용히 넘어가지 않는다
+          }).then((r) => r.ok ? r.json() : { results: [{ error: `HTTP ${r.status}` }] })
         )
       );
       const allResults = responses.flatMap((d) => d.results ?? []);
@@ -521,7 +526,8 @@ export default function ProjectReportSection({
           {/* 액션 */}
           <div className="flex items-center justify-between">
             <span className="text-xs" style={{ color: "#94A3B8" }}>
-              키워드 {trackers.length}개
+              {/* 오류 시 "키워드 0개"로 잘못 보이지 않게 숨김 */}
+              {!loadError && `키워드 ${trackers.length}개`}
               {isGuarantee && (
                 <span className="ml-2">
                   · <span style={{ color: "#3182F6" }}>■</span> 1~5위 (카운트)
@@ -797,6 +803,12 @@ export default function ProjectReportSection({
 
           {loading ? (
             <div className="py-8 text-center text-xs" style={{ color: "#94A3B8" }}>불러오는 중...</div>
+          ) : loadError ? (
+            <div className="py-8 text-center rounded-xl flex flex-col items-center gap-2" style={{ background: "#FEF2F2" }}>
+              <p className="text-xs font-semibold" style={{ color: "#EF4444" }}>{loadError}</p>
+              <p className="text-xs" style={{ color: "#94A3B8" }}>데이터가 없는 것으로 잘못 보이지 않도록 표시를 중단했습니다.</p>
+              <button onClick={load} className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white" style={{ background: "#3182F6" }}>다시 시도</button>
+            </div>
           ) : trackers.length === 0 ? (
             <div className="py-8 text-center rounded-xl" style={{ background: "#F8FAFC" }}>
               <p className="text-xs mb-1" style={{ color: "#94A3B8" }}>추적 중인 키워드가 없습니다.</p>

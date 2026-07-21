@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { uploadAttachment, removeAttachment, useFileSrc, isPdfValue, isImageValue } from "@/lib/storage";
+import { fetchJson } from "@/lib/fetch-json";
 
 const TEAMS        = ["전체", "영업 1팀", "영업 2팀"];
 const MEETING_TYPES = ["회의록", "미팅록", "기타"];
@@ -537,18 +538,18 @@ let _formPending: Promise<FormOptions> | null = null;
 
 function fetchFormOptions(): Promise<FormOptions> {
   if (_formPending) return _formPending;
-  _formPending = fetch("/api/notes-init")
-    .then((r) => r.json())
+  _formPending = fetchJson<{ clients?: Client[]; projects?: Project[] }>("/api/notes-init")
     .then((d) => {
       const data = { clients: d.clients ?? [], projects: d.projects ?? [] };
       _formCache = { data, ts: Date.now() };
       _formPending = null;
       return data;
     })
-    .catch(() => { _formPending = null; return { clients: [], projects: [] }; });
+    // 실패를 빈 목록으로 굳히지 않는다 — 캐시를 남기지 않고 다음 호출에서 재시도되도록 throw
+    .catch((e) => { _formPending = null; throw e; });
   return _formPending;
 }
-fetchFormOptions();
+fetchFormOptions().catch(() => {});
 
 export default function MeetingNotesPage() {
   const now = new Date();
@@ -560,6 +561,7 @@ export default function MeetingNotesPage() {
   const [clients,  setClients]  = useState<Client[]>(_formCache?.data.clients ?? []);
   const [projects, setProjects] = useState<Project[]>(_formCache?.data.projects ?? []);
   const [loading,  setLoading]  = useState(true);
+  const [error,    setError]    = useState<string | null>(null);
 
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [rightMode,    setRightMode]    = useState<RightMode>("empty");
@@ -569,9 +571,11 @@ export default function MeetingNotesPage() {
 
   const fetchNotes = useCallback(() => {
     setLoading(true);
-    fetch(`/api/meeting-notes?year=${year}&month=${month + 1}&team=${encodeURIComponent(team)}`)
-      .then((r) => r.json())
+    setError(null);
+    fetchJson<{ notes?: MeetingNote[] }>(`/api/meeting-notes?year=${year}&month=${month + 1}&team=${encodeURIComponent(team)}`)
       .then((d) => setNotes(d.notes ?? []))
+      // 실패를 "회의록 없음"으로 보여주면 안 된다
+      .catch((e: Error) => { setError(e.message); setNotes([]); })
       .finally(() => setLoading(false));
   }, [year, month, team]);
 
@@ -580,7 +584,8 @@ export default function MeetingNotesPage() {
 
   useEffect(() => {
     if (_formCache) { setClients(_formCache.data.clients); setProjects(_formCache.data.projects); return; }
-    fetchFormOptions().then(({ clients: c, projects: p }) => { setClients(c); setProjects(p); });
+    // 폼 드롭다운 옵션 — 실패해도 회의록 목록 표시는 막지 않는다
+    fetchFormOptions().then(({ clients: c, projects: p }) => { setClients(c); setProjects(p); }).catch(() => {});
   }, []);
 
   function prevMonth() { if (month === 0) { setYear(y => y - 1); setMonth(11); } else setMonth(m => m - 1); }
@@ -772,6 +777,12 @@ export default function MeetingNotesPage() {
             <div className="p-2 space-y-0.5 max-h-64 overflow-y-auto">
               {loading ? (
                 <p className="text-xs text-center py-4" style={{ color: "#CBD5E1" }}>불러오는 중...</p>
+              ) : error ? (
+                <div className="py-4 px-2 flex flex-col items-center gap-2 text-center">
+                  <p className="text-xs font-semibold" style={{ color: "#EF4444" }}>{error}</p>
+                  <p className="text-xs" style={{ color: "#94A3B8" }}>데이터가 없는 것으로 잘못 보이지 않도록 표시를 중단했습니다.</p>
+                  <button onClick={fetchNotes} className="px-3 py-1 text-xs font-semibold rounded-lg" style={{ background: "#3182F6", color: "#fff" }}>다시 시도</button>
+                </div>
               ) : notes.length === 0 ? (
                 <p className="text-xs text-center py-4" style={{ color: "#CBD5E1" }}>등록된 회의/미팅록이 없습니다.</p>
               ) : notes.map((note) => {

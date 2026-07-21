@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { fetchJson } from "@/lib/fetch-json";
 
 const TEAMS = ["전체", "영업 1팀", "영업 2팀"];
 const DAY_NAMES = ["일", "월", "화", "수", "목", "금", "토"];
@@ -465,18 +466,18 @@ let _formPending: Promise<FormOptions> | null = null;
 
 function fetchFormOptions(): Promise<FormOptions> {
   if (_formPending) return _formPending;
-  _formPending = fetch("/api/notes-init")
-    .then((r) => r.json())
+  _formPending = fetchJson<{ clients?: Client[]; projects?: Project[] }>("/api/notes-init")
     .then((d) => {
       const data = { clients: d.clients ?? [], projects: d.projects ?? [] };
       _formCache = { data, ts: Date.now() };
       _formPending = null;
       return data;
     })
-    .catch(() => { _formPending = null; return { clients: [], projects: [] }; });
+    // 실패를 빈 목록으로 굳히지 않는다 — 캐시를 남기지 않고 다음 호출에서 재시도되도록 throw
+    .catch((e) => { _formPending = null; throw e; });
   return _formPending;
 }
-fetchFormOptions();
+fetchFormOptions().catch(() => {});
 
 export default function WorkJournalPage() {
   const now = new Date();
@@ -486,6 +487,7 @@ export default function WorkJournalPage() {
 
   const [journals,  setJournals]  = useState<Journal[]>([]);
   const [loading,   setLoading]   = useState(true);
+  const [error,     setError]     = useState<string | null>(null);
   const [clients,   setClients]   = useState<Client[]>(_formCache?.data.clients ?? []);
   const [projects,  setProjects]  = useState<Project[]>(_formCache?.data.projects ?? []);
 
@@ -495,10 +497,12 @@ export default function WorkJournalPage() {
 
   const loadJournals = useCallback(() => {
     setLoading(true);
+    setError(null);
     const teamParam = team !== "전체" ? `&team=${encodeURIComponent(team)}` : "";
-    fetch(`/api/work-journal?year=${year}&month=${month}${teamParam}`)
-      .then((r) => r.json())
+    fetchJson<{ journals?: Journal[] }>(`/api/work-journal?year=${year}&month=${month}${teamParam}`)
       .then((d) => setJournals(d.journals ?? []))
+      // 실패를 "일지 없음"으로 보여주면 안 된다
+      .catch((e: Error) => { setError(e.message); setJournals([]); })
       .finally(() => setLoading(false));
   }, [year, month, team]);
 
@@ -507,7 +511,8 @@ export default function WorkJournalPage() {
 
   useEffect(() => {
     if (_formCache) { setClients(_formCache.data.clients); setProjects(_formCache.data.projects); return; }
-    fetchFormOptions().then(({ clients: c, projects: p }) => { setClients(c); setProjects(p); });
+    // 폼 드롭다운 옵션 — 실패해도 일지 목록 표시는 막지 않는다
+    fetchFormOptions().then(({ clients: c, projects: p }) => { setClients(c); setProjects(p); }).catch(() => {});
   }, []);
 
   // 날짜 → 일지 Map
@@ -714,6 +719,12 @@ export default function WorkJournalPage() {
           {loading ? (
             <div className="rounded-2xl py-16 text-center text-sm" style={{ background: "#FFFFFF", border: "1px solid #E9EBEF", color: "#94A3B8" }}>
               불러오는 중...
+            </div>
+          ) : error ? (
+            <div className="rounded-2xl py-16 px-5 flex flex-col items-center gap-3 text-center" style={{ background: "#FFFFFF", border: "1px solid #E9EBEF" }}>
+              <p className="text-sm font-semibold" style={{ color: "#EF4444" }}>{error}</p>
+              <p className="text-xs" style={{ color: "#94A3B8" }}>데이터가 없는 것으로 잘못 보이지 않도록 표시를 중단했습니다.</p>
+              <button onClick={loadJournals} className="px-4 py-1.5 text-sm font-semibold rounded-lg" style={{ background: "#3182F6", color: "#fff" }}>다시 시도</button>
             </div>
           ) : (
             <Calendar

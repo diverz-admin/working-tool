@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { fetchJson } from "@/lib/fetch-json";
 import { useRouter } from "next/navigation";
 import ProjectReportSection from "@/components/projects/ProjectReportSection";
 import { addConfirmRequest, addPaymentRequest, updateConfirmRequest, updatePaymentRequest, deleteConfirmRequest, deletePaymentRequest, type ConfirmStatus, type PaymentStatus } from "@/lib/approvals";
@@ -94,14 +95,21 @@ const nid = () => ++_lid;
 // 정적 데이터 모듈 캐시 — 모달을 여러 번 열어도 한 번만 로드
 let _initCache: { clients: SimpleClient[]; products: ManagedProduct[]; users: { id: string; name: string; team: string | null }[] } | null = null;
 
+type ModalInitData = { clients?: SimpleClient[]; products?: ManagedProduct[]; users?: { id: string; name: string; team: string | null }[] };
+
 // 프로젝트 상세 데이터 prefetch 캐시
-const _projectCache = new Map<string, Promise<Record<string, unknown>>>();
+type ProjectDetailData = {
+  revenues?: Record<string, unknown>[];
+  costs?: Record<string, unknown>[];
+  confirmRequests?: Record<string, unknown>[];
+  paymentRequests?: Record<string, unknown>[];
+};
+const _projectCache = new Map<string, Promise<ProjectDetailData>>();
 
 /** 페이지 로드 시 호출 — modal-init 데이터를 백그라운드에서 미리 로드 */
 export function preloadModalInit() {
   if (_initCache) return;
-  fetch("/api/modal-init")
-    .then((r) => r.json())
+  fetchJson<ModalInitData>("/api/modal-init")
     .then((d) => {
       _initCache = { clients: d.clients ?? [], products: d.products ?? [], users: d.users ?? [] };
     })
@@ -111,7 +119,11 @@ export function preloadModalInit() {
 /** 캠페인 행 호버 시 호출 — 클릭 전에 데이터 미리 로드 */
 export function prefetchProject(id: string) {
   if (!_projectCache.has(id)) {
-    _projectCache.set(id, fetch(`/api/projects/${id}`).then((r) => r.json()));
+    // 실패 응답을 캐시에 남기면 모달이 빈 매출·매입으로 열려, 저장 시 기존 행이 전부 지워진다
+    const p = fetchJson<ProjectDetailData>(`/api/projects/${id}`)
+      .catch((e) => { _projectCache.delete(id); throw e; });
+    p.catch(() => {});   // unhandled rejection 방지 (실제 처리는 모달에서)
+    _projectCache.set(id, p);
   }
 }
 
@@ -273,6 +285,8 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
   const initRevSnap   = useRef("[]");
   const initCostSnap  = useRef("[]");
   const [rowsLoaded, setRowsLoaded] = useState(false);
+  // 기존 캠페인의 매출·매입을 불러오지 못한 상태. 저장은 전체 교체(PUT)라 이대로 저장하면 기존 행이 전부 지워진다.
+  const [loadFailed, setLoadFailed] = useState(false);
   const normalizedRef = useRef(false);
   // productId·unitPrice 는 상품 매칭으로 파생되는 내부값 — 변경 감지에서 제외해
   // (로드 후 자동 정규화가 이 값만 채워도 '변경됨'으로 오인되지 않게 한다)
@@ -308,8 +322,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
       setManagedProducts(_initCache.products);
       setUsers(_initCache.users);
     } else {
-      fetch("/api/modal-init")
-        .then((r) => r.json())
+      fetchJson<ModalInitData>("/api/modal-init")
         .then((d) => {
           _initCache = {
             clients:  d.clients  ?? [],
@@ -329,8 +342,10 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
     if (isEdit && initial?.id) {
       // prefetch 캐시 우선 사용 — 없으면 새로 요청 후 캐시에 저장
       const cached = _projectCache.get(initial.id);
-      const dataPromise = cached ?? fetch(`/api/projects/${initial.id}`).then((r) => r.json());
-      if (!cached) _projectCache.set(initial.id, dataPromise);
+      const pid = initial.id;
+      const dataPromise = cached ?? fetchJson<ProjectDetailData>(`/api/projects/${pid}`)
+        .catch((e) => { _projectCache.delete(pid); throw e; });
+      if (!cached) _projectCache.set(pid, dataPromise);
       dataPromise
         .then(({ revenues: rv, costs: cs, confirmRequests: confirms, paymentRequests: payments }) => {
           // 결재 상태 — 별도 API 호출 없이 여기서 함께 처리
@@ -414,8 +429,12 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
           setRevenues(mappedRev);
           setCosts(mappedCost);
           setRowsLoaded(true);
+          setLoadFailed(false);
         })
-        .catch(() => {});
+        .catch((e: Error) => {
+          setLoadFailed(true);
+          setError(`${e.message} — 저장하면 기존 매출·매입이 지워질 수 있어 저장을 막았습니다. 창을 닫고 다시 열어주세요.`);
+        });
     }
     return () => { document.body.style.overflow = ""; };
   }, [isEdit, initial?.id]);
@@ -738,6 +757,10 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
 
   // 신규 프로젝트일 때 결재 버튼 클릭 시 자동으로 먼저 저장
   async function ensureSavedInner(): Promise<string | null> {
+    if (loadFailed) {
+      setError("매출·매입을 불러오지 못한 상태에서는 저장할 수 없습니다. 창을 닫고 다시 열어주세요.");
+      return null;
+    }
     if (savedIdRef.current) {
       // 기존 프로젝트: 승인요청 전에 현재 costs/revenues를 DB에 저장
       // invoiceFileUrl은 이제 스토리지 경로(수십 바이트)라 그대로 전송해도 body 크기 문제 없음
@@ -777,6 +800,10 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (loadFailed) {
+      setError("매출·매입을 불러오지 못한 상태에서는 저장할 수 없습니다. 창을 닫고 다시 열어주세요.");
+      return;
+    }
     if (!isFormValid) {
       setError(`필수 항목을 입력해주세요: ${missingFields.map((f) => f.label).join(", ")}`);
       return;
@@ -829,13 +856,18 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
   const totalRevenue      = revenues.reduce((s, r) => s + (parseWon(r.total) ?? 0), 0);
   const totalSupply       = revenues.reduce((s, r) => s + (parseWon(r.supplyPrice) ?? 0), 0);
   const totalTax          = revenues.reduce((s, r) => s + (parseWon(r.tax) ?? 0), 0);
-  const totalCost         = costs.reduce((s, c) => s + (parseWon(c.total) ?? 0), 0);
-  const approvedTotalCost = costs.filter(c => c.isApproved).reduce((s, c) => s + (parseWon(c.total) ?? 0), 0);
-  const hasApprovedCosts  = costs.some(c => c.isApproved);
-  // KPI 직접 입력값 사용 (없으면 매출 테이블 합계로 대체)
+  // KPI 직접 입력값 사용 (없으면 매출 테이블 합계로 대체) — 입금확인요청 금액은 VAT 포함 총액
   const effectiveTotal = parseWon(form.contractAmount) || totalRevenue;
-  const profit         = effectiveTotal - totalCost;
-  const approvedProfit = effectiveTotal - approvedTotalCost;
+
+  // ── 손익은 공급가(VAT 제외) 기준, 매입은 승인된 건만 ──
+  // 부가세는 납부·환급되므로 이익에 포함하지 않는다. 다른 화면(프로젝트관리 KPI·
+  // 경영관리·대시보드)도 모두 공급가 기준이므로 여기서도 같은 기준을 쓴다.
+  const effectiveSupply     = (parseWon(form.kpiSupply) || totalSupply);
+  const totalSupplyCost     = costs.reduce((s, c) => s + (parseWon(c.supplyPrice) ?? 0), 0);
+  const approvedSupplyCost  = costs.filter(c => c.isApproved)
+                                   .reduce((s, c) => s + (parseWon(c.supplyPrice) ?? 0), 0);
+  const unapprovedSupplyCost = totalSupplyCost - approvedSupplyCost;
+  const approvedProfit      = effectiveSupply - approvedSupplyCost;
 
   return (
     <div
@@ -1173,20 +1205,27 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                       <div className="w-px self-stretch" style={{ background: "#E9EBEF" }} />
                       <div>
                         <p className="text-xs mb-1" style={{ color: "#94A3B8" }}>총 매입(구매)</p>
-                        <p className="text-sm font-bold" style={{ color: "#191F28" }}>₩{totalCost.toLocaleString()}</p>
+                        <p className="text-sm font-bold" style={{ color: "#191F28" }}>₩{approvedSupplyCost.toLocaleString()}</p>
+                        {unapprovedSupplyCost > 0 && (
+                          <p className="text-xs mt-0.5" style={{ color: "#CBD5E1" }}>
+                            미승인 ₩{unapprovedSupplyCost.toLocaleString()} 제외
+                          </p>
+                        )}
                       </div>
-                      {hasApprovedCosts && effectiveTotal > 0 && (
+                      {/* 매입은 실제 작업에 들어가야 잡히므로, 승인 매입이 아직 없어도 영업이익을 보여준다 */}
+                      {effectiveSupply > 0 && (
                         <>
                           <div className="w-px self-stretch" style={{ background: "#E9EBEF" }} />
                           <div>
                             <p className="text-xs mb-1" style={{ color: "#94A3B8" }}>영업이익</p>
                             <p className="text-sm font-bold" style={{ color: approvedProfit >= 0 ? "#10B981" : "#EF4444" }}>₩{approvedProfit.toLocaleString()}</p>
+                            <p className="text-xs mt-0.5" style={{ color: "#CBD5E1" }}>공급가 기준</p>
                           </div>
                           <div className="w-px self-stretch" style={{ background: "#E9EBEF" }} />
                           <div>
                             <p className="text-xs mb-1" style={{ color: "#94A3B8" }}>마진율</p>
                             <p className="text-sm font-bold" style={{ color: approvedProfit >= 0 ? "#10B981" : "#EF4444" }}>
-                              {Math.round((approvedProfit / effectiveTotal) * 100)}%
+                              {Math.round((approvedProfit / effectiveSupply) * 100)}%
                             </p>
                           </div>
                         </>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { fetchJson } from "@/lib/fetch-json";
 
 interface Tracker {
   id: string;
@@ -71,12 +72,15 @@ export default function ReportTab({ clientId }: { clientId: string }) {
   const [urlParsed, setUrlParsed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
-    fetch(`/api/reports/trackers?clientId=${clientId}`)
-      .then((r) => r.json())
+    setLoadError(null);
+    // 실패를 빈 트래커 목록으로 바꾸지 않는다 — "추적 키워드 없음"으로 오인되면 안 되므로 오류로 표시
+    fetchJson<{ trackers?: Tracker[] }>(`/api/reports/trackers?clientId=${clientId}`)
       .then((d) => setTrackers(d.trackers ?? []))
+      .catch((e: Error) => { setLoadError(e.message); setTrackers([]); })
       .finally(() => setLoading(false));
   }, [clientId]);
 
@@ -137,7 +141,8 @@ export default function ReportTab({ clientId }: { clientId: string }) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: "rgba(49,130,246,0.1)", color: "#3182F6" }}>쇼핑</span>
-          <span className="text-xs" style={{ color: "#94A3B8" }}>키워드 {trackers.length}개 추적</span>
+          {/* 오류 시 "키워드 0개"로 잘못 보이지 않게 숨김 */}
+          {!loadError && <span className="text-xs" style={{ color: "#94A3B8" }}>키워드 {trackers.length}개 추적</span>}
         </div>
         <button
           onClick={() => setShowAdd((v) => !v)}
@@ -249,6 +254,12 @@ export default function ReportTab({ clientId }: { clientId: string }) {
       {/* 키워드 목록 */}
       {loading ? (
         <div className="py-8 text-center text-xs" style={{ color: "#94A3B8" }}>불러오는 중...</div>
+      ) : loadError ? (
+        <div className="py-8 flex flex-col items-center gap-2">
+          <p className="text-xs font-semibold" style={{ color: "#EF4444" }}>{loadError}</p>
+          <p className="text-xs" style={{ color: "#94A3B8" }}>데이터가 없는 것으로 잘못 보이지 않도록 표시를 중단했습니다.</p>
+          <button onClick={load} className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white" style={{ background: "#3182F6" }}>다시 시도</button>
+        </div>
       ) : trackers.length === 0 ? (
         <div className="py-8 text-center">
           <p className="text-xs mb-1" style={{ color: "#94A3B8" }}>추적 중인 키워드가 없습니다.</p>

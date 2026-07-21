@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { fetchJson } from "@/lib/fetch-json";
 
 // ─── 상수 ────────────────────────────────────────────────
 
@@ -456,6 +457,7 @@ export default function MonthlyManagePage() {
   const [costRows, setCostRows] = useState<CostRow[]>([]);
   const [sgaRows,  setSgaRows]  = useState<SgaRow[]>([]);
   const [loading,  setLoading]  = useState(true);
+  const [error,    setError]    = useState<string | null>(null);
 
   const [editKey,   setEditKey]   = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
@@ -465,14 +467,16 @@ export default function MonthlyManagePage() {
   // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const load = useCallback(() => {
     setLoading(true);
+    setError(null);
     const q = `year=${year}&month=${month}&criteria=${encodeURIComponent(criteria)}`;
-    fetch(`/api/operations/monthly?${q}`)
-      .then(r => r.json())
+    fetchJson<{ revRows?: RevenueRow[]; costRows?: CostRow[]; sgaRows?: SgaRow[] }>(`/api/operations/monthly?${q}`)
       .then(({ revRows: rv, costRows: cs, sgaRows: sg }) => {
         setRevRows(rv ?? []);
         setCostRows(cs ?? []);
         setSgaRows(sg ?? []);
       })
+      // 실패 시 0원으로 보여주면 안 된다 — 오류를 그대로 노출한다
+      .catch((e: Error) => { setError(e.message); setRevRows([]); setCostRows([]); setSgaRows([]); })
       .finally(() => setLoading(false));
   }, [year, month, criteria]);
 
@@ -541,6 +545,12 @@ export default function MonthlyManagePage() {
 
       {loading ? (
         <div className="py-32 text-center text-sm" style={{ color:"#CBD5E1" }}>불러오는 중...</div>
+      ) : error ? (
+        <div className="py-32 flex flex-col items-center gap-3">
+          <p className="text-sm font-semibold" style={{ color: "#EF4444" }}>{error}</p>
+          <p className="text-xs" style={{ color: "#94A3B8" }}>손익 데이터를 표시할 수 없습니다. 금액이 0으로 잘못 보이지 않도록 표시를 중단했습니다.</p>
+          <button onClick={load} className="px-4 py-1.5 text-sm font-semibold rounded-lg" style={{ background: "#3182F6", color: "#fff" }}>다시 시도</button>
+        </div>
       ) : (
         <>
           <SummaryCards revRows={revRows} costRows={costRows} sgaRows={sgaRows} month={month} />

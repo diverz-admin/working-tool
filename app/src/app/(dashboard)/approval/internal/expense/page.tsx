@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useUser } from "@/lib/UserContext";
 import { uploadAttachment, resolveFileSrc, useFileSrc, isImageValue } from "@/lib/storage";
+import { fetchJson } from "@/lib/fetch-json";
 
 type Status = "대기" | "승인" | "반려";
 
@@ -143,9 +144,8 @@ function RequestModal({ defaultRequester, initial, onClose, onSubmit }: {
   const [allUsers, setAllUsers] = useState<{ name: string; team: string | null }[]>([]);
 
   useEffect(() => {
-    fetch("/api/users")
-      .then((r) => r.json())
-      .then((d) => setAllUsers((d.users ?? []).map((u: { name: string; team: string | null }) => ({ name: u.name, team: u.team }))))
+    fetchJson<{ users?: { name: string; team: string | null }[] }>("/api/users")
+      .then((d) => setAllUsers((d.users ?? []).map((u) => ({ name: u.name, team: u.team }))))
       .catch(() => {});
   }, []);
 
@@ -455,13 +455,24 @@ export default function ExpensePage() {
   const [editItem, setEditItem]   = useState<ExpenseItem | null>(null);
   const [showForm, setShowForm]   = useState(false);
   const [loading, setLoading]     = useState(true);
+  const [error, setError]         = useState<string | null>(null);
 
   async function loadItems() {
-    const res = await fetch("/api/approvals/expense").then((r) => r.json());
-    setItems(res.items ?? []);
-    setLoading(false);
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetchJson<{ items?: ExpenseItem[] }>("/api/approvals/expense");
+      setItems(res.items ?? []);
+    } catch (e) {
+      // 실패를 빈 목록으로 렌더하지 않는다 — "요청 없음"으로 오인되면 안 되므로 오류를 표시
+      setError((e as Error).message);
+      setItems([]);
+    } finally {
+      setLoading(false);
+    }
   }
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadItems(); }, []);
 
   const counts = {
@@ -487,8 +498,11 @@ export default function ExpensePage() {
         attachments:     form.attachments.length ? JSON.stringify(form.attachments) : null,
         expenseCategory: form.expenseCategory || null,
       }),
-    }).then((r) => r.json());
-    setItems((p) => [res.item, ...p]);
+    });
+    // 실패 시 undefined 항목이 목록에 삽입되지 않도록 막는다
+    if (!res.ok) { alert("결재요청 등록에 실패했습니다. 다시 시도해주세요."); return; }
+    const { item } = await res.json();
+    setItems((p) => [item, ...p]);
     setShowForm(false);
   }
 
@@ -509,8 +523,10 @@ export default function ExpensePage() {
         status:          "대기",
         rejectReason:    null,
       }),
-    }).then((r) => r.json());
-    setItems((p) => p.map((i) => i.id === editItem.id ? res.item : i));
+    });
+    if (!res.ok) { alert("재상신에 실패했습니다. 다시 시도해주세요."); return; }
+    const { item } = await res.json();
+    setItems((p) => p.map((i) => i.id === editItem.id ? item : i));
     setEditItem(null);
   }
 
@@ -568,6 +584,12 @@ export default function ExpensePage() {
           <tbody>
             {loading ? (
               <tr><td colSpan={6} className="py-16 text-center text-sm" style={{ color: "#94A3B8" }}>불러오는 중...</td></tr>
+            ) : error ? (
+              <tr><td colSpan={6} className="py-16 text-center">
+                <p className="text-sm font-semibold" style={{ color: "#EF4444" }}>{error}</p>
+                <p className="text-xs mt-1" style={{ color: "#94A3B8" }}>목록을 표시할 수 없습니다. 데이터가 없는 것으로 잘못 보이지 않도록 표시를 중단했습니다.</p>
+                <button onClick={() => loadItems()} className="mt-3 px-4 py-1.5 text-sm font-semibold rounded-lg" style={{ background: "#3182F6", color: "#fff" }}>다시 시도</button>
+              </td></tr>
             ) : filtered.length === 0 ? (
               <tr><td colSpan={6} className="py-16 text-center text-sm" style={{ color: "#94A3B8" }}>요청 내역이 없습니다.</td></tr>
             ) : filtered.map((item) => {

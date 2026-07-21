@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { fetchJson } from "@/lib/fetch-json";
 
 type Role   = "Admin" | "Manager" | "Staff";
 type Status = "활성" | "비활성";
@@ -260,6 +261,7 @@ export default function UsersPage() {
   const router = useRouter();
   const [users,       setUsers]       = useState<AppUser[]>([]);
   const [loading,     setLoading]     = useState(true);
+  const [error,       setError]       = useState<string | null>(null);
   const [modal,       setModal]       = useState<"add" | AppUser | null>(null);
   const [filterRole,  setFilterRole]  = useState<Role | "전체">("전체");
   const [filterTeam,  setFilterTeam]  = useState("전체");
@@ -267,13 +269,18 @@ export default function UsersPage() {
   const [search,      setSearch]      = useState("");
   const [confirmDel,  setConfirmDel]  = useState<AppUser | null>(null);
 
-  /* eslint-disable react-hooks/set-state-in-effect */
-  useEffect(() => {
+  const load = useCallback(() => {
     setLoading(true);
-    fetch("/api/users").then(r => r.json())
+    setError(null);
+    fetchJson<{ users?: AppUser[] }>("/api/users")
       .then(d => setUsers(d.users ?? []))
+      // 실패를 "사용자 없음"으로 보여주면 안 된다
+      .catch((e: Error) => { setError(e.message); setUsers([]); })
       .finally(() => setLoading(false));
   }, []);
+
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => { load(); }, [load]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const teams = ["전체", ...Array.from(new Set(users.map(u => u.team).filter(Boolean) as string[]))];
@@ -420,6 +427,12 @@ export default function UsersPage() {
           <tbody>
             {loading ? (
               <tr><td colSpan={9} className="py-16 text-center text-sm" style={{ color: "#94A3B8" }}>불러오는 중...</td></tr>
+            ) : error ? (
+              <tr><td colSpan={9} className="py-16 text-center">
+                <p className="text-sm font-semibold" style={{ color: "#EF4444" }}>{error}</p>
+                <p className="text-xs mt-1" style={{ color: "#94A3B8" }}>데이터가 없는 것으로 잘못 보이지 않도록 표시를 중단했습니다.</p>
+                <button onClick={load} className="mt-3 px-4 py-1.5 text-sm font-semibold rounded-lg" style={{ background: "#3182F6", color: "#fff" }}>다시 시도</button>
+              </td></tr>
             ) : filtered.length === 0 ? (
               <tr><td colSpan={9} className="py-16 text-center text-sm" style={{ color: "#94A3B8" }}>
                 {users.length === 0 ? "등록된 사용자가 없습니다." : "검색 결과가 없습니다."}

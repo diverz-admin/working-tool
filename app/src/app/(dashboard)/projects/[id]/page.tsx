@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, Suspense } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import ProjectModal, { ProjectFormData } from "@/components/projects/ProjectModal";
 import ClientModal, { ClientFormData } from "@/components/clients/ClientModal";
+import { fetchJson } from "@/lib/fetch-json";
 
 interface ProjectGroup {
   id: string;
@@ -36,6 +37,28 @@ interface Campaign {
   revenueCompleted: number;
   costTotal: number;
   costCompleted: number;
+  notes: string | null;
+}
+
+interface ClientDetail {
+  id: string;
+  status: string;
+  companyName: string;
+  storeName: string | null;
+  industry: string | null;
+  advertiserName: string | null;
+  advertiserContact: string | null;
+  contactEmail: string | null;
+  businessNumber: string | null;
+  category: string | null;
+  products: string[] | null;
+  monthlyAvg: number | null;
+  inboundDate: string | null;
+  inboundRoute: string | null;
+  endDate: string | null;
+  endReason: string | null;
+  assignedTeam: string | null;
+  assignedPerson: string | null;
   notes: string | null;
 }
 
@@ -101,6 +124,7 @@ function ProjectGroupPageInner() {
   const [group,       setGroup]       = useState<ProjectGroup | null>(null);
   const [campaigns,   setCampaigns]   = useState<Campaign[]>([]);
   const [loading,     setLoading]     = useState(true);
+  const [error,       setError]       = useState<string | null>(null);
   const [modal,       setModal]       = useState<"create" | null>(null);
   const [editCampaign, setEditCampaign] = useState<ProjectFormData | null>(null);
   const [viewClient,  setViewClient]  = useState<ClientFormData | null>(null);
@@ -110,12 +134,14 @@ function ProjectGroupPageInner() {
 
   const load = useCallback(() => {
     setLoading(true);
-    fetch(`/api/project-groups/${id}`)
-      .then((r) => r.json())
+    setError(null);
+    // 실패를 빈 캠페인 목록으로 바꾸지 않는다 — 계약금액이 0으로 오인되면 안 되므로 오류로 표시
+    fetchJson<{ group?: ProjectGroup | null; campaigns?: Campaign[] }>(`/api/project-groups/${id}`)
       .then((d) => {
         setGroup(d.group ?? null);
         setCampaigns(d.campaigns ?? []);
       })
+      .catch((e: Error) => { setError(e.message); setGroup(null); setCampaigns([]); })
       .finally(() => setLoading(false));
   }, [id]);
 
@@ -146,8 +172,14 @@ function ProjectGroupPageInner() {
   }
 
   async function handleViewClient(clientId: string) {
-    const res = await fetch(`/api/clients/${clientId}`);
-    const { client } = await res.json();
+    // 조회 실패를 빈 고객사 정보로 열지 않는다
+    let client: ClientDetail | null | undefined;
+    try {
+      ({ client } = await fetchJson<{ client?: ClientDetail | null }>(`/api/clients/${clientId}`));
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "고객사 정보를 불러오지 못했습니다.");
+      return;
+    }
     if (!client) return;
     setViewClient({
       id: client.id,
@@ -183,6 +215,16 @@ function ProjectGroupPageInner() {
 
   if (loading) {
     return <div className="py-32 text-center text-sm" style={{ color: "#94A3B8" }}>데이터를 불러오는 중...</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="py-32 flex flex-col items-center gap-3">
+        <p className="text-sm font-semibold" style={{ color: "#EF4444" }}>{error}</p>
+        <p className="text-xs" style={{ color: "#94A3B8" }}>금액이 0으로 잘못 보이지 않도록 표시를 중단했습니다.</p>
+        <button onClick={load} className="px-4 py-1.5 text-sm font-semibold rounded-lg" style={{ background: "#3182F6", color: "#fff" }}>다시 시도</button>
+      </div>
+    );
   }
 
   if (!group) {

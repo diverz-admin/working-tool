@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { fetchJson } from "@/lib/fetch-json";
 import Link from "next/link";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip,
@@ -107,12 +108,13 @@ export default function OperationsDashboard() {
   const [monthRevRows,  setMonthRevRows]  = useState<{ total: number | null; supplyPrice: number | null; tax: number | null; assignedTeam: string | null }[]>([]);
   const [monthCostRows, setMonthCostRows] = useState<{ total: number | null; supplyPrice: number | null; assignedTeam: string | null }[]>([]);
   const [loading,      setLoading]      = useState(true);
+  const [error,        setError]        = useState<string | null>(null);
 
   /* eslint-disable react-hooks/set-state-in-effect */
-  useEffect(() => {
+  const load = useCallback(() => {
     setLoading(true);
-    fetch(`/api/operations/dashboard?year=${year}&month=${curMonth}`)
-      .then(r => r.json())
+    setError(null);
+    fetchJson<{ annualTeams?: typeof annualTeams; annualOther?: number[]; annualCosts?: typeof annualCosts; monthRevRows?: typeof monthRevRows; monthCostRows?: typeof monthCostRows }>(`/api/operations/dashboard?year=${year}&month=${curMonth}`)
       .then(({ annualTeams, annualOther, annualCosts: costs, monthRevRows, monthCostRows }) => {
         setAnnualTeams(annualTeams ?? []);
         setAnnualOther(annualOther ?? new Array(12).fill(0));
@@ -120,8 +122,16 @@ export default function OperationsDashboard() {
         setMonthRevRows(monthRevRows ?? []);
         setMonthCostRows(monthCostRows ?? []);
       })
+      // 실패 시 0원으로 보여주면 안 된다 — 오류를 그대로 노출한다
+      .catch((e: Error) => {
+        setError(e.message);
+        setAnnualTeams([]); setAnnualOther(new Array(12).fill(0));
+        setAnnualCosts([]); setMonthRevRows([]); setMonthCostRows([]);
+      })
       .finally(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [year, curMonth]);
+  useEffect(() => { load(); }, [load]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // ── 연간 집계 ──
@@ -220,6 +230,12 @@ export default function OperationsDashboard() {
 
       {loading ? (
         <div className="py-40 text-center text-sm" style={{ color:"#CBD5E1" }}>불러오는 중...</div>
+      ) : error ? (
+        <div className="py-40 flex flex-col items-center gap-3">
+          <p className="text-sm font-semibold" style={{ color: "#EF4444" }}>{error}</p>
+          <p className="text-xs" style={{ color: "#94A3B8" }}>손익 데이터를 표시할 수 없습니다. 금액이 0으로 잘못 보이지 않도록 표시를 중단했습니다.</p>
+          <button onClick={load} className="px-4 py-1.5 text-sm font-semibold rounded-lg" style={{ background: "#3182F6", color: "#fff" }}>다시 시도</button>
+        </div>
       ) : (
         <>
           {/* ── 연간 손익관리 ── */}

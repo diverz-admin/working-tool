@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { fetchJson } from "@/lib/fetch-json";
 
 // ─── 상수 ────────────────────────────────────────────────
 
@@ -280,17 +281,20 @@ export default function TeamProfitPage() {
   const [revRows,  setRevRows]  = useState<RevenueRow[]>([]);
   const [costRows, setCostRows] = useState<CostRow[]>([]);
   const [loading,  setLoading]  = useState(true);
+  const [error,    setError]    = useState<string | null>(null);
 
   // 매출: 캠페인 시작 날짜 기준 / 매입: 계산서 발행 날짜 기준
   const load = useCallback(() => {
     setLoading(true);
+    setError(null);
     const q = `year=${year}&month=${month}&criteria=${encodeURIComponent(criteria)}`;
-    fetch(`/api/operations/monthly?${q}`)
-      .then(r => r.json())
+    fetchJson<{ revRows?: RevenueRow[]; costRows?: CostRow[] }>(`/api/operations/monthly?${q}`)
       .then(({ revRows: rv, costRows: cs }) => {
         setRevRows(rv ?? []);
         setCostRows(cs ?? []);
       })
+      // 실패 시 0원으로 보여주면 안 된다 — 오류를 그대로 노출한다
+      .catch((e: Error) => { setError(e.message); setRevRows([]); setCostRows([]); })
       .finally(() => setLoading(false));
   }, [year, month, criteria]);
 
@@ -357,7 +361,8 @@ export default function TeamProfitPage() {
         {TEAMS.map((t) => {
           const isActive = team === t;
           const color    = TEAM_COLORS[t];
-          const supply   = t !== "전체" && !loading ? teamSupply(t) : null;
+          // 오류 시에는 뱃지 금액도 숨긴다 — ₩0만이 실제 값으로 오인되면 안 된다
+          const supply   = t !== "전체" && !loading && !error ? teamSupply(t) : null;
           return (
             <button key={t} onClick={() => setTeam(t)}
               className="flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-semibold transition-all"
@@ -388,6 +393,12 @@ export default function TeamProfitPage() {
       {/* ── 콘텐츠 ── */}
       {loading ? (
         <div className="py-32 text-center text-sm" style={{ color: "#CBD5E1" }}>불러오는 중...</div>
+      ) : error ? (
+        <div className="py-32 flex flex-col items-center gap-3">
+          <p className="text-sm font-semibold" style={{ color: "#EF4444" }}>{error}</p>
+          <p className="text-xs" style={{ color: "#94A3B8" }}>손익 데이터를 표시할 수 없습니다. 금액이 0으로 잘못 보이지 않도록 표시를 중단했습니다.</p>
+          <button onClick={load} className="px-4 py-1.5 text-sm font-semibold rounded-lg" style={{ background: "#3182F6", color: "#fff" }}>다시 시도</button>
+        </div>
       ) : (
         <>
           <SummaryBar

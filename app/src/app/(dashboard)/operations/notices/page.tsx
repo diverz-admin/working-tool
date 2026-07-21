@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { fetchJson } from "@/lib/fetch-json";
 
 interface Notice {
   id: string;
@@ -176,6 +177,7 @@ function NoticeModal({
 export default function NoticesPage() {
   const [notices, setNotices] = useState<Notice[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [modal, setModal] = useState<"create" | null>(null);
   const [editTarget, setEditTarget] = useState<Notice | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
@@ -183,9 +185,11 @@ export default function NoticesPage() {
 
   const load = useCallback(() => {
     setLoading(true);
-    fetch("/api/notices")
-      .then((r) => r.json())
+    setError(null);
+    fetchJson<{ notices?: Notice[] }>("/api/notices")
       .then((d) => setNotices(d.notices ?? []))
+      // 실패를 "공지 없음"으로 보여주면 안 된다
+      .catch((e: Error) => { setError(e.message); setNotices([]); })
       .finally(() => setLoading(false));
   }, []);
 
@@ -294,6 +298,12 @@ export default function NoticesPage() {
         {/* 목록 */}
         {loading ? (
           <div className="py-20 text-center text-sm" style={{ color: "#94A3B8" }}>불러오는 중...</div>
+        ) : error ? (
+          <div className="py-20 flex flex-col items-center gap-3">
+            <p className="text-sm font-semibold" style={{ color: "#EF4444" }}>{error}</p>
+            <p className="text-xs" style={{ color: "#94A3B8" }}>데이터가 없는 것으로 잘못 보이지 않도록 표시를 중단했습니다.</p>
+            <button onClick={load} className="px-4 py-1.5 text-sm font-semibold rounded-lg" style={{ background: "#3182F6", color: "#fff" }}>다시 시도</button>
+          </div>
         ) : filtered.length === 0 ? (
           <div className="py-20 text-center">
             <p className="text-sm font-medium" style={{ color: "#94A3B8" }}>공지사항이 없습니다.</p>

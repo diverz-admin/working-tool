@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
+import { fetchJson } from "@/lib/fetch-json";
 
 interface WorkRow {
   id: string;
@@ -46,17 +47,24 @@ export default function WorkCheckPage() {
 
   const [rows, setRows]           = useState<WorkRow[]>([]);
   const [loading, setLoading]     = useState(true);
+  const [error, setError]         = useState<string | null>(null);
   const [filterTab, setTab]       = useState<FilterTab>("미완료");
   const [filterTeam, setTeam]     = useState<string>("전체");
   const [filterAssignee, setAssignee] = useState<string>("전체");
   const [selectedMonth, setMonth] = useState<string>(thisMonth);
 
-  useEffect(() => {
-    fetch("/api/work-check")
-      .then((r) => r.json())
-      .then(({ rows: r }) => { setRows(r ?? []); setLoading(false); })
-      .catch(() => setLoading(false));
+  // 실패를 빈 목록으로 바꾸지 않는다 — "확인할 작업 없음"으로 오인되면 안 되므로 오류로 표시
+  const load = useCallback(() => {
+    setLoading(true);
+    setError(null);
+    fetchJson<{ rows?: WorkRow[] }>("/api/work-check")
+      .then(({ rows: r }) => { setRows(r ?? []); })
+      .catch((e: Error) => { setError(e.message); setRows([]); })
+      .finally(() => setLoading(false));
   }, []);
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { load(); }, [load]);
 
   const { months, teams, assignees } = useMemo(() => {
     const ms = new Set<string>();
@@ -149,7 +157,8 @@ export default function WorkCheckPage() {
         </div>
       </div>
 
-      {/* 월 선택 */}
+      {/* 월 선택 (오류 시 0건 뱃지가 남지 않도록 숨김) */}
+      {!error && (
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-xs font-semibold shrink-0" style={{ color: "#94A3B8" }}>월</span>
         {months.length === 0 ? (
@@ -180,8 +189,10 @@ export default function WorkCheckPage() {
           })
         )}
       </div>
+      )}
 
-      {/* 필터 바 */}
+      {/* 필터 바 (오류 시 0건 카운트가 남지 않도록 숨김) */}
+      {!error && (
       <div className="flex items-center gap-3 flex-wrap">
         <div className="flex items-center gap-1 p-0.5 rounded-xl" style={{ background: "#F1F5F9" }}>
           {(["미완료", "전체", "완료"] as FilterTab[]).map((tab) => {
@@ -259,11 +270,18 @@ export default function WorkCheckPage() {
           </div>
         )}
       </div>
+      )}
 
       {/* 콘텐츠 */}
       {loading ? (
         <div className="rounded-2xl py-20 flex items-center justify-center" style={{ background: "#fff", border: "1px solid #E9EBEF" }}>
           <svg className="animate-spin" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F97316" strokeWidth="2.5"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+        </div>
+      ) : error ? (
+        <div className="rounded-2xl py-20 flex flex-col items-center gap-3" style={{ background: "#fff", border: "1px solid #E9EBEF" }}>
+          <p className="text-sm font-semibold" style={{ color: "#EF4444" }}>{error}</p>
+          <p className="text-xs" style={{ color: "#94A3B8" }}>데이터가 없는 것으로 잘못 보이지 않도록 표시를 중단했습니다.</p>
+          <button onClick={load} className="px-4 py-1.5 text-sm font-semibold rounded-lg" style={{ background: "#F97316", color: "#fff" }}>다시 시도</button>
         </div>
       ) : grouped.length === 0 ? (
         <div className="rounded-2xl py-20 text-center" style={{ background: "#fff", border: "1px solid #E9EBEF" }}>

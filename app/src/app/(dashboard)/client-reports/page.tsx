@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { KeywordPerformance, type KeywordItem, type KeywordSummary } from "@/components/client-report/KeywordPerformance";
+import { fetchJson } from "@/lib/fetch-json";
 
 interface ClientOpt { id: string; companyName: string; storeName: string | null; trackerCount: number; }
 interface SavedReport {
@@ -92,6 +93,7 @@ export default function ClientReportsPage() {
 
   const [data, setData]       = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState<string | null>(null);
   const [saving, setSaving]   = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
   const [deleting, setDeleting]     = useState(false);
@@ -103,20 +105,27 @@ export default function ClientReportsPage() {
   const [nextPlan, setNextPlan] = useState("");
   const [comment, setComment]   = useState("");
 
-  useEffect(() => {
-    fetch("/api/client-reports/clients").then(r => r.json()).then(d => {
-      const list: ClientOpt[] = d.clients ?? [];
-      setClients(list);
-      if (!clientId && list.length) setClientId(list[0].id);
-    });
+  // 실패를 빈 광고주 목록으로 바꾸지 않는다
+  const loadClients = useCallback(() => {
+    setError(null);
+    fetchJson<{ clients?: ClientOpt[] }>("/api/client-reports/clients")
+      .then(d => {
+        const list: ClientOpt[] = d.clients ?? [];
+        setClients(list);
+        if (!clientId && list.length) setClientId(list[0].id);
+      })
+      .catch((e: Error) => { setError(e.message); setClients([]); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { loadClients(); }, [loadClients]);
 
   const loadData = useCallback(() => {
     if (!clientId) return;
     setLoading(true);
-    fetch(`/api/client-reports/data?clientId=${clientId}&year=${year}&month=${month}`)
-      .then(r => r.json())
+    setError(null);
+    fetchJson<ReportData>(`/api/client-reports/data?clientId=${clientId}&year=${year}&month=${month}`)
       .then((d: ReportData) => {
         setData(d);
         setManager(d.report?.managerName ?? "");
@@ -125,6 +134,8 @@ export default function ClientReportsPage() {
         setNextPlan(d.report?.nextPlanContent ?? "");
         setComment(d.report?.comment ?? "");
       })
+      // 실패를 빈 리포트로 바꾸지 않는다 — 작성 내용이 사라진 것처럼 보이면 안 되므로 오류로 표시
+      .catch((e: Error) => { setError(e.message); setData(null); })
       .finally(() => setLoading(false));
   }, [clientId, year, month]);
 
@@ -225,6 +236,12 @@ export default function ClientReportsPage() {
 
       {loading ? (
         <div className="rounded-2xl p-10 text-center text-sm" style={{ background: "#fff", border: "1px solid #E9EBEF", color: "#CBD5E1" }}>불러오는 중...</div>
+      ) : error ? (
+        <div className="rounded-2xl p-10 flex flex-col items-center gap-3" style={{ background: "#fff", border: "1px solid #E9EBEF" }}>
+          <p className="text-sm font-semibold" style={{ color: "#EF4444" }}>{error}</p>
+          <p className="text-xs" style={{ color: "#94A3B8" }}>데이터가 없는 것으로 잘못 보이지 않도록 표시를 중단했습니다.</p>
+          <button onClick={() => { loadClients(); loadData(); }} className="px-4 py-1.5 text-sm font-semibold rounded-lg" style={{ background: "#3182F6", color: "#fff" }}>다시 시도</button>
+        </div>
       ) : data ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           {/* 왼쪽: 자동 — 키워드 성과 미리보기 */}

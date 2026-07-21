@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { fetchJson } from "@/lib/fetch-json";
 import Link from "next/link";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -40,14 +41,17 @@ function fetchDashboard(year: number, criteria: string): Promise<DashboardData> 
   if (hit && Date.now() - hit.ts < DASH_TTL) return Promise.resolve(hit.data);
   const existing = _dashPending.get(key);
   if (existing) return existing;
-  const p = fetch(`/api/dashboard?year=${year}&criteria=${encodeURIComponent(criteria)}`)
-    .then(r => r.json())
+  const p = fetchJson<DashboardData>(`/api/dashboard?year=${year}&criteria=${encodeURIComponent(criteria)}`)
     .then((d: DashboardData) => { _dashCache.set(key, { data: d, ts: Date.now() }); _dashPending.delete(key); return d; })
     .catch(err => { _dashPending.delete(key); throw err; });
   _dashPending.set(key, p);
   return p;
 }
-fetchDashboard(new Date().getFullYear(), "캠페인 시작날짜");
+// 선행 fetch는 브라우저에서만 — 서버 렌더 중 실행되면 상대 URL fetch가 반드시 실패하고,
+// 그 결과가 서버/클라이언트 렌더를 갈라놓아 하이드레이션이 깨진다
+if (typeof window !== "undefined") {
+  fetchDashboard(new Date().getFullYear(), "캠페인 시작날짜").catch(() => {});
+}
 
 function daysLeft(dateStr: string | null): number | null {
   if (!dateStr) return null;
@@ -69,13 +73,16 @@ export default function DashboardPage() {
 
   const [criteria, setCriteria] = useState<"캠페인 시작날짜" | "계산서날짜">("캠페인 시작날짜");
 
-  const _initHit = _dashCache.get(`${year}-캠페인 시작날짜`);
-  const [agg,      setAgg]      = useState<AggregateData | null>(_initHit?.data.agg ?? null);
-  const [costAgg,  setCostAgg]  = useState<{ monthly: { total: number; supplyPrice: number }[]; yearTotal: number } | null>(_initHit?.data.costAgg ?? null);
-  const [projects, setProjects] = useState<Project[]>((_initHit?.data.projects ?? []).filter((p: Project) => p.status === "진행"));
-  const [notices,  setNotices]  = useState<Notice[]>(_initHit?.data.notices ?? []);
-  const [loading,  setLoading]  = useState(!_initHit);
+  // 모듈 캐시(_dashCache)를 useState 초기값으로 읽지 않는다 — 서버는 항상 비어 있고
+  // 클라이언트는 선행 fetch가 끝나 있으면 값이 차 있어 하이드레이션 텍스트가 어긋난다.
+  // 캐시는 마운트 직후 load()가 동기적으로 채운다.
+  const [agg,      setAgg]      = useState<AggregateData | null>(null);
+  const [costAgg,  setCostAgg]  = useState<{ monthly: { total: number; supplyPrice: number }[]; yearTotal: number } | null>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [notices,  setNotices]  = useState<Notice[]>([]);
+  const [loading,  setLoading]  = useState(true);
   const [openNotice, setOpenNotice] = useState<Notice | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback((invalidate = false) => {
     const key = `${year}-${criteria}`;
@@ -89,12 +96,15 @@ export default function DashboardPage() {
       }
     }
     setLoading(true);
+    setError(null);
     fetchDashboard(year, criteria)
       .then(({ agg: aggData, costAgg: costData, projects: projData, notices: noticeData }) => {
         setAgg(aggData); setCostAgg(costData);
         setProjects((projData ?? []).filter((p: Project) => p.status === "진행"));
         setNotices(noticeData ?? []);
       })
+      // 실패 시 매출·매입·이익이 0원으로 보이면 안 된다 — 오류를 그대로 노출한다
+      .catch((e: Error) => { setError(e.message); setAgg(null); setCostAgg(null); setProjects([]); setNotices([]); })
       .finally(() => setLoading(false));
   }, [year, criteria]);
 
@@ -126,6 +136,16 @@ export default function DashboardPage() {
     const d = daysLeft(p.endDate);
     return d !== null && d <= 7;
   });
+
+  if (error) {
+    return (
+      <div className="py-40 flex flex-col items-center gap-3">
+        <p className="text-sm font-semibold" style={{ color: "#EF4444" }}>{error}</p>
+        <p className="text-xs" style={{ color: "#94A3B8" }}>대시보드 데이터를 표시할 수 없습니다. 금액이 0으로 잘못 보이지 않도록 표시를 중단했습니다.</p>
+        <button onClick={() => load(true)} className="px-4 py-1.5 text-sm font-semibold rounded-lg" style={{ background: "#3182F6", color: "#fff" }}>다시 시도</button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

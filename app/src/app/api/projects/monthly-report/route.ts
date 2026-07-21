@@ -13,6 +13,8 @@ export async function GET(req: NextRequest) {
     const criteria   = searchParams.get("criteria") ?? "캠페인 시작날짜";
     const useBank    = criteria === "통장";
     const useInvoice = criteria === "계산서날짜";
+    // 캠페인 시작날짜 = 수주 기준(계약 공급가) / 나머지 = 실적 기준(실제 매출 행). 금액은 모두 공급가.
+    const useContract = !useBank && !useInvoice;
 
     const from = month > 0 ? monthRange(year, month).from : `${year}-01-01`;
     const to   = month > 0 ? monthRange(year, month).to   : `${year}-12-31`;
@@ -26,6 +28,7 @@ export async function GET(req: NextRequest) {
         assignedTeam:   projects.assignedTeam,
         assignedPerson: projects.assignedPerson,
         contractAmount: projects.contractAmount,
+        kpiSupply:      projects.kpiSupply,
         status:         projects.status,
         startDate:      projects.startDate,
         endDate:        projects.endDate,
@@ -45,11 +48,12 @@ export async function GET(req: NextRequest) {
                 EXISTS (SELECT 1 FROM project_revenues pr WHERE pr.project_id = ${projects.id} AND pr.invoice_date >= ${from} AND pr.invoice_date <= ${to})
                 OR EXISTS (SELECT 1 FROM project_costs pc WHERE pc.project_id = ${projects.id} AND pc.is_approved = true AND pc.invoice_date >= ${from} AND pc.invoice_date <= ${to})
               )`
-            : and(
-                isNotNull(projects.startDate),
-                gte(projects.startDate, from),
-                lte(projects.startDate, to),
-              ),
+            // 캠페인 시작일이 기간 내이거나, 기간 내 작업시작일을 가진 승인 매입이 있는 프로젝트
+            // (매출이 먼저 잡히고 매입은 실제 작업에 들어가야 생기므로, 시작월이 지난 프로젝트의 매입도 잡아야 한다)
+            : sql`(
+                (${projects.startDate} IS NOT NULL AND ${projects.startDate} >= ${from} AND ${projects.startDate} <= ${to})
+                OR EXISTS (SELECT 1 FROM project_costs pc WHERE pc.project_id = ${projects.id} AND pc.is_approved = true AND pc.work_start_date >= ${from} AND pc.work_start_date <= ${to})
+              )`,
         )
       );
 
@@ -65,8 +69,6 @@ export async function GET(req: NextRequest) {
     if (projectRows.length === 0) return NextResponse.json(empty);
 
     const projectIds = projectRows.map(p => p.id);
-    // 캠페인 시작일 맵 (월별 집계에 사용)
-    const projectStartMap = new Map(projectRows.map(p => [p.id, p.startDate]));
 
     // 확정 매출 (입금확인요청이 제출된 프로젝트 = confirmRequest 존재, 반려 제외)
     const revRows = await db
@@ -95,7 +97,8 @@ export async function GET(req: NextRequest) {
                 gte(projectRevenues.invoiceDate, from),
                 lte(projectRevenues.invoiceDate, to),
               )
-            : sql`EXISTS (SELECT 1 FROM confirm_requests WHERE project_id = ${projectRevenues.projectId} AND status != '반려')`,
+            // 수주 기준에서는 금액을 프로젝트 계약 공급가로 잡으므로, 매출 행은 상세 표시용으로만 전부 가져온다
+            : undefined,
         )
       );
 
@@ -124,12 +127,24 @@ export async function GET(req: NextRequest) {
     const revByProject  = groupBy(revRows,  r => r.projectId ?? "");
     const costByProject = groupBy(costRows, c => c.projectId ?? "");
 
+    // 캠페인 시작일이 조회 기간 안에 있는가 (수주 기준 매출 귀속 조건)
+    const startsInRange = (d: string | null) => Boolean(d && d >= from && d <= to);
+
+    /** 프로젝트 매출액(공급가). 수주 기준은 계약 공급가, 실적 기준은 실제 매출 행 공급가 합. */
+    const revenueOf = (p: { startDate: string | null; kpiSupply: number | null; id: string }) => {
+      const revs = revByProject[p.id] ?? [];
+      if (!useContract) return sum(revs, r => r.supplyPrice ?? 0);
+      // 기간 내 매입 때문에 포함된, 시작월이 지난 프로젝트는 이 달의 매출이 아니다
+      if (!startsInRange(p.startDate)) return 0;
+      return p.kpiSupply ?? sum(revs, r => r.supplyPrice ?? 0);
+    };
+
     // 프로젝트별 집계
     const projectSummaries = projectRows.map(p => {
       const revs    = revByProject[p.id]  ?? [];
       const costs   = costByProject[p.id] ?? [];
-      const revenue = sum(revs,  r => r.total ?? 0);
-      const cost    = sum(costs, c => c.total ?? 0);
+      const revenue = revenueOf(p);
+      const cost    = sum(costs, c => c.supplyPrice ?? 0);
       const margin  = revenue - cost;
       return {
         ...p,
@@ -140,23 +155,34 @@ export async function GET(req: NextRequest) {
       };
     }).filter(p => p.revenue > 0 || p.cost > 0 || p.contractAmount);
 
-    // 월별 집계 (12개월) — 확정 매출은 캠페인 시작월 기준
+    // 월별 집계 (12개월)
     const monthly = Array.from({ length: 12 }, (_, i) => emptyMonth(i + 1));
-    for (const r of revRows) {
-      // 통장 기준은 입금일(paymentDate), 그 외는 캠페인 시작월
-      const refDate = useBank ? r.paymentDate : useInvoice ? r.invoiceDate : (r.projectId ? projectStartMap.get(r.projectId) : null);
-      if (!refDate) continue;
-      const m = parseInt(refDate.substring(5, 7)) - 1;
-      monthly[m].revenue    += r.total ?? 0;
-      monthly[m].supplyPrice += r.supplyPrice ?? 0;
-      monthly[m].count      += 1;
+    if (useContract) {
+      // 수주 기준: 프로젝트 1건 = 계약 공급가 1건, 캠페인 시작월에 귀속
+      for (const p of projectRows) {
+        const amount = revenueOf(p);
+        if (!p.startDate || amount === 0) continue;
+        const m = parseInt(p.startDate.substring(5, 7)) - 1;
+        monthly[m].revenue     += amount;
+        monthly[m].supplyPrice += amount;
+        monthly[m].count       += 1;
+      }
+    } else {
+      for (const r of revRows) {
+        const refDate = useBank ? r.paymentDate : r.invoiceDate;
+        if (!refDate) continue;
+        const m = parseInt(refDate.substring(5, 7)) - 1;
+        monthly[m].revenue     += r.supplyPrice ?? 0;
+        monthly[m].supplyPrice += r.supplyPrice ?? 0;
+        monthly[m].count       += 1;
+      }
     }
     // 매입 귀속 월 — 통장: 승인일(purchaseDate) / 계산서: 발행일(invoiceDate) / 캠페인 시작: 작업시작일(workStartDate)
     for (const c of costRows) {
       const cd = useBank ? c.purchaseDate : useInvoice ? c.invoiceDate : c.workStartDate;
       if (!cd) continue;
       const m = parseInt(cd.substring(5, 7)) - 1;
-      monthly[m].cost += c.total ?? 0;
+      monthly[m].cost += c.supplyPrice ?? 0;
     }
     for (const m of monthly) {
       m.margin     = m.revenue - m.cost;
@@ -175,21 +201,29 @@ export async function GET(req: NextRequest) {
       const cost    = sum(ps, p => p.cost);
       const margin  = revenue - cost;
 
-      // 팀별 월별 — 통장 기준: 매출 입금일·매입 승인일 / 그 외: 매출 캠페인 시작월·매입 계산서 발행월
+      // 팀별 월별 — 매출: 수주 기준은 캠페인 시작월, 실적 기준은 입금일·발행월 / 매입: 작업시작일·승인일·발행월
       const teamMonthly = Array.from({ length: 12 }, (_, i) => emptyMonth(i + 1));
       for (const p of ps) {
-        for (const r of p.revenueRows) {
-          const refDate = useBank ? r.paymentDate : useInvoice ? r.invoiceDate : p.startDate;
-          const rm = refDate ? parseInt(refDate.substring(5, 7)) - 1 : -1;
+        if (useContract) {
+          const rm = p.startDate && p.revenue > 0 ? parseInt(p.startDate.substring(5, 7)) - 1 : -1;
           if (rm >= 0) {
-            teamMonthly[rm].revenue += r.total ?? 0;
+            teamMonthly[rm].revenue += p.revenue;
             teamMonthly[rm].count   += 1;
+          }
+        } else {
+          for (const r of p.revenueRows) {
+            const refDate = useBank ? r.paymentDate : r.invoiceDate;
+            const rm = refDate ? parseInt(refDate.substring(5, 7)) - 1 : -1;
+            if (rm >= 0) {
+              teamMonthly[rm].revenue += r.supplyPrice ?? 0;
+              teamMonthly[rm].count   += 1;
+            }
           }
         }
         for (const c of p.costRows) {
           const cd = useBank ? c.purchaseDate : useInvoice ? c.invoiceDate : c.workStartDate;
           const cm = cd ? parseInt(cd.substring(5, 7)) - 1 : -1;
-          if (cm >= 0) teamMonthly[cm].cost += c.total ?? 0;
+          if (cm >= 0) teamMonthly[cm].cost += c.supplyPrice ?? 0;
         }
       }
       for (const m of teamMonthly) {

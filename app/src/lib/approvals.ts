@@ -1,3 +1,5 @@
+import { fetchJson } from "@/lib/fetch-json";
+
 export type ConfirmStatus = "대기" | "확인완료" | "반려";
 export type PaymentStatus = "대기" | "승인" | "반려";
 
@@ -10,8 +12,8 @@ const APPROVALS_TTL = 30_000;
 function fetchAllApprovals(): Promise<ApprovalsAll> {
   if (_cache && Date.now() - _cache.ts < APPROVALS_TTL) return Promise.resolve(_cache.data);
   if (_pending) return _pending;
-  _pending = fetch("/api/approvals-init")
-    .then(r => r.json())
+  // 실패를 빈 목록으로 삼키지 않는다 — 500이 "요청 없음"으로 둔갑하면 안 되므로 그대로 throw
+  _pending = fetchJson<{ confirms?: unknown[]; payments?: unknown[] }>("/api/approvals-init")
     .then((d) => {
       const data: ApprovalsAll = { confirms: (d.confirms ?? []) as ConfirmRequest[], payments: (d.payments ?? []) as PaymentRequest[] };
       _cache = { data, ts: Date.now() };
@@ -25,7 +27,7 @@ function fetchAllApprovals(): Promise<ApprovalsAll> {
 export function invalidateApprovalsCache() { _cache = null; _pending = null; }
 
 // Next.js Link hover가 번들을 prefetch할 때 데이터도 선행 로드
-if (typeof window !== "undefined") fetchAllApprovals();
+if (typeof window !== "undefined") fetchAllApprovals().catch(() => {});
 
 export interface ConfirmRequest {
   id: string;
@@ -92,9 +94,8 @@ export async function getConfirmRequests(projectId?: string): Promise<ConfirmReq
     const data = await fetchAllApprovals();
     return data.confirms;
   }
-  const res = await fetch(`/api/approvals/confirm?projectId=${encodeURIComponent(projectId)}`);
-  const data = await res.json();
-  return (data.items ?? []) as ConfirmRequest[];
+  const data = await fetchJson<{ items?: ConfirmRequest[] }>(`/api/approvals/confirm?projectId=${encodeURIComponent(projectId)}`);
+  return data.items ?? [];
 }
 
 export async function addConfirmRequest(
@@ -135,9 +136,8 @@ export async function getPaymentRequests(projectId?: string): Promise<PaymentReq
     const data = await fetchAllApprovals();
     return data.payments;
   }
-  const res = await fetch(`/api/approvals/payment?projectId=${encodeURIComponent(projectId)}`);
-  const data = await res.json();
-  return (data.items ?? []) as PaymentRequest[];
+  const data = await fetchJson<{ items?: PaymentRequest[] }>(`/api/approvals/payment?projectId=${encodeURIComponent(projectId)}`);
+  return data.items ?? [];
 }
 
 export async function addPaymentRequest(

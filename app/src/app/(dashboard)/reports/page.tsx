@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { fetchJson } from "@/lib/fetch-json";
 
 interface Client {
   id: string;
@@ -76,13 +77,16 @@ function HistoryPanel({ tracker, onClose }: { tracker: Tracker; onClose: () => v
   const platform = tracker.platform ?? "shopping";
   const [rankings, setRankings] = useState<Ranking[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
-    fetch(`/api/reports/trackers/${tracker.id}`)
-      .then((r) => r.json())
+    setError(null);
+    fetchJson<{ rankings?: Ranking[] }>(`/api/reports/trackers/${tracker.id}`)
       .then((d) => setRankings(d.rankings ?? []))
+      // 실패를 "조회 기록 없음"으로 보여주면 안 된다
+      .catch((e: Error) => { setError(e.message); setRankings([]); })
       .finally(() => setLoading(false));
   }, [tracker.id]);
 
@@ -141,7 +145,8 @@ function HistoryPanel({ tracker, onClose }: { tracker: Tracker; onClose: () => v
           </div>
         </div>
 
-        {/* 최신 순위 */}
+        {/* 최신 순위 (조회 실패 시에는 숨긴다 — 빈 순위가 실제 값으로 오인되면 안 된다) */}
+        {!error && (
         <div className="flex items-center gap-4 p-4 rounded-xl" style={{ background: "#F8FAFC" }}>
           <div>
             <p className="text-xs mb-1" style={{ color: "#94A3B8" }}>현재 순위</p>
@@ -164,10 +169,17 @@ function HistoryPanel({ tracker, onClose }: { tracker: Tracker; onClose: () => v
             </div>
           )}
         </div>
+        )}
 
         {/* 차트 */}
         {loading ? (
           <div className="h-40 flex items-center justify-center text-sm" style={{ color: "#94A3B8" }}>불러오는 중...</div>
+        ) : error ? (
+          <div className="h-40 flex flex-col items-center justify-center gap-2">
+            <p className="text-sm font-semibold" style={{ color: "#EF4444" }}>{error}</p>
+            <p className="text-xs" style={{ color: "#94A3B8" }}>순위 기록을 표시할 수 없습니다. 데이터가 없는 것으로 잘못 보이지 않도록 표시를 중단했습니다.</p>
+            <button onClick={load} className="px-4 py-1.5 text-sm font-semibold rounded-lg" style={{ background: "#3182F6", color: "#fff" }}>다시 시도</button>
+          </div>
         ) : chartData.length > 1 ? (
           <div>
             <p className="text-xs font-semibold mb-3" style={{ color: "#64748B" }}>순위 추이</p>
@@ -374,18 +386,18 @@ let _clientsPending: Promise<Client[]> | null = null;
 
 function fetchReportClients(): Promise<Client[]> {
   if (_clientsPending) return _clientsPending;
-  _clientsPending = fetch("/api/notes-init")
-    .then((r) => r.json())
+  _clientsPending = fetchJson<{ clients?: Client[] }>("/api/notes-init")
     .then((d) => {
       const data: Client[] = (d.clients ?? []).map((c: { id: string; companyName: string; status: string }) => c);
       _clientsCache = { data, ts: Date.now() };
       _clientsPending = null;
       return data;
     })
-    .catch(() => { _clientsPending = null; return []; });
+    // 실패를 빈 목록으로 바꾸지 않는다 — "고객사 없음"으로 오인되면 안 되므로 그대로 throw
+    .catch((e) => { _clientsPending = null; throw e; });
   return _clientsPending;
 }
-fetchReportClients();
+fetchReportClients().catch(() => {});
 
 function ReportsInner() {
   const searchParams = useSearchParams();
@@ -395,22 +407,34 @@ function ReportsInner() {
   const [clients, setClients] = useState<Client[]>(_clientsCache?.data ?? []);
   const [trackers, setTrackers] = useState<Tracker[]>([]);
   const [loadingClients, setLoadingClients] = useState(!_clientsCache);
+  const [clientsError, setClientsError] = useState<string | null>(null);
   const [loadingTrackers, setLoadingTrackers] = useState(false);
+  const [trackersError, setTrackersError] = useState<string | null>(null);
   const [checkingAll, setCheckingAll] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [historyTracker, setHistoryTracker] = useState<Tracker | null>(null);
 
-  useEffect(() => {
-    if (_clientsCache) { setClients(_clientsCache.data); setLoadingClients(false); return; }
-    fetchReportClients().then((data) => setClients(data)).finally(() => setLoadingClients(false));
+  const loadClients = useCallback(() => {
+    if (_clientsCache) { setClients(_clientsCache.data); setClientsError(null); setLoadingClients(false); return; }
+    setLoadingClients(true);
+    setClientsError(null);
+    fetchReportClients().then((data) => setClients(data))
+      // 실패 시 고객사 목록을 비운 채 오류를 노출한다
+      .catch((e: Error) => { setClientsError(e.message); setClients([]); })
+      .finally(() => setLoadingClients(false));
   }, []);
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { loadClients(); }, [loadClients]);
 
   const loadTrackers = useCallback(() => {
     if (!selectedClientId) { setTrackers([]); return; }
     setLoadingTrackers(true);
-    fetch(`/api/reports/trackers?clientId=${selectedClientId}`)
-      .then((r) => r.json())
+    setTrackersError(null);
+    fetchJson<{ trackers?: Tracker[] }>(`/api/reports/trackers?clientId=${selectedClientId}`)
       .then((d) => setTrackers(d.trackers ?? []))
+      // 실패를 "추적 키워드 없음"으로 보여주면 안 된다
+      .catch((e: Error) => { setTrackersError(e.message); setTrackers([]); })
       .finally(() => setLoadingTrackers(false));
   }, [selectedClientId]);
 
@@ -451,6 +475,12 @@ function ReportsInner() {
           </div>
           {loadingClients ? (
             <div className="py-8 text-center text-xs" style={{ color: "#94A3B8" }}>로딩 중...</div>
+          ) : clientsError ? (
+            <div className="py-8 px-4 flex flex-col items-center gap-2 text-center">
+              <p className="text-xs font-semibold" style={{ color: "#EF4444" }}>{clientsError}</p>
+              <p className="text-xs" style={{ color: "#94A3B8" }}>데이터가 없는 것으로 잘못 보이지 않도록 표시를 중단했습니다.</p>
+              <button onClick={loadClients} className="px-3 py-1 text-xs font-semibold rounded-lg" style={{ background: "#3182F6", color: "#fff" }}>다시 시도</button>
+            </div>
           ) : (
             <div>
               {clients.filter(c => c.status !== "종료").map((c) => {
@@ -518,6 +548,12 @@ function ReportsInner() {
             <div className="rounded-2xl overflow-hidden" style={{ background: "#FFFFFF", border: "1px solid #E9EBEF" }}>
               {loadingTrackers ? (
                 <div className="py-16 text-center text-sm" style={{ color: "#94A3B8" }}>불러오는 중...</div>
+              ) : trackersError ? (
+                <div className="py-16 flex flex-col items-center gap-3">
+                  <p className="text-sm font-semibold" style={{ color: "#EF4444" }}>{trackersError}</p>
+                  <p className="text-xs" style={{ color: "#94A3B8" }}>데이터가 없는 것으로 잘못 보이지 않도록 표시를 중단했습니다.</p>
+                  <button onClick={loadTrackers} className="px-4 py-1.5 text-sm font-semibold rounded-lg" style={{ background: "#3182F6", color: "#fff" }}>다시 시도</button>
+                </div>
               ) : trackers.length === 0 ? (
                 <div className="py-16 text-center">
                   <p className="text-sm mb-2" style={{ color: "#94A3B8" }}>추적 중인 키워드가 없습니다.</p>

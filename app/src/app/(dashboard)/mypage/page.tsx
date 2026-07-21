@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useUser } from "@/lib/UserContext";
+import { fetchJson } from "@/lib/fetch-json";
 
 type Priority = "low" | "medium" | "high";
 
@@ -34,6 +35,7 @@ export default function MyPage() {
   // To Do List
   const [todos,    setTodos]    = useState<Todo[]>([]);
   const [loading,  setLoading]  = useState(true);
+  const [error,    setError]    = useState<string | null>(null);
   const [input,    setInput]    = useState("");
   const [priority, setPriority] = useState<Priority>("medium");
   const [dueDate,  setDueDate]  = useState("");
@@ -43,12 +45,18 @@ export default function MyPage() {
   const [editText, setEditText] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    fetch("/api/todos")
-      .then((r) => r.json())
+  const loadTodos = useCallback(() => {
+    setLoading(true);
+    setError(null);
+    fetchJson<{ todos?: Todo[] }>("/api/todos")
       .then((d) => setTodos(d.todos ?? []))
+      // 실패를 "할 일 없음"으로 보여주면 안 된다
+      .catch((e: Error) => { setError(e.message); setTodos([]); })
       .finally(() => setLoading(false));
   }, []);
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { loadTodos(); }, [loadTodos]);
 
   async function handlePwSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -320,6 +328,12 @@ export default function MyPage() {
         <div className="divide-y" style={{ borderColor: "#F1F5F9" }}>
           {loading ? (
             <div className="py-12 text-center text-sm" style={{ color: "#94A3B8" }}>불러오는 중...</div>
+          ) : error ? (
+            <div className="py-12 flex flex-col items-center gap-3">
+              <p className="text-sm font-semibold" style={{ color: "#EF4444" }}>{error}</p>
+              <p className="text-xs" style={{ color: "#94A3B8" }}>데이터가 없는 것으로 잘못 보이지 않도록 표시를 중단했습니다.</p>
+              <button onClick={loadTodos} className="px-4 py-1.5 text-sm font-semibold rounded-lg" style={{ background: "#3182F6", color: "#fff" }}>다시 시도</button>
+            </div>
           ) : filtered.length === 0 ? (
             <div className="py-12 text-center">
               <svg className="mx-auto mb-2" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#D1D5DB" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">

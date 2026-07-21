@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { fetchJson } from "@/lib/fetch-json";
 import * as XLSX from "xlsx";
 import {
   BarChart, Bar, LineChart, Line, ComposedChart,
@@ -40,7 +41,9 @@ function MeetingSection({ year, month }: { year: number; month: number }) {
   useEffect(() => {
     if (!year || !month) return;
     fetch(`/api/report-meetings?year=${year}&month=${month}`)
-      .then(r => r.json()).then(d => setNotes(d.notes ?? []));
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(String(r.status))))
+      .then(d => setNotes(d.notes ?? []))
+      .catch(() => setNotes([]));
   }, [year, month]);
 
   // 달력 주차 계산 (달마다 5~6주)
@@ -396,14 +399,19 @@ export default function ProjectReportPage() {
   const [tab,    setTab]    = useState<AnalysisTab>("overview");
   const [data,   setData]   = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<"revenue"|"margin"|"marginRate">("revenue");
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
+    setError(null);
     const p = new URLSearchParams({ year: String(year), month: String(month), criteria, ...(team !== "전체" ? { team } : {}) });
-    fetch(`/api/projects/monthly-report?${p}`)
-      .then(r => r.json()).then(setData).finally(() => setLoading(false));
+    fetchJson<ReportData>(`/api/projects/monthly-report?${p}`)
+      .then(setData)
+      // 실패 시 매출·매입·마진이 0원으로 보이면 안 된다 — 오류를 그대로 노출한다
+      .catch((e: Error) => { setError(e.message); setData(null); })
+      .finally(() => setLoading(false));
   }, [year, month, team, criteria]);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -417,7 +425,7 @@ export default function ProjectReportPage() {
     const py = month === 1 ? year - 1 : year;
     const pm = month === 1 ? 12 : month - 1;
     const p = new URLSearchParams({ year: String(py), month: String(pm), criteria, ...(team !== "전체" ? { team } : {}) });
-    fetch(`/api/projects/monthly-report?${p}`).then(r => r.json()).then(setPrevData);
+    fetchJson<ReportData>(`/api/projects/monthly-report?${p}`).then(setPrevData).catch(() => setPrevData(null));
   }, [year, month, team, criteria]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
@@ -466,6 +474,16 @@ export default function ProjectReportPage() {
     { key: "person",   label: "담당자별" },
     { key: "project",  label: "프로젝트별" },
   ];
+
+  if (error) {
+    return (
+      <div className="py-40 flex flex-col items-center gap-3">
+        <p className="text-sm font-semibold" style={{ color: "#EF4444" }}>{error}</p>
+        <p className="text-xs" style={{ color: "#94A3B8" }}>리포트 데이터를 표시할 수 없습니다. 금액이 0으로 잘못 보이지 않도록 표시를 중단했습니다.</p>
+        <button onClick={load} className="px-4 py-1.5 text-sm font-semibold rounded-lg" style={{ background: "#3182F6", color: "#fff" }}>다시 시도</button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">

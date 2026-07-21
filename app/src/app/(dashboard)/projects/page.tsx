@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, Suspense } from "react";
+import { fetchJson } from "@/lib/fetch-json";
 import { useRouter, useSearchParams } from "next/navigation";
 import ProjectModal, { ProjectFormData, preloadModalInit, prefetchProject, invalidateProjectCache } from "@/components/projects/ProjectModal";
 import ClientModal, { ClientFormData } from "@/components/clients/ClientModal";
@@ -887,17 +888,25 @@ let _groupsCache: { data: GroupsData; ts: number } | null = null;
 let _groupsPending: Promise<GroupsData> | null = null;
 const GROUPS_TTL = 30_000;
 
+/**
+ * 실패를 절대 "데이터 없음"으로 바꾸지 않는다.
+ * 예전에는 응답 status를 보지 않고 .json()을 그대로 파싱해서, 500 응답 본문({error:...})이
+ * groups 없음 → 빈 배열이 되고 그게 30초간 캐시돼 "이 팀에 프로젝트가 없습니다"로 표시됐다.
+ * 이제 실패하면 캐시를 남기지 않고 그대로 throw 해서 호출부가 오류로 처리하게 한다.
+ */
 function fetchGroups(): Promise<GroupsData> {
   if (_groupsPending) return _groupsPending;
   _groupsPending = fetch("/api/projects-page")
-    .then((r) => r.json())
-    .then((d) => {
-      const data: GroupsData = { groups: d.groups ?? [], workIncompleteCount: d.workIncompleteCount ?? 0 };
+    .then(async (r) => {
+      if (!r.ok) throw new Error(`프로젝트 목록을 불러오지 못했습니다 (HTTP ${r.status})`);
+      const d = await r.json();
+      if (!Array.isArray(d?.groups)) throw new Error("프로젝트 목록 응답 형식이 올바르지 않습니다");
+      const data: GroupsData = { groups: d.groups, workIncompleteCount: d.workIncompleteCount ?? 0 };
       _groupsCache = { data, ts: Date.now() };
       _groupsPending = null;
       return data;
     })
-    .catch(() => { _groupsPending = null; return { groups: [], workIncompleteCount: 0 }; });
+    .catch((e) => { _groupsPending = null; throw e; });
   return _groupsPending;
 }
 
@@ -907,8 +916,12 @@ let _allCampaignsPending: Promise<void> | null = null;
 function fetchAllCampaigns(): Promise<void> {
   if (_allCampaignsPending) return _allCampaignsPending;
   _allCampaignsPending = fetch("/api/projects-page/campaigns")
-    .then((r) => r.json())
-    .then((d: { campaignsByGroup?: Record<string, Campaign[]> }) => {
+    .then(async (r) => {
+      // 실패 응답을 빈 캠페인 목록으로 캐시하지 않는다 (그룹을 펼쳤을 때 "캠페인 없음"으로 보이는 문제)
+      if (!r.ok) throw new Error(`캠페인 목록을 불러오지 못했습니다 (HTTP ${r.status})`);
+      return r.json() as Promise<{ campaignsByGroup?: Record<string, Campaign[]> }>;
+    })
+    .then((d) => {
       const byGroup = d.campaignsByGroup ?? {};
       const now = Date.now();
       for (const [groupId, campaigns] of Object.entries(byGroup)) {
@@ -921,9 +934,13 @@ function fetchAllCampaigns(): Promise<void> {
   return _allCampaignsPending;
 }
 
-// 모듈 로드 즉시 그룹·캠페인 병렬 선행 fetch
-fetchGroups();
-fetchAllCampaigns();
+// 모듈 로드 즉시 그룹·캠페인 병렬 선행 fetch — 브라우저에서만.
+// 서버 렌더 중에도 실행되면 상대 URL fetch가 반드시 실패하고, 그 실패가 서버/클라이언트
+// 렌더 결과를 갈라놓아 하이드레이션이 깨진다.
+if (typeof window !== "undefined") {
+  fetchGroups().catch(() => {});
+  fetchAllCampaigns().catch(() => {});
+}
 
 const _statsCacheMap = new Map<string, { data: RevenueStats; ts: number }>();
 const STATS_TTL = 60_000;
@@ -973,8 +990,14 @@ function ProjectsInner() {
   const teamParamRef = useRef(teamParam);
   teamParamRef.current = teamParam;
 
-  const [groups,       setGroups]       = useState<ProjectGroup[]>(_groupsCache?.data.groups ?? []);
-  const [loading,      setLoading]      = useState(!_groupsCache);
+  // 모듈 레벨 캐시(_groupsCache)를 useState 초기값으로 읽으면 안 된다.
+  // 서버 렌더 시점에는 항상 비어 있고(모듈 선행 fetch는 상대 URL이라 서버에서 실패),
+  // 클라이언트는 하이드레이션 전에 선행 fetch가 끝나 있으면 값이 차 있어 텍스트가 어긋난다
+  // ("프로젝트 0개" vs "36개"). 그러면 React가 SSR 트리를 버리고 다시 그리다가 로딩 상태에 갇힌다.
+  // 초기값은 항상 비워 두고, 캐시는 마운트 직후 load()가 동기적으로 채운다.
+  const [groups,       setGroups]       = useState<ProjectGroup[]>([]);
+  const [loading,      setLoading]      = useState(true);
+  const [loadError,    setLoadError]    = useState<string | null>(null);
   const [modal,        setModal]        = useState<"create" | null>(null);
   const [editing,      setEditing]      = useState<ProjectGroup | null>(null);
   const [search,       setSearch]       = useState("");
@@ -1044,8 +1067,7 @@ function ProjectsInner() {
   function loadWorkCheck() {
     setWorkLoading(true);
     const url = teamParam ? `/api/work-check?team=${encodeURIComponent(teamParam)}` : "/api/work-check";
-    fetch(url, { cache: "no-store" })
-      .then((r) => r.json())
+    fetchJson<{ rows?: WorkCheckRow[] }>(url, { cache: "no-store" })
       .then((d) => {
         const rows: WorkCheckRow[] = d.rows ?? [];
         setWorkRows(rows);
@@ -1083,8 +1105,8 @@ function ProjectsInner() {
       window.dispatchEvent(new Event("work-badge-refresh"));
       // 서버 데이터로 조용히 재동기화 (낙관적 업데이트 오류를 최종 교정)
       const refreshUrl = teamParam ? `/api/work-check?team=${encodeURIComponent(teamParam)}` : "/api/work-check";
-      fetch(refreshUrl, { cache: "no-store" })
-        .then((r) => r.json())
+      // 재동기화 실패 시 기존 표시를 0건으로 덮어쓰지 않는다
+      fetchJson<{ rows?: WorkCheckRow[] }>(refreshUrl, { cache: "no-store" })
         .then((d) => {
           const rows: WorkCheckRow[] = d.rows ?? [];
           setWorkRows(rows);
@@ -1112,8 +1134,9 @@ function ProjectsInner() {
     }
     if (invalidate) { _groupsCache = null; _allCampaignsPending = null; }
     setLoading(true);
+    setLoadError(null);
     // 그룹·캠페인 병렬 fetch — 캐시 무효화 후에도 동시에 재로드
-    fetchAllCampaigns();
+    fetchAllCampaigns().catch(() => {});
     fetchGroups()
       .then(({ groups, workIncompleteCount }) => {
         setGroups(groups);
@@ -1123,7 +1146,10 @@ function ProjectsInner() {
           return n;
         });
         if (!teamParamRef.current) setWorkIncomplete(workIncompleteCount);
+        setLoadError(null);
       })
+      // 실패 시 목록을 비우지 않는다 — "프로젝트가 없습니다"로 오인되면 안 되므로 오류를 그대로 노출한다
+      .catch((e: Error) => setLoadError(e.message || "프로젝트 목록을 불러오지 못했습니다"))
       .finally(() => setLoading(false));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1134,8 +1160,8 @@ function ProjectsInner() {
     const cached = _statsCacheMap.get(cacheKey);
     if (cached && Date.now() - cached.ts < STATS_TTL) { setRevenueStats(cached.data); return; }
     const url = `/api/stats/revenue?year=${new Date().getFullYear()}&criteria=${encodeURIComponent(statsCriteria)}${teamParam ? `&team=${encodeURIComponent(teamParam)}` : ""}`;
-    fetch(url)
-      .then((r) => r.json())
+    // 실패 응답을 KPI 캐시에 담으면 매출이 0원으로 굳는다 — 캐시도 상태도 건드리지 않는다
+    fetchJson<RevenueStats>(url)
       .then((d) => { _statsCacheMap.set(cacheKey, { data: d, ts: Date.now() }); setRevenueStats(d); })
       .catch(() => {});
   }, [statsCriteria, teamParam]);
@@ -1193,8 +1219,7 @@ function ProjectsInner() {
     setWorkIncomplete(0);
     // 팀별 미완료 배지 카운트를 즉시 로드 (전체 캐시의 글로벌 카운트 대신 팀별 정확한 값 사용)
     if (teamParam) {
-      fetch(`/api/work-check?team=${encodeURIComponent(teamParam)}`)
-        .then((r) => r.json())
+      fetchJson<{ rows?: WorkCheckRow[] }>(`/api/work-check?team=${encodeURIComponent(teamParam)}`)
         .then((d) => {
           const rows: WorkCheckRow[] = d.rows ?? [];
           setWorkIncomplete(rows.filter((r) => !r.workCompleted).length);
@@ -1207,8 +1232,8 @@ function ProjectsInner() {
   // ?open=projectId → 해당 캠페인 모달 자동 오픈
   useEffect(() => {
     if (!openParam) return;
-    fetch(`/api/projects/${openParam}`)
-      .then((r) => r.json())
+    // 실패 시 빈 모달이 열리면 저장할 때 기존 데이터가 지워질 수 있다 — 열지 않는다
+    fetchJson<{ project?: any }>(`/api/projects/${openParam}`)   // eslint-disable-line @typescript-eslint/no-explicit-any
       .then(({ project }) => {
         if (!project) return;
         setEditCampaign({
@@ -1338,7 +1363,15 @@ function ProjectsInner() {
 
   // 광고주 상세 보기
   async function handleViewClient(clientId: string) {
-    const { client } = await fetch(`/api/clients/${clientId}`).then((r) => r.json());
+    // 실패 시 빈 광고주 모달이 열려 저장하면 기존 정보가 지워진다 — 알리고 중단한다
+    let client;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ({ client } = await fetchJson<{ client?: any }>(`/api/clients/${clientId}`));
+    } catch (e) {
+      alert((e as Error).message);
+      return;
+    }
     if (!client) return;
     setViewClient({
       id: client.id, status: client.status,
@@ -1939,7 +1972,19 @@ function ProjectsInner() {
 
         {/* 테이블 */}
         {loading && <div className="py-16 text-center text-sm" style={{ color: "#94A3B8" }}>데이터를 불러오는 중...</div>}
-        {!loading && (
+        {/* 불러오기 실패는 빈 목록이 아니라 오류로 보여준다 — "프로젝트 없음"으로 오인되면 안 된다 */}
+        {!loading && loadError && (
+          <div className="py-16 flex flex-col items-center gap-3">
+            <p className="text-sm font-semibold" style={{ color: "#EF4444" }}>{loadError}</p>
+            <p className="text-xs" style={{ color: "#94A3B8" }}>데이터를 표시할 수 없습니다. 잠시 후 다시 시도해주세요.</p>
+            <button onClick={() => load(true)}
+              className="px-4 py-1.5 text-sm font-semibold rounded-lg"
+              style={{ background: "#3182F6", color: "#fff" }}>
+              다시 시도
+            </button>
+          </div>
+        )}
+        {!loading && !loadError && (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>

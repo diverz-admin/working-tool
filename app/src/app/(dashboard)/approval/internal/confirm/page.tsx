@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { resolveFileSrc, useFileSrc, isImageValue } from "@/lib/storage";
+import { fetchJson } from "@/lib/fetch-json";
 
 type Status = "대기" | "승인" | "반려";
 
@@ -249,12 +250,21 @@ export default function InternalConfirmPage() {
   const [filterStatus, setStatus] = useState<Status | "전체">("대기");
   const [selected, setSelected]   = useState<ExpenseItem | null>(null);
   const [loading, setLoading]     = useState(true);
+  const [error, setError]         = useState<string | null>(null);
 
   async function loadItems() {
     setLoading(true);
-    const res = await fetch("/api/approvals/expense").then((r) => r.json()).catch(() => ({ items: [] }));
-    setItems(res.items ?? []);
-    setLoading(false);
+    setError(null);
+    try {
+      const res = await fetchJson<{ items?: ExpenseItem[] }>("/api/approvals/expense");
+      setItems(res.items ?? []);
+    } catch (e) {
+      // 실패를 빈 목록으로 렌더하지 않는다 — "요청 없음"으로 오인되면 안 되므로 오류를 표시
+      setError((e as Error).message);
+      setItems([]);
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => { loadItems(); }, []);
@@ -273,8 +283,11 @@ export default function InternalConfirmPage() {
       method:  "PATCH",
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({ status, rejectReason: rejectReason ?? null }),
-    }).then((r) => r.json());
-    setItems((p) => p.map((i) => i.id === id ? res.item : i));
+    });
+    // 실패 시 undefined 로 항목을 덮어쓰지 않는다
+    if (!res.ok) { alert("처리에 실패했습니다. 다시 시도해주세요."); return; }
+    const { item } = await res.json();
+    setItems((p) => p.map((i) => i.id === id ? item : i));
     setSelected(null);
   }
 
@@ -331,6 +344,12 @@ export default function InternalConfirmPage() {
           <tbody>
             {loading ? (
               <tr><td colSpan={7} className="py-16 text-center text-sm" style={{ color: "#94A3B8" }}>불러오는 중...</td></tr>
+            ) : error ? (
+              <tr><td colSpan={7} className="py-16 text-center">
+                <p className="text-sm font-semibold" style={{ color: "#EF4444" }}>{error}</p>
+                <p className="text-xs mt-1" style={{ color: "#94A3B8" }}>목록을 표시할 수 없습니다. 데이터가 없는 것으로 잘못 보이지 않도록 표시를 중단했습니다.</p>
+                <button onClick={() => loadItems()} className="mt-3 px-4 py-1.5 text-sm font-semibold rounded-lg" style={{ background: "#3182F6", color: "#fff" }}>다시 시도</button>
+              </td></tr>
             ) : filtered.length === 0 ? (
               <tr><td colSpan={7} className="py-16 text-center text-sm" style={{ color: "#94A3B8" }}>
                 {filterStatus === "대기" ? "검토 대기 중인 요청이 없습니다." : "요청 내역이 없습니다."}

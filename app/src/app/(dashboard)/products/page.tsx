@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { fetchJson } from "@/lib/fetch-json";
 
 /* ── 타입 ── */
 interface Product {
@@ -154,23 +155,28 @@ const CACHE_TTL = 60_000;
 function fetchProducts(): Promise<ProductsCache> {
   if (_pending) return _pending;
   _pending = Promise.all([
-    fetch("/api/products").then(r => r.json()),
-    fetch("/api/product-sections").then(r => r.json()),
+    fetchJson<{ products?: Product[] }>("/api/products"),
+    fetchJson<{ sections?: Section[] }>("/api/product-sections"),
   ]).then(([pd, sd]) => {
     const data = { products: pd.products ?? [], sections: sd.sections ?? [] };
     _cache = { data, ts: Date.now() };
     _pending = null;
     return data;
-  }).catch(() => { _pending = null; return { products: [], sections: [] }; });
+  })
+  // 실패를 빈 목록으로 바꾸지 않는다 — "상품 없음"으로 오인되면 안 되므로 그대로 throw
+  .catch((e) => { _pending = null; throw e; });
   return _pending;
 }
-fetchProducts();
+// 선행 fetch는 브라우저에서만 (서버 렌더 중 상대 URL fetch는 반드시 실패해 하이드레이션을 깨뜨린다)
+if (typeof window !== "undefined") fetchProducts().catch(() => {});
 
 /* ── 메인 ── */
 export default function ProductsPage() {
-  const [all,        setAll]        = useState<Product[]>(_cache?.data.products ?? []);
-  const [sections,   setSections]   = useState<Section[]>(_cache?.data.sections ?? []);
-  const [loading,    setLoading]    = useState(!_cache);
+  // 모듈 캐시를 useState 초기값으로 읽지 않는다 (하이드레이션 불일치 방지) — load()가 마운트 직후 채운다
+  const [all,        setAll]        = useState<Product[]>([]);
+  const [sections,   setSections]   = useState<Section[]>([]);
+  const [loading,    setLoading]    = useState(true);
+  const [error,      setError]      = useState<string|null>(null);
   const [editId,     setEditId]     = useState<string|null>(null);
   const [editForm,   setEditForm]   = useState<RowForm>(emptyForm());
   const [addCat,     setAddCat]     = useState<string|null>(null);
@@ -187,7 +193,9 @@ export default function ProductsPage() {
     }
     if (invalidate) _cache = null;
     setLoading(true);
+    setError(null);
     fetchProducts().then(({ products, sections }) => { setAll(products); setSections(sections); })
+      .catch((e: Error) => { setError(e.message); setAll([]); setSections([]); })
       .finally(() => setLoading(false));
   }, []);
 
@@ -257,6 +265,12 @@ export default function ProductsPage() {
 
       {loading ? (
         <div className="py-24 text-center text-sm" style={{color:"#B0B8C1"}}>불러오는 중...</div>
+      ) : error ? (
+        <div className="py-24 flex flex-col items-center gap-3">
+          <p className="text-sm font-semibold" style={{ color: "#EF4444" }}>{error}</p>
+          <p className="text-xs" style={{ color: "#94A3B8" }}>상품 목록을 표시할 수 없습니다. &quot;상품 없음&quot;으로 잘못 보이지 않도록 표시를 중단했습니다.</p>
+          <button onClick={() => load(true)} className="px-4 py-1.5 text-sm font-semibold rounded-lg" style={{ background: "#3182F6", color: "#fff" }}>다시 시도</button>
+        </div>
       ) : (
         <>
           {/* 빈 상태 */}

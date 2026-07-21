@@ -2,6 +2,7 @@
 /* eslint-disable react-hooks/static-components */
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { fetchJson } from "@/lib/fetch-json";
 
 const MONTHS = ["1월","2월","3월","4월","5월","6월","7월","8월","9월","10월","11월","12월"];
 
@@ -79,6 +80,7 @@ export default function AnnualProfitPage() {
   const [revenue,  setRevenue]  = useState<RevenueData|null>(null);
   const [costs,    setCosts]    = useState<CostMap>({});
   const [loading,  setLoading]  = useState(true);
+  const [error,    setError]    = useState<string|null>(null);
 
   const [editKey,   setEditKey]   = useState<string|null>(null);
   const [editValue, setEditValue] = useState("");
@@ -89,8 +91,8 @@ export default function AnnualProfitPage() {
   // 매출: 캠페인 시작 날짜 기준 / 매입: 계산서 발행 날짜 기준
   const load = useCallback(() => {
     setLoading(true);
-    fetch(`/api/operations/annual?year=${year}&criteria=${encodeURIComponent(criteria)}`)
-      .then(r => r.json())
+    setError(null);
+    fetchJson<{ teams?: RevenueData["teams"]; other?: number[]; costs?: { item: string; category: string; month: number; amount: number }[] }>(`/api/operations/annual?year=${year}&criteria=${encodeURIComponent(criteria)}`)
       .then(({ teams, other, costs: costArr }) => {
         setRevenue({ teams: teams ?? [], other: other ?? new Array(12).fill(0) });
         const map: CostMap = {};
@@ -99,6 +101,8 @@ export default function AnnualProfitPage() {
         }
         setCosts(map);
       })
+      // 실패 시 0원으로 보여주면 안 된다 — 오류를 그대로 노출한다
+      .catch((e: Error) => { setError(e.message); setRevenue(null); setCosts({}); })
       .finally(() => setLoading(false));
   }, [year, criteria]);
 
@@ -201,7 +205,8 @@ export default function AnnualProfitPage() {
         {TEAMS.map(t=>{
           const isActive = team===t;
           const color = TEAM_COLORS[t];
-          const rev = t!=="전체" && !loading ? teamAnnualRev(t) : null;
+          // 오류 시에는 뱃지 금액도 숨긴다 — ₩0만이 실제 값으로 오인되면 안 된다
+          const rev = t!=="전체" && !loading && !error ? teamAnnualRev(t) : null;
           return (
             <button key={t} onClick={()=>setTeam(t)}
               className="flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-semibold transition-all"
@@ -221,6 +226,12 @@ export default function AnnualProfitPage() {
 
       {loading ? (
         <div className="py-24 text-center text-sm" style={{ color:"#CBD5E1" }}>불러오는 중...</div>
+      ) : error ? (
+        <div className="py-24 flex flex-col items-center gap-3">
+          <p className="text-sm font-semibold" style={{ color: "#EF4444" }}>{error}</p>
+          <p className="text-xs" style={{ color: "#94A3B8" }}>손익 데이터를 표시할 수 없습니다. 금액이 0으로 잘못 보이지 않도록 표시를 중단했습니다.</p>
+          <button onClick={load} className="px-4 py-1.5 text-sm font-semibold rounded-lg" style={{ background: "#3182F6", color: "#fff" }}>다시 시도</button>
+        </div>
       ) : (
         <>
           {/* ── KPI 카드 ── */}
