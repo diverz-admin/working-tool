@@ -116,6 +116,9 @@ export default function ClientModal({ initial, onClose, onSaved, onDelete, onVie
   const [bizRegUploading, setBizRegUploading] = useState(false);
   const backdropRef    = useRef<HTMLDivElement>(null);
   const bizRegInputRef = useRef<HTMLInputElement>(null);
+  const errorRef       = useRef<HTMLParagraphElement>(null);
+  // 상세 로드보다 사용자가 먼저 첨부했다면 서버 값으로 덮어쓰지 않는다
+  const bizRegTouched  = useRef(false);
 
   const bizRegSrc     = useFileSrc(form.bizRegFileUrl);
   const bizRegIsImage = isImageValue(form.bizRegFileUrl, form.bizRegFileName);
@@ -150,7 +153,7 @@ export default function ClientModal({ initial, onClose, onSaved, onDelete, onVie
           );
           setUrls((urlRows ?? []).map((u) => ({ localId: nextId(), label: u.label ?? "", url: u.url ?? "" })));
           setLinkedProjects(projects ?? []);
-          if (client) {
+          if (client && !bizRegTouched.current) {
             setForm((prev) => ({
               ...prev,
               bizRegFileUrl:  client.bizRegFileUrl  ?? null,
@@ -163,6 +166,11 @@ export default function ClientModal({ initial, onClose, onSaved, onDelete, onVie
     }
     return () => { document.body.style.overflow = ""; };
   }, [isEdit, initial?.id]);
+
+  // 폼이 길어 에러 문구가 화면 밖에 있으면 "눌러도 아무 반응 없음"으로 보인다
+  useEffect(() => {
+    if (error) errorRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [error]);
 
   function setField(field: keyof ClientFormData, value: string | string[]) {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -197,6 +205,7 @@ export default function ClientModal({ initial, onClose, onSaved, onDelete, onVie
     try {
       const f = fileOrBlob instanceof File ? fileOrBlob : new File([fileOrBlob], name, { type: fileOrBlob.type });
       const path = await uploadAttachment(f, "clients");
+      bizRegTouched.current = true;
       setForm((prev) => ({ ...prev, bizRegFileUrl: path, bizRegFileName: name }));
     } catch (err) {
       setError(err instanceof Error ? err.message : "첨부 업로드에 실패했습니다.");
@@ -239,6 +248,7 @@ export default function ClientModal({ initial, onClose, onSaved, onDelete, onVie
   }
 
   function clearBizReg() {
+    bizRegTouched.current = true;
     setForm((prev) => ({ ...prev, bizRegFileUrl: null, bizRegFileName: null }));
   }
 
@@ -262,6 +272,8 @@ export default function ClientModal({ initial, onClose, onSaved, onDelete, onVie
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.companyName.trim()) { setError("플레이스/스토어명은 필수입니다."); return; }
+    // 업로드가 끝나기 전에 저장하면 사업자등록증 없이 저장된다
+    if (bizRegUploading) { setError("사업자등록증 업로드가 끝난 뒤 저장해 주세요."); return; }
     // 상세를 못 불러온 상태로 저장하면 계정·URL이 빈 값으로 덮어써진다
     if (detailFailed) { setError("고객사 정보를 불러오지 못해 저장할 수 없습니다. 창을 닫고 다시 열어주세요."); return; }
     if (!validateFields()) return;
@@ -764,7 +776,7 @@ export default function ClientModal({ initial, onClose, onSaved, onDelete, onVie
           )}
 
           {/* 에러 */}
-          {error && <p className="text-xs text-center" style={{ color: "#EF4444" }}>{error}</p>}
+          {error && <p ref={errorRef} className="text-xs text-center" style={{ color: "#EF4444" }}>{error}</p>}
 
           {/* 버튼 */}
           <div className="flex items-center justify-between pt-2">

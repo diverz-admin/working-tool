@@ -30,6 +30,8 @@ export async function POST(req: Request) {
         assignedTeam:   body.assignedTeam || null,
         assignedPerson: body.assignedPerson || null,
         notes:          body.notes || null,
+        bizRegFileUrl:  body.bizRegFileUrl  || null,
+        bizRegFileName: body.bizRegFileName || null,
       })
       .returning();
     return NextResponse.json({ client: row }, { status: 201 });
