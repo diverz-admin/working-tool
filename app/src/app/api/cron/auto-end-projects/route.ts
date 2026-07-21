@@ -10,7 +10,16 @@ export async function GET(req: NextRequest) {
   // 조용히 401 을 내면 크론이 도는데도 아무 일이 안 일어나는 것처럼 보이므로, 원인을 분명히 알린다.
   if (!process.env.CRON_SECRET) {
     console.error("[auto-end-projects] CRON_SECRET 이 설정되지 않아 실행할 수 없습니다");
-    return NextResponse.json({ error: "CRON_SECRET is not configured" }, { status: 500 });
+    return NextResponse.json({
+      error: "CRON_SECRET is not configured",
+      // 진단용(값은 노출하지 않고 존재 여부만) — 원인 확인 후 제거할 것
+      env: {
+        CRON_SECRET:    Boolean(process.env.CRON_SECRET),
+        DATABASE_URL:   Boolean(process.env.DATABASE_URL),
+        SESSION_SECRET: Boolean(process.env.SESSION_SECRET),
+        VERCEL_ENV:     process.env.VERCEL_ENV ?? null,
+      },
+    }, { status: 500 });
   }
   if (req.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
