@@ -320,7 +320,8 @@ function DetailModal({ item, onClose, onDelete, onResubmit }: {
   }
 
   async function handleDelete() {
-    if (!confirm("요청을 취소하시겠습니까?")) return;
+    const msg = item.status === "반려" ? "반려된 요청을 삭제하시겠습니까?" : "요청을 취소하시겠습니까?";
+    if (!confirm(msg)) return;
     setDeleting(true);
     try { await onDelete(item.id); } finally { setDeleting(false); }
   }
@@ -430,15 +431,15 @@ function DetailModal({ item, onClose, onDelete, onResubmit }: {
                 수정 후 재요청
               </button>
             )}
-            {item.status === "대기" && (
-              <button
-                onClick={handleDelete}
-                disabled={deleting}
-                className="flex-1 py-2.5 rounded-xl text-sm font-semibold hover:opacity-80 disabled:opacity-50"
-                style={{ background: "rgba(239,68,68,0.08)", color: "#DC2626" }}>
-                {deleting ? "취소 중..." : "요청 취소"}
-              </button>
-            )}
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="flex-1 py-2.5 rounded-xl text-sm font-semibold hover:opacity-80 disabled:opacity-50"
+              style={{ background: "rgba(239,68,68,0.08)", color: "#DC2626" }}>
+              {item.status === "반려"
+                ? (deleting ? "삭제 중..." : "삭제")
+                : (deleting ? "취소 중..." : "요청 취소")}
+            </button>
           </div>
         )}
       </div>
