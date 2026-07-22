@@ -1195,7 +1195,15 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                           <span className="text-sm font-bold" style={{ color: "#3182F6" }}>₩</span>
                           <input type="text"
                             value={form.contractAmount ? Number(form.contractAmount.replace(/,/g,"")).toLocaleString() : ""}
-                            onChange={(e) => { const raw = e.target.value.replace(/[^0-9]/g,""); setForm(p=>({...p, contractAmount: raw})); }}
+                            /* 총 매출을 직접 입력하면 공급가·부가세를 역산해 채운다 (VAT 10% 포함가 기준).
+                               부가세는 뺄셈으로 구해 공급가+부가세가 입력한 총액과 항상 정확히 일치하게 한다. */
+                            onChange={(e) => {
+                              const raw = e.target.value.replace(/[^0-9]/g,"");
+                              if (raw === "") { setForm(p=>({...p, contractAmount: "", kpiSupply: "", kpiTax: ""})); return; }
+                              const total  = parseInt(raw) || 0;
+                              const supply = Math.round(total / 1.1);
+                              setForm(p=>({...p, contractAmount: raw, kpiSupply: String(supply), kpiTax: String(total - supply)}));
+                            }}
                             placeholder="직접 입력"
                             className="text-sm font-bold outline-none border-b-2 bg-transparent transition-colors focus:border-[#3182F6]"
                             style={{ color: "#3182F6", borderColor: "#E9EBEF", width: 110 }} />
