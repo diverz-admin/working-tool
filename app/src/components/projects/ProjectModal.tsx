@@ -1453,11 +1453,8 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                               </td>
                               <td className="px-1 py-1"><input type="number" value={r.quantity} onChange={(e) => handleRevQuantity(r.localId, e.target.value)} className={inputCls} style={{...inputStyle, width:50}} /></td>
                               <td className="px-1 py-1">
-                                {r.unitPrice > 0 ? (
-                                  <input type="text" value={wonFmt(r.supplyPrice)} readOnly title="상품 등록 개당 단가 × 개수로 자동 계산됩니다. 금액은 개수로 조정하세요." className={inputCls} style={{...inputStyle, width:80, background:"#F1F5F9", color:"#64748B", cursor:"not-allowed"}} />
-                                ) : (
-                                  <input type="text" value={wonFmt(r.supplyPrice)} onChange={(e) => updateRev(r.localId,"supplyPrice",e.target.value)} onBlur={(e) => autoTaxRev(r.localId, e.target.value)} className={inputCls} style={{...inputStyle, width:80}} />
-                                )}
+                                {/* 상품 단가가 있으면 개수 변경 시 자동 계산되지만, 공급가 직접 수정도 항상 허용한다 */}
+                                <input type="text" value={wonFmt(r.supplyPrice)} onChange={(e) => updateRev(r.localId,"supplyPrice",e.target.value)} onBlur={(e) => autoTaxRev(r.localId, e.target.value)} title={r.unitPrice > 0 ? "개수를 바꾸면 상품 등록 개당 단가 × 개수로 자동 계산됩니다. 직접 입력해 덮어쓸 수도 있습니다." : ""} className={inputCls} style={{...inputStyle, width:80}} />
                               </td>
                               <td className="px-1 py-1"><input type="text" value={wonFmt(r.tax)} onChange={(e) => updateRev(r.localId,"tax",e.target.value)} className={inputCls} style={{...inputStyle, width:65}} /></td>
                               <td className="px-1 py-1"><input type="text" value={wonFmt(r.total)} onChange={(e) => updateRev(r.localId,"total",e.target.value)} className={inputCls} style={{...inputStyle, width:80}} /></td>
@@ -1699,11 +1696,8 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                             </td>
                             <td className="px-1 py-1"><input type="number" value={c.quantity} onChange={(e) => handleCostQuantity(c.localId, e.target.value)} disabled={costDeleteBlocked} className={inputCls} style={{...inputStyle, width:50, opacity: costDeleteBlocked ? 0.45 : 1}} /></td>
                             <td className="px-1 py-1">
-                              {c.unitPrice > 0 ? (
-                                <input type="text" value={wonFmt(c.supplyPrice)} readOnly title="상품 등록 개당 단가 × 개수로 자동 계산됩니다. 금액은 개수로 조정하세요." className={inputCls} style={{...inputStyle, width:80, background:"#F1F5F9", color:"#64748B", cursor:"not-allowed", opacity: costDeleteBlocked ? 0.45 : 1}} />
-                              ) : (
-                                <input type="text" value={wonFmt(c.supplyPrice)} onChange={(e) => updateCost(c.localId,"supplyPrice",e.target.value)} onBlur={(e) => autoTaxCost(c.localId, e.target.value)} disabled={costDeleteBlocked} className={inputCls} style={{...inputStyle, width:80, opacity: costDeleteBlocked ? 0.45 : 1}} />
-                              )}
+                              {/* 상품 단가가 있으면 개수 변경 시 자동 계산되지만, 공급가 직접 수정도 항상 허용한다 */}
+                              <input type="text" value={wonFmt(c.supplyPrice)} onChange={(e) => updateCost(c.localId,"supplyPrice",e.target.value)} onBlur={(e) => autoTaxCost(c.localId, e.target.value)} disabled={costDeleteBlocked} title={c.unitPrice > 0 ? "개수를 바꾸면 상품 등록 개당 단가 × 개수로 자동 계산됩니다. 직접 입력해 덮어쓸 수도 있습니다." : ""} className={inputCls} style={{...inputStyle, width:80, opacity: costDeleteBlocked ? 0.45 : 1}} />
                             </td>
                             <td className="px-1 py-1"><input type="text" value={wonFmt(c.tax)} onChange={(e) => updateCost(c.localId,"tax",e.target.value)} disabled={costDeleteBlocked} className={inputCls} style={{...inputStyle, width:65, opacity: costDeleteBlocked ? 0.45 : 1}} /></td>
                             <td className="px-1 py-1"><input type="text" value={wonFmt(c.total)} onChange={(e) => updateCost(c.localId,"total",e.target.value)} disabled={costDeleteBlocked} className={inputCls} style={{...inputStyle, width:80, opacity: costDeleteBlocked ? 0.45 : 1}} /></td>
