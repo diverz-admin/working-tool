@@ -5,6 +5,11 @@ import { eq, asc, and, ne } from "drizzle-orm";
 
 type Params = { params: Promise<{ id: string }> };
 
+/** date 컬럼(YYYY-MM-DD)과 문자열 비교하기 위한 한국 기준 오늘 날짜 */
+function todayKST() {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
+}
+
 export async function GET(_req: Request, { params }: Params) {
   try {
     const { id } = await params;
@@ -49,22 +54,45 @@ export async function PATCH(req: Request, { params }: Params) {
     if (body.originalEndDate  !== undefined) updates.originalEndDate  = body.originalEndDate || null;
     if (body.extensionNotes   !== undefined) updates.extensionNotes   = body.extensionNotes || null;
 
-    const [row] = await db.update(projects).set(updates).where(eq(projects.id, id)).returning();
+    let [row] = await db.update(projects).set(updates).where(eq(projects.id, id)).returning();
     if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-    // 캠페인이 종료로 바뀌었고 프로젝트 그룹에 속한 경우 → 그룹 내 미종료 캠페인 확인
-    if (body.status === "종료" && row.projectGroupId) {
-      const remaining = await db
-        .select({ id: projects.id })
-        .from(projects)
-        .where(and(
-          eq(projects.projectGroupId, row.projectGroupId),
-          ne(projects.status, "종료"),
-        ));
-      if (remaining.length === 0) {
+    // 캠페인 상태는 종료일이 결정한다. 지금까지는 크론(auto-end-projects)이 "종료"로 바꾸기만 하고
+    // 되돌리는 경로가 없어서, 종료된 캠페인의 기간을 연장해도 계속 종료로 남았다.
+    // 저장할 때마다 종료일 기준으로 다시 계산해 연장 → 진행중, 앞당김 → 종료가 모두 반영되게 한다.
+    if (row.endDate) {
+      const derived = row.endDate < todayKST() ? "종료" : "진행";
+      if (derived !== row.status) {
+        [row] = await db.update(projects)
+          .set({ status: derived, updatedAt: new Date() })
+          .where(eq(projects.id, id))
+          .returning();
+      }
+    }
+
+    if (row.projectGroupId) {
+      if (row.status === "종료") {
+        // 그룹 내 캠페인이 모두 종료됐을 때만 그룹도 종료
+        const remaining = await db
+          .select({ id: projects.id })
+          .from(projects)
+          .where(and(
+            eq(projects.projectGroupId, row.projectGroupId),
+            ne(projects.status, "종료"),
+          ));
+        if (remaining.length === 0) {
+          await db.update(projectGroups)
+            .set({ status: "종료", updatedAt: new Date() })
+            .where(eq(projectGroups.id, row.projectGroupId));
+        }
+      } else {
+        // 진행중 캠페인이 하나라도 생기면 종료 처리된 그룹도 다시 열어준다
         await db.update(projectGroups)
-          .set({ status: "종료", updatedAt: new Date() })
-          .where(eq(projectGroups.id, row.projectGroupId));
+          .set({ status: "진행", updatedAt: new Date() })
+          .where(and(
+            eq(projectGroups.id, row.projectGroupId),
+            eq(projectGroups.status, "종료"),
+          ));
       }
     }
 

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { projects, projectGroups } from "@/db/schema";
-import { and, eq, lt, ne, isNotNull, inArray, sql } from "drizzle-orm";
+import { and, eq, lt, gte, ne, isNotNull, inArray, sql } from "drizzle-orm";
 
 export const maxDuration = 60;
 
@@ -17,10 +17,9 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // 날짜 컬럼(date)은 시간대 개념이 없다. toISOString() 을 쓰면 KST 가 UTC 로 당겨져
-    // 실행 시각에 따라 하루가 어긋나므로 로컬 달력 값을 그대로 포맷한다.
-    const now = new Date();
-    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    // 날짜 컬럼(date)은 시간대 개념이 없다. 서버(Vercel)는 UTC 로 도니까 로컬 달력 값을 쓰면
+    // 00~09시 KST 구간에서 하루가 어긋난다. 한국 기준 달력 값을 그대로 포맷한다.
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
 
     const endedProjects = await db
       .update(projects)
@@ -60,12 +59,42 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // 반대 방향도 맞춰준다. 종료 처리는 자동인데 되돌리는 경로가 없어서, 종료된 캠페인의 기간을
+    // 연장해도 계속 "종료" 로 남아 있었다. 종료일이 아직 남은 캠페인은 다시 진행중으로 되돌린다.
+    const reopenedProjects = await db
+      .update(projects)
+      .set({ status: "진행", updatedAt: sql`now()` })
+      .where(
+        and(
+          eq(projects.status, "종료"),
+          isNotNull(projects.endDate),
+          gte(projects.endDate, today)
+        )
+      )
+      .returning({ id: projects.id, campaignName: projects.campaignName, projectGroupId: projects.projectGroupId });
+
+    // 진행중 캠페인이 생긴 그룹은 그룹도 다시 열어야 목록의 진행중 탭에 나타난다.
+    const reopenGroupIds = [...new Set(reopenedProjects.map(p => p.projectGroupId).filter((v): v is string => Boolean(v)))];
+
+    let reopenedGroups: { id: string; name: string }[] = [];
+    if (reopenGroupIds.length > 0) {
+      reopenedGroups = await db
+        .update(projectGroups)
+        .set({ status: "진행", updatedAt: new Date() })
+        .where(and(inArray(projectGroups.id, reopenGroupIds), eq(projectGroups.status, "종료")))
+        .returning({ id: projectGroups.id, name: projectGroups.name });
+    }
+
     return NextResponse.json({
       today,
       updated: endedProjects.length,
       projects: endedProjects.map(p => ({ id: p.id, campaignName: p.campaignName })),
       updatedGroups: endedGroups.length,
       groups: endedGroups,
+      reopened: reopenedProjects.length,
+      reopenedProjects: reopenedProjects.map(p => ({ id: p.id, campaignName: p.campaignName })),
+      reopenedGroups: reopenedGroups.length,
+      reopenedGroupList: reopenedGroups,
     });
   } catch (err) {
     console.error("[auto-end-projects]", err);

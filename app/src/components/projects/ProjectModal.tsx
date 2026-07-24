@@ -823,6 +823,14 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
     const { project, projectGroupId: newGroupId } = await res.json();
     const pid = effectiveId ?? project.id;
 
+    // 서버가 종료일 기준으로 상태를 다시 계산한다(기간 연장 → 진행중). 헤더 배지를 응답 값에 맞추고
+    // 스냅샷도 함께 갱신해, 사용자가 만지지 않은 이 변경이 '저장 안 함' 경고로 이어지지 않게 한다.
+    if (project?.status && project.status !== form.status) {
+      const nextForm = { ...form, status: project.status as Status };
+      initFormSnap.current = JSON.stringify({ ...nextForm, id: undefined });
+      setForm(nextForm);
+    }
+
     const [revRes, costRes] = await Promise.all([
       fetch(`/api/projects/${pid}/revenues`, {
         method: "PUT",
