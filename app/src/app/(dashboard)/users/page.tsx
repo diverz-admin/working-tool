@@ -23,7 +23,7 @@ interface AppUser {
 }
 
 const ROLES: Role[]       = ["Admin", "Manager", "Staff"];
-const TEAMS               = ["경영", "마케팅팀", "운영팀", "영업 1팀", "영업 2팀"];
+const TEAMS               = ["경영", "마케팅팀", "운영팀", "개발팀", "영업 1팀", "영업 2팀"];
 
 const ROLE_STYLE: Record<Role, { bg: string; color: string }> = {
   Admin:   { bg: "rgba(139,92,246,0.1)",  color: "#7C3AED" },
