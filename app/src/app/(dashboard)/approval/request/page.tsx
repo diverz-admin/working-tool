@@ -652,11 +652,15 @@ export default function RequestPage() {
                   ) : <p className="text-sm font-medium" style={{ color: "#CBD5E1" }}>—</p>}
                 </div>
                 {(() => {
+                  // 요청 시 저장된 실제 단가를 우선 사용. 없는 과거 요청만 합계에서 역산한다
+                  // (역산은 부가세 10% 포함을 가정하므로 면세 행에서는 값이 틀어진다.)
                   const totalAmt = parseInt((selected.amount || "").replace(/[₩,]/g, ""), 10);
                   const qty = parseInt(selected.quantity || "1", 10);
-                  const unitPrice = (!isNaN(totalAmt) && !isNaN(qty) && qty > 0)
-                    ? `₩${Math.round(totalAmt / 1.1 / qty).toLocaleString()}`
-                    : "—";
+                  const unitPrice = selected.unitPrice
+                    ? `₩${selected.unitPrice.toLocaleString()}`
+                    : (!isNaN(totalAmt) && !isNaN(qty) && qty > 0)
+                      ? `₩${Math.round(totalAmt / 1.1 / qty).toLocaleString()}`
+                      : "—";
                   return [
                     { label: "담당자",   value: selected.requester },
                     { label: "품명",     value: selected.productName },

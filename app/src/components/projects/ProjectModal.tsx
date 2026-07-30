@@ -1637,6 +1637,12 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                                       setSendingPayment((p) => new Set(p).add(rowKey));
                                       try {
                                         const totalNum = parseWon(c.total);
+                                        // 개당 단가는 행의 실제 공급가÷개수로 산출 — 승인 화면에서 합계 역산(면세 행 오류)을 쓰지 않도록 스냅샷
+                                        const qtyNum   = parseInt(c.quantity, 10);
+                                        const supplyNum = parseWon(c.supplyPrice) ?? 0;
+                                        const unitPriceNum = (qtyNum > 0 && supplyNum > 0)
+                                          ? Math.round(supplyNum / qtyNum)
+                                          : (c.unitPrice || null);
                                         const matchedProduct =
                                           managedProducts.find((p) => p.name === c.productName && p.vendor === c.vendor) ??
                                           managedProducts.find((p) => p.name === c.productName);
@@ -1650,6 +1656,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                                           vendor:            c.vendor || "—",
                                           quantity:          c.quantity || "—",
                                           amount:            totalNum ? `₩${totalNum.toLocaleString()}` : "—",
+                                          unitPrice:         unitPriceNum,
                                           payDate:           c.purchaseDate || "",
                                           workStartDate:     c.workStartDate || "",
                                           workEndDate:       c.workEndDate || "",

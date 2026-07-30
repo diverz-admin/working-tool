@@ -76,6 +76,8 @@ export interface PaymentRequest {
   vendor: string;
   quantity: string;
   amount: string;
+  /** 요청 시점의 실제 개당 단가 (면세 행은 합계 역산으로 구할 수 없어 스냅샷) */
+  unitPrice?: number | null;
   payDate: string;
   workStartDate?: string;
   workEndDate?: string;

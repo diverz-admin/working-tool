@@ -379,6 +379,8 @@ export const paymentRequests = pgTable("payment_requests", {
   vendor:             text("vendor").notNull().default(""),
   quantity:           text("quantity"),
   amount:             text("amount"),
+  // 요청 시점의 실제 개당 단가 — 합계에서 역산하면 면세(부가세 0) 행이 틀리므로 그대로 스냅샷한다
+  unitPrice:          integer("unit_price"),
   payDate:            text("pay_date"),
   workStartDate:      text("work_start_date"),
   workEndDate:        text("work_end_date"),

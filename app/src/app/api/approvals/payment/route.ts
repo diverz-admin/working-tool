@@ -32,6 +32,8 @@ export async function POST(req: NextRequest) {
   const vendor            = body.vendor             ?? "";
   const quantity          = body.quantity           || null;
   const amount            = body.amount             || null;
+  const unitPrice         = Number.isFinite(Number(body.unitPrice)) && Number(body.unitPrice) > 0
+                              ? Math.round(Number(body.unitPrice)) : null;
   const payDate           = body.payDate            || null;
   const workStartDate     = body.workStartDate      || null;
   const workEndDate       = body.workEndDate        || null;
@@ -48,12 +50,12 @@ export async function POST(req: NextRequest) {
       )
       INSERT INTO payment_requests (
         project_id, row_key, assigned_team, project_name, requester,
-        product_name, vendor, quantity, amount, pay_date, work_start_date,
+        product_name, vendor, quantity, amount, unit_price, pay_date, work_start_date,
         work_end_date, invoice_file_url, invoice_file_name, vendor_bank_account,
         requested_at, status
       ) VALUES (
         ${projectId}, ${rowKey}, ${assignedTeam}, ${projectName}, ${requester},
-        ${productName}, ${vendor}, ${quantity}, ${amount}, ${payDate},
+        ${productName}, ${vendor}, ${quantity}, ${amount}, ${unitPrice}, ${payDate},
         ${workStartDate}, ${workEndDate}, ${invoiceFileUrl}, ${invoiceFileName},
         ${vendorBankAccount}, ${requestedAt}, '대기'
       ) RETURNING *
@@ -70,6 +72,7 @@ export async function POST(req: NextRequest) {
       vendor:            raw.vendor,
       quantity:          raw.quantity,
       amount:            raw.amount,
+      unitPrice:         raw.unit_price,
       payDate:           raw.pay_date,
       workStartDate:     raw.work_start_date,
       workEndDate:       raw.work_end_date,
@@ -85,7 +88,7 @@ export async function POST(req: NextRequest) {
 
   const [row] = await db.insert(paymentRequests).values({
     projectId, rowKey, assignedTeam, projectName, requester,
-    productName, vendor, quantity, amount, payDate, workStartDate,
+    productName, vendor, quantity, amount, unitPrice, payDate, workStartDate,
     workEndDate, invoiceFileUrl, invoiceFileName, vendorBankAccount,
     requestedAt, status: "대기",
   }).returning();
