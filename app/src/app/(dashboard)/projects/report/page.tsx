@@ -815,11 +815,12 @@ export default function ProjectReportPage() {
               {(data?.persons ?? []).length === 0 ? (
                 <div className="py-16 text-center text-sm" style={{ color: "#94A3B8" }}>해당 기간 담당자 데이터가 없습니다.</div>
               ) : (
-                <table className="w-full text-sm">
+                <div className="overflow-x-auto">
+                <table className="w-full text-sm" style={{ minWidth: 880 }}>
                   <thead>
                     <tr style={{ background: "#F8FAFC" }}>
                       {["순위","담당자","팀","프로젝트","확정매출","승인매입","마진","마진율"].map(h => (
-                        <th key={h} className="px-5 py-3 text-left text-xs font-semibold" style={{ color: "#64748B" }}>{h}</th>
+                        <th key={h} className="px-5 py-3 text-left text-xs font-semibold whitespace-nowrap" style={{ color: "#64748B" }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -853,6 +854,7 @@ export default function ProjectReportPage() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               )}
             </div>
           )}
@@ -879,11 +881,12 @@ export default function ProjectReportPage() {
                   <p className="text-xs mt-1" style={{ color: "#CBD5E1" }}>확정매출(계산서발급) 또는 승인매입이 있어야 표시됩니다.</p>
                 </div>
               ) : (
-                <table className="w-full text-sm">
+                <div className="overflow-x-auto">
+                <table className="w-full text-sm" style={{ minWidth: 1040 }}>
                   <thead>
                     <tr style={{ background: "#F8FAFC" }}>
                       {["팀","캠페인명","광고주","담당자","확정매출","승인매입","마진","마진율",""].map(h => (
-                        <th key={h} className="px-5 py-3 text-left text-xs font-semibold" style={{ color: "#64748B" }}>{h}</th>
+                        <th key={h} className="px-5 py-3 text-left text-xs font-semibold whitespace-nowrap" style={{ color: "#64748B" }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -977,6 +980,7 @@ export default function ProjectReportPage() {
                     </tr>
                   </tfoot>
                 </table>
+                </div>
               )}
             </div>
           )}
