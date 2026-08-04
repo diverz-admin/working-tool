@@ -616,9 +616,18 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
     setCosts(p => [...p, ...newCostRows]);
   }
 
-  /* 상품관리에서 매출 행 자동 채우기 (판매가 기준) + 연동 매입 행 동기화 */
-  function pickProductForRev(localId: number, productId: string) {
-    const p = managedProducts.find((x) => x.id === productId);
+  /* 매출 행 품명 타이핑 — 글자를 지우거나 고치는 동안에는 상품 연결만 끊고 금액은 건드리지 않는다.
+     (타이핑 도중 다른 상품명과 잠깐 일치해 금액이 덮어써지는 것을 막는다) */
+  function editRevProductName(localId: number, typed: string) {
+    setRevenues((prev) => prev.map((r) => (
+      r.localId === localId ? { ...r, productName: typed, productId: "", unitPrice: 0 } : r
+    )));
+  }
+
+  /* 입력을 마쳤을 때(blur) 상품관리에 등록된 품명과 일치하면
+     판매가 기준으로 금액을 채우고 연동 매입 행도 동기화한다. */
+  function linkRevProduct(localId: number, typed: string) {
+    const p = findRevProduct(typed.trim(), managedProducts);
     if (!p) return;
     const saleUP = p.salePrice ?? 0;
     const costUP = p.costPrice ?? 0;
@@ -653,7 +662,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
       const tax    = noTax ? 0 : Math.round(supply * 0.1);
       return {
         ...r,
-        productName: p.vendor ? `${p.name} · ${p.vendor}` : p.name,
+        productName: typed,
         productId:   p.id,
         unitPrice:   saleUP,
         supplyPrice: saleUP > 0 ? String(supply) : r.supplyPrice,
@@ -694,9 +703,17 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
     }));
   }
 
-  /* 상품관리에서 매입 행 자동 채우기 */
-  function pickProductForCost(localId: number, productId: string) {
-    const p = managedProducts.find((x) => x.id === productId);
+  /* 매입 행 품명 타이핑 — 입력 중에는 상품 연결만 끊는다 */
+  function editCostProductName(localId: number, typed: string) {
+    setCosts((prev) => prev.map((c) => (
+      c.localId === localId ? { ...c, productName: typed, productId: "", unitPrice: 0 } : c
+    )));
+  }
+
+  /* 입력을 마쳤을 때(blur) 등록 상품과 일치하면 매입가 기준으로 금액을 채운다 */
+  function linkCostProduct(localId: number, typed: string) {
+    const cost = costsRef.current.find((c) => c.localId === localId);
+    const p = findCostProduct(typed.trim(), cost?.vendor ?? "", managedProducts);
     if (!p) return;
     const unitPrice = p.costPrice ?? 0;
     setCosts((prev) => prev.map((c) => {
@@ -707,7 +724,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
       const total  = supply + tax;
       return {
         ...c,
-        productName: p.name,
+        productName: typed,
         productId:   p.id,
         vendor:      p.vendor ?? c.vendor,
         unitPrice,
@@ -732,8 +749,6 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
       return { ...c, quantity: qtyStr };
     }));
   }
-
-  const productCategories = Array.from(new Set(managedProducts.map((p) => p.category)));
 
   const requiredFields: { key: keyof ProjectFormData; label: string }[] = [
     { key: "campaignName",   label: "캠페인명" },
@@ -1400,6 +1415,12 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                       </div>
                     </div>
                   )}
+                  {/* 품명은 직접 입력하되, 상품관리 등록 품명은 자동완성 후보로 제안한다 */}
+                  <datalist id="rev-product-options">
+                    {managedProducts.map((p) => (
+                      <option key={p.id} value={p.vendor ? `${p.name} · ${p.vendor}` : p.name}>{p.category}</option>
+                    ))}
+                  </datalist>
                   <div className="overflow-x-auto rounded-xl border" style={{ borderColor: "#E9EBEF" }}>
                     <table className="w-full text-xs" style={{ minWidth: 1200 }}>
                       <thead>
@@ -1449,24 +1470,17 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                                 </select>
                               </td>
                               <td className="px-1 py-1">
-                                <select
-                                  value={r.productId || managedProducts.find((p) => (p.vendor ? `${p.name} · ${p.vendor}` : p.name) === r.productName || p.name === r.productName)?.id || ""}
-                                  onChange={(e) => {
-                                    if (e.target.value) pickProductForRev(r.localId, e.target.value);
-                                    else { updateRev(r.localId, "productName", ""); updateRev(r.localId, "productId", ""); }
-                                  }}
+                                <input
+                                  type="text"
+                                  list="rev-product-options"
+                                  value={r.productName}
+                                  onChange={(e) => editRevProductName(r.localId, e.target.value)}
+                                  onBlur={(e) => linkRevProduct(r.localId, e.target.value)}
+                                  placeholder="품명 입력"
+                                  title="직접 입력할 수 있습니다. 상품관리에 등록된 품명과 같으면 단가·금액이 자동 계산됩니다."
                                   className={inputCls}
                                   style={{...inputStyle, width: 150}}
-                                >
-                                  <option value="">{r.productName || "선택..."}</option>
-                                  {productCategories.map((cat) => (
-                                    <optgroup key={cat} label={cat}>
-                                      {managedProducts.filter((p) => p.category === cat).map((p) => (
-                                        <option key={p.id} value={p.id}>{p.name}{p.vendor ? ` · ${p.vendor}` : ""}</option>
-                                      ))}
-                                    </optgroup>
-                                  ))}
-                                </select>
+                                />
                               </td>
                               <td className="px-1 py-1"><input type="number" value={r.quantity} onChange={(e) => handleRevQuantity(r.localId, e.target.value)} className={inputCls} style={{...inputStyle, width:50}} /></td>
                               <td className="px-1 py-1">
@@ -1552,6 +1566,11 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
               {/* 매입 섹션 */}
               {activeSection === "매입" && (
               <div>
+                  <datalist id="cost-product-options">
+                    {[...new Map(managedProducts.map((p) => [p.name, p] as [string, ManagedProduct])).values()].map((p) => (
+                      <option key={p.id} value={p.name}>{p.category}</option>
+                    ))}
+                  </datalist>
                   <div className="overflow-x-auto rounded-xl border" style={{ borderColor: "#E9EBEF" }}>
                     <table className="w-full text-xs" style={{ minWidth: 1100 }}>
                       <thead>
@@ -1698,25 +1717,18 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                             </td>
                             <td className="px-1 py-1"><input type="text" value={c.vendor} onChange={(e) => updateCost(c.localId,"vendor",e.target.value)} disabled={costDeleteBlocked} className={inputCls} style={{...inputStyle, width:80, opacity: costDeleteBlocked ? 0.45 : 1}} /></td>
                             <td className="px-1 py-1">
-                              <select
-                                value={c.productId || managedProducts.find((p) => p.name === c.productName)?.id || ""}
-                                onChange={(e) => {
-                                  if (e.target.value) pickProductForCost(c.localId, e.target.value);
-                                  else { updateCost(c.localId, "productName", ""); updateCost(c.localId, "productId", ""); }
-                                }}
+                              <input
+                                type="text"
+                                list="cost-product-options"
+                                value={c.productName}
+                                onChange={(e) => editCostProductName(c.localId, e.target.value)}
+                                onBlur={(e) => linkCostProduct(c.localId, e.target.value)}
                                 disabled={costDeleteBlocked}
+                                placeholder="품명 입력"
+                                title="직접 입력할 수 있습니다. 상품관리에 등록된 품명과 같으면 단가·금액이 자동 계산됩니다."
                                 className={inputCls}
                                 style={{...inputStyle, width: 150, opacity: costDeleteBlocked ? 0.45 : 1}}
-                              >
-                                <option value="">{c.productName || "선택..."}</option>
-                                {productCategories.map((cat) => (
-                                  <optgroup key={cat} label={cat}>
-                                    {managedProducts.filter((p) => p.category === cat).map((p) => (
-                                      <option key={p.id} value={p.id}>{p.name}{p.vendor ? ` · ${p.vendor}` : ""}</option>
-                                    ))}
-                                  </optgroup>
-                                ))}
-                              </select>
+                              />
                             </td>
                             <td className="px-1 py-1"><input type="number" value={c.quantity} onChange={(e) => handleCostQuantity(c.localId, e.target.value)} disabled={costDeleteBlocked} className={inputCls} style={{...inputStyle, width:50, opacity: costDeleteBlocked ? 0.45 : 1}} /></td>
                             <td className="px-1 py-1">
