@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifySession, SESSION_COOKIE } from "@/lib/session";
+import { verifySession, createSession, SESSION_COOKIE } from "@/lib/session";
+
+// 세션 만료가 이만큼 남았을 때부터 요청마다 쿠키를 새로 발급한다(슬라이딩 세션).
+// 로그인 후 7일이 지나면 화면을 계속 쓰고 있어도 세션이 끊겨, 저장 요청만 401로 실패하고
+// 사용자는 입력하던 내용을 잃었다. 계속 사용 중이면 만료되지 않도록 갱신한다.
+const SESSION_REFRESH_BEFORE_MS = 3 * 24 * 60 * 60 * 1000;
 
 const PUBLIC_PATHS = ["/login", "/api/auth/login", "/api/auth/logout", "/users/new", "/api/users", "/api/debug-me", "/api/cron"];
 
@@ -49,7 +54,22 @@ export async function proxy(req: NextRequest) {
     }
   }
 
-  return NextResponse.next();
+  const res = NextResponse.next();
+
+  // 만료가 임박한 세션은 여기서 연장한다. 새 쿠키를 받으면 exp가 다시 7일 뒤로 밀리므로
+  // 실제 재발급은 3일에 한 번 정도만 일어난다.
+  if (payload.exp - Date.now() < SESSION_REFRESH_BEFORE_MS) {
+    const token = await createSession({ id: payload.id, name: payload.name, role: payload.role });
+    res.cookies.set(SESSION_COOKIE, token, {
+      httpOnly: true,
+      secure:   process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path:     "/",
+      maxAge:   60 * 60 * 24 * 7,
+    });
+  }
+
+  return res;
 }
 
 export const config = {

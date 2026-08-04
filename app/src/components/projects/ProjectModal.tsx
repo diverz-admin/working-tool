@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { fetchJson } from "@/lib/fetch-json";
+import { fetchJson, saveErrorMessage, SESSION_EXPIRED_MESSAGE } from "@/lib/fetch-json";
 import { useRouter } from "next/navigation";
 import ProjectReportSection from "@/components/projects/ProjectReportSection";
 import { addConfirmRequest, addPaymentRequest, updateConfirmRequest, updatePaymentRequest, deleteConfirmRequest, deletePaymentRequest, type ConfirmStatus, type PaymentStatus } from "@/lib/approvals";
@@ -770,7 +770,9 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
         fetch(`/api/projects/${pid}/costs`,    { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ costs }) }),
       ]);
       if (!costRes.ok) {
-        setError("매입 데이터 저장에 실패했습니다. 먼저 저장해주세요.");
+        setError(costRes.status === 401
+          ? SESSION_EXPIRED_MESSAGE
+          : await saveErrorMessage(costRes, "매입 데이터 저장에 실패했습니다. 먼저 저장해주세요."));
         return null;
       }
       return pid;
@@ -785,7 +787,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...form, projectGroupId: projectGroupId ?? null }),
     });
-    if (!res.ok) { setSaving(false); setError("저장에 실패했습니다."); return null; }
+    if (!res.ok) { setSaving(false); setError(await saveErrorMessage(res)); return null; }
     const { project } = await res.json();
     const pid: string = project.id;
     await Promise.all([
@@ -818,7 +820,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...form, projectGroupId: projectGroupId ?? null }),
     });
-    if (!res.ok) { setSaving(false); setError("저장에 실패했습니다."); return; }
+    if (!res.ok) { setSaving(false); setError(await saveErrorMessage(res)); return; }
 
     const { project, projectGroupId: newGroupId } = await res.json();
     const pid = effectiveId ?? project.id;
@@ -846,9 +848,8 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
 
     if (!revRes.ok || !costRes.ok) {
       const failed = !revRes.ok ? revRes : costRes;
-      const body = await failed.json().catch(() => ({}));
       setSaving(false);
-      setError(body.error ?? "저장에 실패했습니다.");
+      setError(await saveErrorMessage(failed));
       return;
     }
 
