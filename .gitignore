@@ -2,4 +2,5 @@
 .vercel
 
 # 로컬 일회성 스크립트 (평문 비밀번호 등이 들어가므로 커밋 금지)
-app/set-pw.ts
+# macOS가 만드는 "set-pw 2.ts" 같은 복사본까지 함께 제외한다
+app/set-pw*.ts
