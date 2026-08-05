@@ -11,6 +11,7 @@ import { invalidateProjectCache } from "@/components/projects/ProjectModal";
 import { useFileSrc, isImageValue, isPdfValue } from "@/lib/storage";
 import { fetchJson } from "@/lib/fetch-json";
 import { teamBadgeStyle } from "@/lib/teams";
+import PeriodFilter from "@/components/filters/PeriodFilter";
 
 // 세금계산서(스토리지 경로/레거시 data:) 미리보기
 function InvoiceView({ url, name }: { url: string; name: string | null | undefined }) {
@@ -52,8 +53,6 @@ const STATUS_STYLE: Record<PaymentStatus, { bg: string; color: string; border: s
   반려: { bg: "rgba(239,68,68,0.1)",  color: "#DC2626", border: "rgba(239,68,68,0.25)" },
 };
 
-const formatDate = (d: string) => { const [y, m, day] = d.split("-"); return `${y}.${m}.${day}`; };
-
 export default function RequestPage() {
   const [items, setItems]               = useState<PaymentRequest[]>([]);
   const [error, setError]               = useState<string | null>(null);
@@ -92,19 +91,7 @@ export default function RequestPage() {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, [load]);
 
-  const months = useMemo(() => {
-    const set = new Set(items.map((i) => i.requestedAt.slice(0, 7)));
-    return Array.from(set).sort((a, b) => b.localeCompare(a));
-  }, [items]);
-
-  const dates = useMemo(() => {
-    const set = new Set(
-      items
-        .filter((i) => selectedMonth === null || i.requestedAt.startsWith(selectedMonth))
-        .map((i) => i.requestedAt)
-    );
-    return Array.from(set).sort((a, b) => b.localeCompare(a));
-  }, [items, selectedMonth]);
+  const filterDates = useMemo(() => items.map((i) => i.requestedAt), [items]);
 
   const scopedItems = useMemo(() => items.filter((i) =>
     (selectedMonth === null || i.requestedAt.startsWith(selectedMonth)) &&
@@ -446,75 +433,14 @@ export default function RequestPage() {
         </div>
       </div>
 
-      {/* 월·날짜 필터 카드 */}
-      {months.length > 0 && (
-        <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid #E9EBEF", background: "#fff" }}>
-          {/* 월 행 */}
-          <div className="flex items-center gap-2 flex-wrap px-4 py-3" style={{ background: "#F8FAFC" }}>
-            <div className="flex items-center gap-1.5 mr-1">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2" strokeLinecap="round">
-                <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-              </svg>
-              <span className="text-xs font-bold" style={{ color: "#64748B" }}>월</span>
-            </div>
-            <button
-              onClick={() => { setSelectedMonth(null); setSelectedDate(null); }}
-              className="text-xs font-bold px-3 py-1.5 rounded-lg transition-all"
-              style={{ background: selectedMonth === null ? "#191F28" : "#ECEEF2", color: selectedMonth === null ? "#fff" : "#475569" }}>
-              전체 <span style={{ opacity: 0.55 }}>{items.length}</span>
-            </button>
-            {months.map((m) => {
-              const count = items.filter((i) => i.requestedAt.startsWith(m)).length;
-              const isActive = selectedMonth === m;
-              const [y, mo] = m.split("-");
-              return (
-                <button key={m}
-                  onClick={() => { setSelectedMonth(isActive ? null : m); setSelectedDate(null); }}
-                  className="text-xs font-bold px-3 py-1.5 rounded-lg transition-all"
-                  style={{ background: isActive ? "#191F28" : "#ECEEF2", color: isActive ? "#fff" : "#475569" }}>
-                  {y}년 {parseInt(mo)}월 <span style={{ opacity: 0.55 }}>{count}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* 날짜 행 */}
-          {dates.length > 0 && (
-            <div className="flex items-center gap-2 flex-wrap px-4 py-2.5" style={{ borderTop: "1px solid #F1F5F9" }}>
-              <div className="flex items-center gap-1.5 mr-1">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#CBD5E1" strokeWidth="2.5" strokeLinecap="round">
-                  <polyline points="9 18 15 12 9 6"/>
-                </svg>
-                <span className="text-xs font-semibold" style={{ color: "#94A3B8" }}>날짜</span>
-              </div>
-              <button onClick={() => setSelectedDate(null)}
-                className="text-xs font-semibold px-2.5 py-1 rounded-full transition-all"
-                style={{
-                  background: selectedDate === null ? "rgba(16,185,129,0.12)" : "transparent",
-                  color: selectedDate === null ? "#059669" : "#94A3B8",
-                  border: `1px solid ${selectedDate === null ? "rgba(16,185,129,0.3)" : "#E9EBEF"}`,
-                }}>
-                전체
-              </button>
-              {dates.map((d) => {
-                const count = items.filter((i) => i.requestedAt === d).length;
-                const isActive = selectedDate === d;
-                return (
-                  <button key={d} onClick={() => setSelectedDate(isActive ? null : d)}
-                    className="text-xs font-semibold px-2.5 py-1 rounded-full transition-all"
-                    style={{
-                      background: isActive ? "#059669" : "transparent",
-                      color: isActive ? "#fff" : "#64748B",
-                      border: `1px solid ${isActive ? "#059669" : "#E9EBEF"}`,
-                    }}>
-                    {formatDate(d)} <span style={{ opacity: 0.65 }}>{count}</span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
+      {/* 월·날짜 필터 */}
+      <PeriodFilter
+        dates={filterDates}
+        month={selectedMonth}
+        date={selectedDate}
+        onChange={({ month, date }) => { setSelectedMonth(month); setSelectedDate(date); }}
+        accent="#059669"
+      />
 
       {/* 상태 필터 */}
       <div className="flex items-center gap-1 p-0.5 rounded-xl self-start" style={{ background: "#F1F5F9" }}>
