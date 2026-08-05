@@ -8,6 +8,7 @@ import {
   ResponsiveContainer, ReferenceLine,
   PieChart, Pie, Cell,
 } from "recharts";
+import { TEAMS, teamColor } from "@/lib/teams";
 
 // ─── 상수 ────────────────────────────────────────────────
 
@@ -18,12 +19,6 @@ const SGA_CATEGORIES = [
   "도서인쇄비","임차료","통신비","소모품비","직접매입(상품)",
   "판매수수료","외주용역비","기타 영업비용",
 ] as const;
-
-const TEAM_COLORS: Record<string, string> = {
-  "경영":    "#F59E0B",
-  "영업 1팀": "#6366F1",
-  "영업 2팀": "#10B981",
-};
 
 // ─── 유틸 ────────────────────────────────────────────────
 
@@ -196,7 +191,7 @@ export default function OperationsDashboard() {
   const monthlyPieTotal = monthlyPieData.reduce((s, d) => s + d.value, 0);
 
   // ── 팀별 이번달 ──
-  const TEAMS_LIST = ["경영", "영업 1팀", "영업 2팀"];
+  const TEAMS_LIST = TEAMS;
 
   interface TeamStats { rev: number; cost: number; profit: number }
 
@@ -477,7 +472,7 @@ export default function OperationsDashboard() {
                 <div className="grid grid-cols-2 gap-3">
                   {TEAMS_LIST.map(team => {
                     const stats = teamStats.get(team) ?? { rev: 0, cost: 0, profit: 0 };
-                    const color = TEAM_COLORS[team] ?? "#94A3B8";
+                    const color = teamColor(team);
                     const profitColor = stats.profit >= 0 ? "#10B981" : "#EF4444";
                     return (
                       <div key={team} className="rounded-2xl overflow-hidden"

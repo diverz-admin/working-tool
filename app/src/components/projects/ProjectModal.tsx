@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import ProjectReportSection from "@/components/projects/ProjectReportSection";
 import { addConfirmRequest, addPaymentRequest, updateConfirmRequest, updatePaymentRequest, deleteConfirmRequest, deletePaymentRequest, type ConfirmStatus, type PaymentStatus } from "@/lib/approvals";
 import { uploadAttachment, useFileSrc } from "@/lib/storage";
+import { teamBadgeStyle, normalizeTeam } from "@/lib/teams";
 
 type Status = "진행" | "종료";
 
@@ -132,19 +133,11 @@ export function invalidateProjectCache(id: string) {
   _projectCache.delete(id);
 }
 
-// 팀 배지 스타일 (영업 1팀·영업 2팀·경영팀 등)
-function teamBadgeStyle(team: string, alpha = "0.12") {
-  if (team === "영업 1팀") return { background: `rgba(99,102,241,${alpha})`,  color: "#6366F1" };
-  if (team === "영업 2팀") return { background: `rgba(16,185,129,${alpha})`,  color: "#10B981" };
-  return                          { background: `rgba(245,158,11,${alpha})`,  color: "#F59E0B" };
-}
-
 // 사용자 팀("경영")과 광고주 팀("경영팀") 명칭 불일치 매핑
 function matchesTeam(clientTeam: string | undefined, formTeam: string) {
   if (!clientTeam || !formTeam) return false;
   if (clientTeam === formTeam) return true;
-  const normalize = (t: string) => t.replace(/팀$/, "");
-  return normalize(clientTeam) === normalize(formTeam);
+  return normalizeTeam(clientTeam) === normalizeTeam(formTeam);
 }
 
 function emptyRevenue(sectionLabel = "1주"): RevenueRow {
@@ -1052,7 +1045,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                 <div className="flex items-center justify-between mb-1">
                   <label className={labelCls} style={{ ...labelStyle, marginBottom: 0 }}>연결 광고주</label>
                   {form.assignedTeam && (
-                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={teamBadgeStyle(form.assignedTeam, "0.1")}>
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={teamBadgeStyle(form.assignedTeam, 0.1)}>
                       {form.assignedTeam}
                     </span>
                   )}

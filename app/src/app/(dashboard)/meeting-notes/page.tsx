@@ -3,8 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { uploadAttachment, removeAttachment, useFileSrc, isPdfValue, isImageValue } from "@/lib/storage";
 import { fetchJson } from "@/lib/fetch-json";
+import { TEAMS, TEAM_FILTERS, teamColor } from "@/lib/teams";
 
-const TEAMS        = ["전체", "영업 1팀", "영업 2팀"];
 const MEETING_TYPES = ["회의록", "미팅록", "기타"];
 const DAY_NAMES    = ["일", "월", "화", "수", "목", "금", "토"];
 
@@ -38,11 +38,6 @@ function toDateStr(y: number, m: number, d: number) {
 function formatKo(dateStr: string) {
   const d = new Date(dateStr + "T00:00:00");
   return d.toLocaleDateString("ko-KR", { month: "long", day: "numeric", weekday: "short" });
-}
-function teamColor(team: string | null) {
-  if (team === "영업 1팀") return "#6366F1";
-  if (team === "영업 2팀") return "#10B981";
-  return "#3182F6";
 }
 function typeColor(type: string) {
   if (type === "회의록") return { bg: "rgba(49,130,246,0.1)", color: "#3182F6" };
@@ -303,7 +298,7 @@ function NoteForm({
           <label className="block text-xs font-semibold mb-1.5" style={{ color: "#64748B" }}>팀</label>
           <select value={form.assignedTeam} onChange={(e) => set("assignedTeam", e.target.value)} className={inp} style={inpS}>
             <option value="">선택 안함</option>
-            <option>영업 1팀</option><option>영업 2팀</option>
+            {TEAMS.map((t) => <option key={t}>{t}</option>)}
           </select>
         </div>
       </div>
@@ -707,10 +702,10 @@ export default function MeetingNotesPage() {
             </div>
 
             {/* 팀 필터 */}
-            <div className="flex gap-1 mb-4 p-0.5 rounded-xl" style={{ background: "#F1F5F9" }}>
-              {TEAMS.map((t) => (
+            <div className="flex flex-wrap gap-1 mb-4 p-0.5 rounded-xl" style={{ background: "#F1F5F9" }}>
+              {TEAM_FILTERS.map((t) => (
                 <button key={t} onClick={() => setTeam(t)}
-                  className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                  className="flex-1 min-w-[56px] py-1.5 rounded-lg text-xs font-semibold transition-all"
                   style={{ background: team === t ? "#fff" : "transparent", color: team === t ? "#191F28" : "#94A3B8", boxShadow: team === t ? "0 1px 3px rgba(0,0,0,0.08)" : "none" }}>
                   {t}
                 </button>

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { fetchJson } from "@/lib/fetch-json";
+import { TEAMS, isKnownTeam } from "@/lib/teams";
 
 type Status = "리드" | "진행" | "종료";
 
@@ -330,7 +331,13 @@ export default function ClientDetailPage() {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className={labelCls} style={labelStyle}>담당팀</label>
-            <input type="text" value={form.assignedTeam} onChange={(e) => setField("assignedTeam", e.target.value)} placeholder="예: 마케팅팀" className={inputCls} style={inputStyle} />
+            <select value={form.assignedTeam} onChange={(e) => setField("assignedTeam", e.target.value)} className={inputCls} style={inputStyle}>
+              <option value="">선택 안 함</option>
+              {TEAMS.map((t) => <option key={t} value={t}>{t}</option>)}
+              {form.assignedTeam && !isKnownTeam(form.assignedTeam) && (
+                <option value={form.assignedTeam}>{form.assignedTeam}</option>
+              )}
+            </select>
           </div>
           <div>
             <label className={labelCls} style={labelStyle}>담당자</label>

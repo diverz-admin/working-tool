@@ -32,6 +32,7 @@ import {
   getConfirmRequests, updateConfirmRequest, deleteConfirmRequest,
 } from "@/lib/approvals";
 import { invalidateProjectCache } from "@/components/projects/ProjectModal";
+import { teamBadgeStyle } from "@/lib/teams";
 
 // ─── 공급자 고정 정보 ─────────────────────────────────────────
 const SUPPLIER = { companyName: "주식회사 다이버즈", businessNumber: "174-88-03266" };
@@ -768,10 +769,7 @@ export default function ConfirmPage() {
                             <td className="px-4 py-3">
                               {item.assignedTeam ? (
                                 <span className="text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap"
-                                  style={{
-                                    background: item.assignedTeam === "영업 1팀" ? "rgba(99,102,241,0.1)" : "rgba(16,185,129,0.1)",
-                                    color:      item.assignedTeam === "영업 1팀" ? "#6366F1" : "#10B981",
-                                  }}>
+                                  style={teamBadgeStyle(item.assignedTeam, 0.1)}>
                                   {item.assignedTeam}
                                 </span>
                               ) : <span style={{ color: "#CBD5E1" }}>—</span>}
@@ -909,8 +907,7 @@ export default function ConfirmPage() {
                     {selected.assignedTeam ? (
                       <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
                         style={{
-                          background: selected.assignedTeam === "영업 1팀" ? "rgba(99,102,241,0.1)" : "rgba(16,185,129,0.1)",
-                          color:      selected.assignedTeam === "영업 1팀" ? "#6366F1" : "#10B981",
+                          ...teamBadgeStyle(selected.assignedTeam, 0.1),
                         }}>
                         {selected.assignedTeam}
                       </span>

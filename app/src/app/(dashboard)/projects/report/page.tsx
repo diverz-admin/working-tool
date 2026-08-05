@@ -7,12 +7,13 @@ import {
   BarChart, Bar, LineChart, Line, ComposedChart,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Cell,
 } from "recharts";
+import { TEAM_FILTERS, TEAM_COLORS } from "@/lib/teams";
 
 // ─── 상수 ─────────────────────────────────────────────────────
 const MONTHS_KO   = ["1월","2월","3월","4월","5월","6월","7월","8월","9월","10월","11월","12월"];
 const MONTHS_SHORT = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-const TEAMS       = ["전체", "영업 1팀", "영업 2팀"];
-const TEAM_COLOR: Record<string, string> = { "영업 1팀": "#6366F1", "영업 2팀": "#10B981", "미지정": "#94A3B8" };
+const TEAMS       = TEAM_FILTERS;
+const TEAM_COLOR = TEAM_COLORS;
 type AnalysisTab = "overview" | "team" | "person" | "project";
 const DOW = ["일", "월", "화", "수", "목", "금", "토"];
 

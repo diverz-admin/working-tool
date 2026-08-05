@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import DeleteConfirmModal from "./DeleteConfirmModal";
 import { uploadAttachment, useFileSrc, isImageValue } from "@/lib/storage";
 import { fetchJson } from "@/lib/fetch-json";
+import { TEAMS } from "@/lib/teams";
 
 type Status = "리드" | "진행" | "종료";
 
@@ -472,9 +473,7 @@ export default function ClientModal({ initial, onClose, onSaved, onDelete, onVie
               <label className={labelCls} style={labelStyle}>담당팀 *</label>
               <select value={form.assignedTeam} onChange={(e) => { setField("assignedTeam", e.target.value); setError(null); }} className={inputCls} style={inputStyle}>
                 <option value="">선택 안 함</option>
-                <option value="영업 1팀">영업 1팀</option>
-                <option value="영업 2팀">영업 2팀</option>
-                <option value="경영">경영</option>
+                {TEAMS.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
             <div>

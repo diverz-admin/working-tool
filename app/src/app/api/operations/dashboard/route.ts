@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { projects, projectRevenues, projectCosts, annualCosts } from "@/db/schema";
 import { eq, and, gte, lte, isNotNull, sql } from "drizzle-orm";
 import { monthRange } from "@/lib/month-range";
+import { TEAM_ORDER } from "@/lib/teams";
 
 export async function GET(req: NextRequest) {
   try {
@@ -86,7 +87,6 @@ export async function GET(req: NextRequest) {
       if (!pMap.has(person || "미지정")) pMap.set(person || "미지정", new Array(12).fill(0));
       pMap.get(person || "미지정")![m] += amount;
     }
-    const TEAM_ORDER = ["경영", "영업 1팀", "영업 2팀"];
     const annualTeams = Array.from(teamMap.entries())
       .sort(([a], [b]) => {
         const ia = TEAM_ORDER.indexOf(a), ib = TEAM_ORDER.indexOf(b);

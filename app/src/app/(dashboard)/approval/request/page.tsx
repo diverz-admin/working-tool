@@ -10,6 +10,7 @@ import {
 import { invalidateProjectCache } from "@/components/projects/ProjectModal";
 import { useFileSrc, isImageValue, isPdfValue } from "@/lib/storage";
 import { fetchJson } from "@/lib/fetch-json";
+import { teamBadgeStyle } from "@/lib/teams";
 
 // 세금계산서(스토리지 경로/레거시 data:) 미리보기
 function InvoiceView({ url, name }: { url: string; name: string | null | undefined }) {
@@ -576,8 +577,7 @@ export default function RequestPage() {
                         {item.assignedTeam ? (
                           <span className="text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap"
                             style={{
-                              background: item.assignedTeam === "영업 1팀" ? "rgba(99,102,241,0.1)" : "rgba(16,185,129,0.1)",
-                              color:      item.assignedTeam === "영업 1팀" ? "#6366F1" : "#10B981",
+                              ...teamBadgeStyle(item.assignedTeam, 0.1),
                             }}>
                             {item.assignedTeam}
                           </span>
@@ -644,8 +644,7 @@ export default function RequestPage() {
                   {selected.assignedTeam ? (
                     <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
                       style={{
-                        background: selected.assignedTeam === "영업 1팀" ? "rgba(99,102,241,0.1)" : "rgba(16,185,129,0.1)",
-                        color:      selected.assignedTeam === "영업 1팀" ? "#6366F1" : "#10B981",
+                        ...teamBadgeStyle(selected.assignedTeam, 0.1),
                       }}>
                       {selected.assignedTeam}
                     </span>

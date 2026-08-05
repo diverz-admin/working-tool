@@ -3,12 +3,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { TEAMS } from "@/lib/teams";
 
 type Role   = "Admin" | "Manager" | "Staff";
 type Status = "활성" | "비활성";
 
 const ROLES: Role[]   = ["Admin", "Manager", "Staff"];
-const TEAMS           = ["경영", "마케팅팀", "운영팀", "개발팀", "영업 1팀", "영업 2팀"];
 const POSITIONS       = ["대표", "팀장", "매니저", "사원", "인턴"];
 
 const ROLE_DESC: Record<Role, string> = {

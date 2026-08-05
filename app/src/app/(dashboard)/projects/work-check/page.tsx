@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { fetchJson } from "@/lib/fetch-json";
+import { teamBadgeStyle, teamColor } from "@/lib/teams";
 
 interface WorkRow {
   id: string;
@@ -226,10 +227,10 @@ export default function WorkCheckPage() {
                 className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-all"
                 style={{
                   background: filterTeam === t
-                    ? (t === "영업 1팀" ? "rgba(99,102,241,0.12)" : t === "영업 2팀" ? "rgba(16,185,129,0.12)" : "#191F28")
+                    ? (t === "전체" ? "#191F28" : teamBadgeStyle(t, 0.12).background)
                     : "#F1F5F9",
                   color: filterTeam === t
-                    ? (t === "영업 1팀" ? "#6366F1" : t === "영업 2팀" ? "#10B981" : "#fff")
+                    ? (t === "전체" ? "#fff" : teamColor(t))
                     : "#94A3B8",
                 }}
               >

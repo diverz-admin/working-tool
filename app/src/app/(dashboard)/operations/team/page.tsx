@@ -2,17 +2,12 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { fetchJson } from "@/lib/fetch-json";
+import { TEAM_FILTERS, teamColor } from "@/lib/teams";
 
 // ─── 상수 ────────────────────────────────────────────────
 
-const TEAMS = ["전체", "경영", "영업 1팀", "영업 2팀"] as const;
-type Team = typeof TEAMS[number];
-
-const TEAM_COLORS: Record<string, string> = {
-  "경영":    "#F59E0B",
-  "영업 1팀": "#6366F1",
-  "영업 2팀": "#10B981",
-};
+const TEAMS = TEAM_FILTERS;
+type Team = string;
 
 const CRITERIA_OPTIONS = [
   { value: "캠페인 시작날짜", label: "캠페인 시작날짜 기준" },
@@ -360,7 +355,7 @@ export default function TeamProfitPage() {
       <div className="flex items-center gap-1 p-1 rounded-xl w-fit" style={{ background: "#F1F5F9" }}>
         {TEAMS.map((t) => {
           const isActive = team === t;
-          const color    = TEAM_COLORS[t];
+          const color    = t === "전체" ? undefined : teamColor(t);
           // 오류 시에는 뱃지 금액도 숨긴다 — ₩0만이 실제 값으로 오인되면 안 된다
           const supply   = t !== "전체" && !loading && !error ? teamSupply(t) : null;
           return (

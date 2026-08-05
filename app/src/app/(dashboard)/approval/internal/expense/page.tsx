@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useUser } from "@/lib/UserContext";
 import { uploadAttachment, resolveFileSrc, useFileSrc, isImageValue } from "@/lib/storage";
 import { fetchJson } from "@/lib/fetch-json";
+import { TEAMS_WITH_ETC } from "@/lib/teams";
 
 type Status = "대기" | "승인" | "반려";
 
@@ -26,7 +27,7 @@ interface ExpenseItem {
 
 const EXPENSE_CATEGORIES = ["소모품비", "외주용역비", "기타 영업비용"];
 
-const TEAMS = ["영업 1팀", "영업 2팀", "경영", "기타"];
+const TEAMS = TEAMS_WITH_ETC;
 
 const STATUS_STYLE: Record<Status, { bg: string; color: string; border: string }> = {
   대기: { bg: "rgba(234,179,8,0.1)",  color: "#CA8A04", border: "rgba(234,179,8,0.25)" },

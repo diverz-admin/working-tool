@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { projects, projectRevenues, annualCosts, projectCosts, internalExpenseRequests } from "@/db/schema";
 import { eq, and, isNotNull, sql } from "drizzle-orm";
+import { TEAM_ORDER } from "@/lib/teams";
 
 export async function GET(req: NextRequest) {
   try {
@@ -101,7 +102,6 @@ export async function GET(req: NextRequest) {
       pMap.get(person || "미지정")![month] += amount;
     }
 
-    const TEAM_ORDER = ["경영", "영업 1팀", "영업 2팀"];
     const teams = Array.from(teamMap.entries())
       .sort(([a], [b]) => {
         const ia = TEAM_ORDER.indexOf(a), ib = TEAM_ORDER.indexOf(b);

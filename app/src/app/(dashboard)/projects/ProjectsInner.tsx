@@ -8,6 +8,7 @@ import ClientModal, { ClientFormData } from "@/components/clients/ClientModal";
 import {
   ComposedChart, BarChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid, ReferenceLine,
 } from "recharts";
+import { TEAMS, TEAM_ORDER, teamColor, isKnownTeam } from "@/lib/teams";
 
 // ── 타입 ──────────────────────────────────────────────────────────────────────
 
@@ -256,8 +257,14 @@ function GroupModal({ initial, onClose, onSaved }: {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={lbl} style={lst}>담당팀</label>
-              <input type="text" value={form.assignedTeam} onChange={(e) => setForm(p => ({ ...p, assignedTeam: e.target.value }))}
-                placeholder="영업 1팀" className={inp} style={ist} />
+              <select value={form.assignedTeam} onChange={(e) => setForm(p => ({ ...p, assignedTeam: e.target.value }))}
+                className={inp} style={ist}>
+                <option value="">선택 안 함</option>
+                {TEAMS.map((t) => <option key={t} value={t}>{t}</option>)}
+                {form.assignedTeam && !isKnownTeam(form.assignedTeam) && (
+                  <option value={form.assignedTeam}>{form.assignedTeam}</option>
+                )}
+              </select>
             </div>
             <div>
               <label className={lbl} style={lst}>담당자</label>
@@ -408,12 +415,7 @@ function CampaignRow({ c, index, onEdit, onDelete, onCopy, deleting, copying }: 
 
 // ── 팀별 색상 ────────────────────────────────────────────────────────────────
 
-const TEAM_COLORS: Record<string, string> = {
-  "경영":    "#F59E0B",
-  "영업 1팀": "#3182F6",
-  "영업 2팀": "#10B981",
-};
-function teamColor(t: string) { return TEAM_COLORS[t] ?? "#8B5CF6"; }
+
 
 function wonShort(n: number) {
   return `₩${n.toLocaleString()}`;
@@ -880,7 +882,7 @@ function RevenueKpiSection({
 
 // ── 메인 ──────────────────────────────────────────────────────────────────────
 
-const TEAM_ORDER = ["경영", "영업 1팀", "영업 2팀"];
+
 
 /* ── 모듈 레벨 캐시 ── */
 type GroupsData = { groups: ProjectGroup[]; workIncompleteCount: number };

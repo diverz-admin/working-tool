@@ -2,8 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { fetchJson } from "@/lib/fetch-json";
-
-const TEAMS = ["전체", "영업 1팀", "영업 2팀"];
+import { TEAMS, TEAM_FILTERS, teamColor } from "@/lib/teams";
 const DAY_NAMES = ["일", "월", "화", "수", "목", "금", "토"];
 
 interface Journal {
@@ -34,12 +33,6 @@ function toDateStr(y: number, m: number, d: number) {
 function formatKo(dateStr: string) {
   const d = new Date(dateStr + "T00:00:00");
   return d.toLocaleDateString("ko-KR", { month: "long", day: "numeric", weekday: "short" });
-}
-
-function teamColor(team: string | null) {
-  if (team === "영업 1팀") return "#6366F1";
-  if (team === "영업 2팀") return "#10B981";
-  return "#3182F6";
 }
 
 // ─── 공통 컴포넌트 ────────────────────────────────────────
@@ -227,8 +220,7 @@ function JournalForm({
             className="w-full px-3 py-2 text-sm rounded-xl outline-none border focus:border-[#3182F6] transition-colors"
             style={inp}>
             <option value="">선택 안함</option>
-            <option>영업 1팀</option>
-            <option>영업 2팀</option>
+            {TEAMS.map((t) => <option key={t}>{t}</option>)}
           </select>
         </div>
       </div>
@@ -684,20 +676,20 @@ export default function WorkJournalPage() {
           </button>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center flex-wrap justify-end gap-3">
           {/* 범례 */}
-          <div className="flex items-center gap-3 mr-2">
-            {[["영업 1팀", "#6366F1"], ["영업 2팀", "#10B981"]].map(([label, color]) => (
+          <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mr-2">
+            {TEAMS.map((label) => (
               <div key={label} className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full" style={{ background: color }} />
+                <span className="w-2 h-2 rounded-full" style={{ background: teamColor(label) }} />
                 <span className="text-xs" style={{ color: "#94A3B8" }}>{label}</span>
               </div>
             ))}
           </div>
 
           {/* 팀 필터 */}
-          <div className="flex gap-1.5">
-            {TEAMS.map((t) => (
+          <div className="flex flex-wrap gap-1.5">
+            {TEAM_FILTERS.map((t) => (
               <button key={t} onClick={() => setTeam(t)}
                 className="px-3 py-1.5 text-xs font-semibold rounded-xl border transition-all"
                 style={{

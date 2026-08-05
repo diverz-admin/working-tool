@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { fetchJson } from "@/lib/fetch-json";
+import { TEAM_FILTERS, teamColor } from "@/lib/teams";
 
 const MONTHS = ["1월","2월","3월","4월","5월","6월","7월","8월","9월","10월","11월","12월"];
 
@@ -18,9 +19,8 @@ const CRITERIA_OPTIONS = [
   { value: "통장",       label: "통장 기준" },
 ];
 
-const TEAMS = ["전체","경영","영업 1팀","영업 2팀"] as const;
-type Team = typeof TEAMS[number];
-const TEAM_COLORS: Record<string, string> = { "경영": "#F59E0B", "영업 1팀": "#6366F1", "영업 2팀": "#10B981" };
+const TEAMS = TEAM_FILTERS;
+type Team = string;
 
 interface PersonRevenue { person: string; monthly: number[] }
 interface TeamRevenue   { team: string; persons: PersonRevenue[] }
@@ -204,7 +204,7 @@ export default function AnnualProfitPage() {
       <div className="flex items-center gap-1 p-1 rounded-xl w-fit" style={{ background:"#F1F5F9" }}>
         {TEAMS.map(t=>{
           const isActive = team===t;
-          const color = TEAM_COLORS[t];
+          const color = t === "전체" ? undefined : teamColor(t);
           // 오류 시에는 뱃지 금액도 숨긴다 — ₩0만이 실제 값으로 오인되면 안 된다
           const rev = t!=="전체" && !loading && !error ? teamAnnualRev(t) : null;
           return (
@@ -315,7 +315,7 @@ export default function AnnualProfitPage() {
                 <tbody>
                   {filteredTeams.map((t,ri)=>{
                     const rowTotal = sum(Array.from({length:12},(_,m)=>teamMonthly(t,m)));
-                    const color = TEAM_COLORS[t.team];
+                    const color = teamColor(t.team);
                     return (
                       <tr key={t.team} style={{ background:ri%2===0?"#fff":"#FAFBFC" }}>
                         <td style={{...TD_LABEL,fontWeight:700}}>

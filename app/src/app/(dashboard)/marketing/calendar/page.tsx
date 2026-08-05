@@ -8,6 +8,7 @@ import {
   STATUS_STYLE, PRIORITY_STYLE, TAG_COLORS,
   type Task, type CalEvent, type EventColor, type Status,
 } from "../context";
+import { TEAMS } from "@/lib/teams";
 
 // ─── 유틸 ────────────────────────────────────────────────────
 const DAYS = ["일", "월", "화", "수", "목", "금", "토"];
@@ -201,7 +202,7 @@ function AddEventModal({ onClose, onAdd }: {
               <label className="block text-xs font-semibold mb-1.5" style={{ color: "#64748B" }}>담당팀</label>
               <select value={team} onChange={(e) => setTeam(e.target.value)} className={inp} style={inpS}>
                 <option value="">전체</option>
-                <option>영업 1팀</option><option>영업 2팀</option>
+                {TEAMS.map((t) => <option key={t}>{t}</option>)}
               </select>
             </div>
           </div>

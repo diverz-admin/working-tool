@@ -6,13 +6,15 @@ import ClientModal, { ClientFormData, LinkedProject } from "@/components/clients
 import DeleteConfirmModal from "@/components/clients/DeleteConfirmModal";
 import ProjectModal, { ProjectFormData } from "@/components/projects/ProjectModal";
 import { useCurrentRole } from "@/lib/useCurrentRole";
+import { TEAMS, TEAM_FILTERS, teamColor, isKnownTeam } from "@/lib/teams";
 
 type Status = "리드" | "진행" | "종료";
 type TabKey = "전체" | Status;
 type CategoryFilter = "전체" | "B2B" | "B2C";
-type TeamFilter = "전체" | "영업 1팀" | "영업 2팀" | "경영";
-const TEAM_FILTERS: TeamFilter[] = ["전체", "영업 1팀", "영업 2팀", "경영"];
-const TEAM_COLOR: Record<string, string> = { "영업 1팀": "#6366F1", "영업 2팀": "#10B981", "경영": "#F59E0B" };
+type TeamFilter = string;
+
+/** 광고주 데이터에 남아 있는 "경영" 팀의 옛 표기 */
+const LEGACY_MGMT = ["경영", "경영팀", "경영관리"];
 
 interface Client {
   id: string;
@@ -353,7 +355,7 @@ export default function ClientsPage() {
         <div className="flex gap-1.5">
           {TEAM_FILTERS.map((t) => {
             const isActive = teamFilter === t;
-            const color    = TEAM_COLOR[t] ?? "#191F28";
+            const color    = t === "전체" ? "#191F28" : teamColor(t);
             const count    = t === "전체" ? clients.length : clients.filter(c => c.assignedTeam === t).length;
             return (
               <button key={t} onClick={() => setTeamFilter(t)}
@@ -377,13 +379,13 @@ export default function ClientsPage() {
       {/* 팀별 뷰 */}
       {viewMode === "team" && !loading && (
         <div className="space-y-4">
-          {(["영업 1팀", "영업 2팀", "경영", ""] as const).map((teamKey) => {
+          {[...TEAMS, ""].map((teamKey) => {
             const teamClients = filtered.filter(c => {
-              if (teamKey === "") return !c.assignedTeam || !["영업 1팀","영업 2팀","경영","경영팀","경영관리"].includes(c.assignedTeam);
-              if (teamKey === "경영") return ["경영","경영팀","경영관리"].includes(c.assignedTeam ?? "");
+              if (teamKey === "") return !c.assignedTeam || (!isKnownTeam(c.assignedTeam) && !LEGACY_MGMT.includes(c.assignedTeam));
+              if (teamKey === "경영") return LEGACY_MGMT.includes(c.assignedTeam ?? "");
               return c.assignedTeam === teamKey;
             });
-            const color = TEAM_COLOR[teamKey] ?? "#94A3B8";
+            const color = teamKey ? teamColor(teamKey) : "#94A3B8";
             const label = teamKey || "미지정";
             if (teamFilter !== "전체" && teamKey !== teamFilter) return null;
             return (
