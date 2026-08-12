@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { confirmRequests, paymentRequests, projectRevenues, projects } from "@/db/schema";
 import { desc, getTableColumns, sql, inArray, asc, eq, and, isNotNull } from "drizzle-orm";
+import { fillVendorBankAccounts } from "@/lib/vendor-account.server";
 
 // 팀 표시값: 요청 행의 assignedTeam 우선, 없으면 프로젝트의 assignedTeam — 행당 서브쿼리 대신 LEFT JOIN
 const confirmTeamExpr = sql<string | null>`COALESCE(${confirmRequests.assignedTeam}, ${projects.assignedTeam})`;
@@ -21,6 +22,12 @@ export async function GET() {
         .orderBy(desc(paymentRequests.createdAt)),
     ]);
 
+    // 계좌 스냅샷이 빈 요청은 상품관리의 현재 등록 계좌로 보정 (품명 직접 입력으로 매칭이 빗나간 건 포함)
+    // — confirm enrichment 쿼리와 겹쳐 돌도록 여기서는 await 하지 않는다
+    const paymentsPromise = fillVendorBankAccounts(
+      paymentRows.map((r) => ({ ...r, requestedAt: r.requestedAt ? r.requestedAt.slice(0, 10) : r.requestedAt })),
+    );
+
     // 2. confirm enrichment — projectRows + revenueRows 병렬 fetch
     const projectIds = [...new Set(confirmRows.map(r => r.projectId).filter(Boolean))] as string[];
 
@@ -28,7 +35,7 @@ export async function GET() {
       const enriched = (confirmRows as unknown as Record<string, unknown>[]).map(r => ({
         ...r, projectType: null, projectProduct: null, revenueLines: [], campaignNumber: null,
       }));
-      return NextResponse.json({ confirms: enriched, payments: paymentRows.map((r) => ({ ...r, requestedAt: r.requestedAt ? r.requestedAt.slice(0, 10) : r.requestedAt })) });
+      return NextResponse.json({ confirms: enriched, payments: await paymentsPromise });
     }
 
     const [projectRows, revenueRows, siblings] = await Promise.all([
@@ -82,11 +89,7 @@ export async function GET() {
       campaignNumber: r.projectId ? (campaignNumberMap.get(r.projectId as string) ?? null) : null,
     }));
 
-    const normalizedPayments = paymentRows.map((r) => ({
-      ...r,
-      requestedAt: r.requestedAt ? r.requestedAt.slice(0, 10) : r.requestedAt,
-    }));
-    return NextResponse.json({ confirms: enriched, payments: normalizedPayments });
+    return NextResponse.json({ confirms: enriched, payments: await paymentsPromise });
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: String(err) }, { status: 500 });

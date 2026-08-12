@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { paymentRequests } from "@/db/schema";
 import { eq, desc, getTableColumns, sql } from "drizzle-orm";
+import { fillVendorBankAccounts, lookupVendorBankAccount } from "@/lib/vendor-account.server";
 
 const assignedTeamExpr = sql<string | null>`
   COALESCE(
@@ -17,7 +18,7 @@ export async function GET(req: NextRequest) {
     .from(paymentRequests)
     .where(projectId ? eq(paymentRequests.projectId, projectId) : undefined)
     .orderBy(desc(paymentRequests.createdAt));
-  return NextResponse.json({ items: rows });
+  return NextResponse.json({ items: await fillVendorBankAccounts(rows) });
 }
 
 export async function POST(req: NextRequest) {
@@ -39,8 +40,10 @@ export async function POST(req: NextRequest) {
   const workEndDate       = body.workEndDate        || null;
   const invoiceFileUrl    = body.invoiceFileUrl     || null;
   const invoiceFileName   = body.invoiceFileName    || null;
-  const vendorBankAccount = body.vendorBankAccount  || null;
   const requestedAt       = body.requestedAt        ?? new Date().toISOString().slice(0, 10);
+  // 품명이 직접 입력이라 클라이언트 매칭이 빗나갈 수 있다 — 비어 있으면 서버에서 상품관리를 다시 뒤진다
+  const vendorBankAccount = (body.vendorBankAccount || "").trim()
+    || await lookupVendorBankAccount(productName, vendor);
 
   if (rowKey) {
     // DELETE + INSERT in a single DB round trip via CTE

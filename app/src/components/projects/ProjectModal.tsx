@@ -7,6 +7,7 @@ import ProjectReportSection from "@/components/projects/ProjectReportSection";
 import { addConfirmRequest, addPaymentRequest, updateConfirmRequest, updatePaymentRequest, deleteConfirmRequest, deletePaymentRequest, type ConfirmStatus, type PaymentStatus } from "@/lib/approvals";
 import { uploadAttachment, useFileSrc } from "@/lib/storage";
 import { teamBadgeStyle, normalizeTeam } from "@/lib/teams";
+import { resolveVendorBankAccount } from "@/lib/vendor-account";
 
 type Status = "진행" | "종료";
 
@@ -1656,9 +1657,6 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                                         const unitPriceNum = (qtyNum > 0 && supplyNum > 0)
                                           ? Math.round(supplyNum / qtyNum)
                                           : (c.unitPrice || null);
-                                        const matchedProduct =
-                                          managedProducts.find((p) => p.name === c.productName && p.vendor === c.vendor) ??
-                                          managedProducts.find((p) => p.name === c.productName);
                                         const newReq = await addPaymentRequest({
                                           projectId:         pid,
                                           rowKey,
@@ -1675,7 +1673,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                                           workEndDate:       c.workEndDate || "",
                                           invoiceFileUrl:    c.invoiceFileUrl || "",
                                           invoiceFileName:   c.invoiceFileName || "",
-                                          vendorBankAccount: matchedProduct?.vendorBankAccount || "",
+                                          vendorBankAccount: resolveVendorBankAccount(c.productName, c.vendor, managedProducts) || "",
                                         });
                                         setPaymentStatuses((p) => ({ ...p, [rowKey]: { status: "대기", requestId: newReq.id } }));
                                         invalidateProjectCache(pid);
