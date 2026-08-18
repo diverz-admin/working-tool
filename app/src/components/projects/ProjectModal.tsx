@@ -300,11 +300,15 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
   const [guaranteeProgress, setGuaranteeProgress] = useState<number>(0);
   const [activeSection, setActiveSection] = useState<"매출" | "매입" | "작업확인">("매출");
   const [toast, setToast]           = useState<string | null>(null);
-  const [confirmStatuses, setConfirmStatuses] = useState<Record<string, { status: ConfirmStatus | "발행완료"; rejectReason?: string; requestId?: string; amount?: string; depositConfirmedAt?: string }>>({});
+  const [confirmStatuses, setConfirmStatuses] = useState<Record<string, { status: ConfirmStatus | "발행완료"; rejectReason?: string; requestId?: string; amount?: string; depositConfirmedAt?: string; depositorName?: string; depositDate?: string }>>({});
   const [rejectInfo, setRejectInfo]           = useState<{ reason?: string; projectName: string; rowKey: string; requestId: string } | null>(null);
-  /** 입금확인요청 입력 폼. null이면 닫힌 상태 */
-  const [depositDraft, setDepositDraft]       = useState<{ name: string; date: string } | null>(null);
-  const [depositSending, setDepositSending]   = useState(false);
+  /**
+   * 입금확인요청에 실어 보낼 입금자명·입금날짜.
+   * null = 아직 손대지 않음 → 기본값(광고주 담당자명 / 오늘)을 쓴다.
+   * 빈 문자열과 구분해야 사용자가 일부러 지운 칸을 기본값으로 다시 채워버리지 않는다.
+   */
+  const [depositInfo, setDepositInfo]       = useState<{ name: string | null; date: string | null }>({ name: null, date: null });
+  const [depositSending, setDepositSending] = useState(false);
   const [paymentStatuses, setPaymentStatuses] = useState<Record<string, { status: PaymentStatus; rejectReason?: string; requestId?: string }>>({});
   const [payRejectInfo, setPayRejectInfo]     = useState<{ reason?: string; projectName: string; rowKey: string; requestId: string } | null>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
@@ -348,7 +352,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
         .then(({ revenues: rv, costs: cs, confirmRequests: confirms, paymentRequests: payments }) => {
           // 결재 상태 — 별도 API 호출 없이 여기서 함께 처리
           if (confirms) {
-            const m: Record<string, { status: ConfirmStatus | "발행완료"; rejectReason?: string; requestId?: string; amount?: string; depositConfirmedAt?: string }> = {};
+            const m: Record<string, { status: ConfirmStatus | "발행완료"; rejectReason?: string; requestId?: string; amount?: string; depositConfirmedAt?: string; depositorName?: string; depositDate?: string }> = {};
             (confirms as Record<string, unknown>[]).forEach((r) => {
               if (!r.rowKey) return;
               m[r.rowKey as string] = {
@@ -357,6 +361,8 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                 requestId: r.id as string,
                 amount: r.amount as string | undefined,
                 depositConfirmedAt: r.depositConfirmedAt as string | undefined,
+                depositorName: r.depositorName as string | undefined,
+                depositDate:   r.depositDate   as string | undefined,
               };
             });
             setConfirmStatuses(m);
@@ -1176,6 +1182,15 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                   : totalTax;
                 const isTaxExempt = effectiveTax === 0;
 
+                /**
+                 * 요청이 이미 나갔으면 그때 보낸 값을 그대로 보여주고(수정해도 반영될 곳이 없다),
+                 * 아직이면 입력 칸을 연다. 기본값은 광고주 담당자명과 오늘 날짜.
+                 */
+                const hasRequest    = Boolean(cs);
+                const clientContact = clients.find((c) => c.id === form.clientId)?.advertiserName || form.advertiser || "";
+                const depositName   = depositInfo.name ?? clientContact;
+                const depositDate   = depositInfo.date ?? todayStr();
+
                 return (
                   <div className="mb-4 p-4 rounded-2xl" style={{ background: "#F8FAFC", border: "1px solid #E9EBEF" }}>
                     {/* 수치 행 */}
@@ -1261,8 +1276,42 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                         </>
                       )}
 
+                      {/*
+                        입금자명·입금날짜 — 결재자는 통장만 보고 대조하므로
+                        누가 언제 넣었는지를 요청자가 여기서 짚어줘야 대조가 성립한다.
+                      */}
+                      <div className="w-px self-stretch" style={{ background: "#E9EBEF" }} />
+                      <div>
+                        <p className="text-xs mb-1.5" style={{ color: "#94A3B8" }}>입금자명</p>
+                        {hasRequest ? (
+                          <p className="text-sm font-bold" style={{ color: cs?.depositorName ? "#191F28" : "#CBD5E1" }}>
+                            {cs?.depositorName || "—"}
+                          </p>
+                        ) : (
+                          <input type="text" value={depositName}
+                            onChange={(e) => setDepositInfo((p) => ({ ...p, name: e.target.value }))}
+                            placeholder="통장에 찍힌 이름"
+                            className="text-sm font-bold outline-none border-b-2 bg-transparent transition-colors focus:border-[#3182F6] placeholder:font-medium placeholder:text-[#CBD5E1]"
+                            style={{ color: "#191F28", borderColor: "#E9EBEF", width: 110 }} />
+                        )}
+                      </div>
+                      <div className="w-px self-stretch" style={{ background: "#E9EBEF" }} />
+                      <div>
+                        <p className="text-xs mb-1.5" style={{ color: "#94A3B8" }}>입금날짜</p>
+                        {hasRequest ? (
+                          <p className="text-sm font-bold" style={{ color: cs?.depositDate ? "#191F28" : "#CBD5E1" }}>
+                            {cs?.depositDate || "—"}
+                          </p>
+                        ) : (
+                          <input type="date" value={depositDate}
+                            onChange={(e) => setDepositInfo((p) => ({ ...p, date: e.target.value }))}
+                            className="text-sm font-bold outline-none border-b-2 bg-transparent transition-colors focus:border-[#3182F6]"
+                            style={{ color: "#191F28", borderColor: "#E9EBEF", width: 130 }} />
+                        )}
+                      </div>
+
                       {/* 입금확인요청 버튼 — 우측 정렬 */}
-                      <div className="ml-auto flex items-center gap-2 relative">
+                      <div className="ml-auto flex items-center gap-2">
                         {isTaxExempt && (
                           <span className="text-xs font-semibold px-2.5 py-1 rounded-lg" style={{ background: "rgba(148,163,184,0.1)", color: "#94A3B8", border: "1px solid rgba(148,163,184,0.25)" }}>세금계산서 발행 불필요</span>
                         )}
@@ -1282,23 +1331,77 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                         {cs?.status !== "반려" && cs?.status !== "발행완료" && (() => {
                           const isPending  = cs?.status === "대기" && !cs?.depositConfirmedAt;
                           const isApproved = cs?.status === "확인완료" || Boolean(cs?.depositConfirmedAt);
-                          const isActive   = !isPending && !isApproved && canRequest;
+                          // 입금자명·입금날짜가 비면 결재자가 통장과 대조할 수 없다 — 요청을 막는다
+                          const hasDeposit = Boolean(depositName.trim() && depositDate);
+                          const canSubmit  = canRequest && hasDeposit && !depositSending;
+                          const isActive   = !isPending && !isApproved && canSubmit;
                           return (
                             <button
                               type="button"
-                              disabled={isPending || isApproved || !canRequest}
-                              title={(!isPending && !isApproved && !canRequest) ? (
+                              disabled={isPending || isApproved || !canSubmit}
+                              title={(!isPending && !isApproved && !canSubmit) ? (
                                 !form.campaignName ? "캠페인명을 입력해주세요." :
                                 !isFormValid && !isEdit ? `기본 정보를 모두 입력해주세요: ${missingFields.filter(f => f.key !== "campaignName").map(f => f.label).join(", ")}` :
+                                !hasDeposit ? "입금자명과 입금날짜를 입력해주세요." :
                                 ""
                               ) : ""}
-                              onClick={() => {
-                                // 요청 전에 입금자명·입금날짜를 받는다. 둘 다 채워둔 채로 연다.
-                                const info = clients.find((c) => c.id === form.clientId);
-                                setDepositDraft({
-                                  name: info?.advertiserName || form.advertiser || "",
-                                  date: todayStr(),
-                                });
+                              onClick={async () => {
+                                setDepositSending(true);
+                                try {
+                                  const pid = await ensureSaved();
+                                  if (!pid) return;
+                                  let clientBusinessNumber = "", clientEmail = "", clientIndustry = "", clientCategory = "";
+                                  if (form.clientId) {
+                                    try {
+                                      const res = await fetch(`/api/clients/${form.clientId}`);
+                                      const { client } = await res.json();
+                                      clientBusinessNumber = client?.businessNumber ?? "";
+                                      clientEmail          = client?.contactEmail  ?? "";
+                                      clientIndustry       = client?.industry      ?? "";
+                                      clientCategory       = client?.category      ?? "";
+                                    } catch {}
+                                  }
+                                  const clientInfo = clients.find((c) => c.id === form.clientId);
+                                  const newReq = await addConfirmRequest({
+                                    projectId:      pid,
+                                    rowKey:         contractKey,
+                                    clientId:       form.clientId,
+                                    assignedTeam:   form.assignedTeam || null,
+                                    projectName:    form.campaignName || "미지정",
+                                    requester:      form.assignedPerson || "—",
+                                    productName:    "계약금액 일괄",
+                                    description:    form.campaignName || "",
+                                    quantity:       "1",
+                                    amount:         `₩${effectiveTotal.toLocaleString()}`,
+                                    workStartDate:  form.startDate || "",
+                                    workEndDate:    form.endDate || "",
+                                    clientName:      clientInfo?.companyName || form.advertiser || "—",
+                                    clientStoreName: clientInfo?.storeName || "",
+                                    clientBusinessNumber,
+                                    clientEmail,
+                                    clientIndustry,
+                                    clientCategory,
+                                    dueDate:        form.startDate || "",
+                                    depositAccount: revenuesRef.current.find(r => r.depositAccount)?.depositAccount || "",
+                                    depositorName:  depositName.trim(),
+                                    depositDate:    depositDate,
+                                    taxExempt:      effectiveTax === 0,
+                                  });
+                                  setConfirmStatuses((p) => ({
+                                    ...p,
+                                    [contractKey]: {
+                                      status: "대기", requestId: newReq.id,
+                                      depositorName: depositName.trim(), depositDate,
+                                    },
+                                  }));
+                                  invalidateProjectCache(pid);
+                                  window.dispatchEvent(new Event("approval-request-added"));
+                                  showToast("요청이 완료되었습니다.");
+                                } catch (err) {
+                                  setError(err instanceof Error ? err.message : "입금확인 요청에 실패했습니다.");
+                                } finally {
+                                  setDepositSending(false);
+                                }
                               }}
                               className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg whitespace-nowrap transition-all"
                               style={{
@@ -1306,7 +1409,7 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                                           : isActive   ? "linear-gradient(135deg, #3182F6, #2462D8)"
                                           : "#F1F5F9",
                                 color:      isApproved ? "#fff" : isActive ? "#fff" : "#94A3B8",
-                                cursor:     (isPending || isApproved || !canRequest) ? "not-allowed" : "pointer",
+                                cursor:     (isPending || isApproved || !canSubmit) ? "not-allowed" : "pointer",
                                 boxShadow:  isApproved ? "0 1px 4px rgba(16,185,129,0.3)"
                                           : isActive   ? "0 1px 4px rgba(49,130,246,0.3)" : "none",
                               }}>
@@ -1316,98 +1419,11 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                                   : <><polyline points="22 2 11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></>
                                 }
                               </svg>
-                              {isApproved ? "승인됨" : isPending ? "요청됨 (검토 중)" : "입금확인요청"}
+                              {isApproved ? "승인됨" : isPending ? "요청됨 (검토 중)" : depositSending ? "요청 중..." : "입금확인요청"}
                             </button>
                           );
                         })()}
 
-                        {/*
-                          입금자명·입금날짜를 요청 직전에 받는다.
-                          결재자는 통장만 보고 대조하므로, 누가 언제 넣었는지를 요청자가 짚어줘야 대조가 된다.
-                          광고주 담당자명과 오늘 날짜로 채워두되 통장에 찍힌 이름이 다를 수 있으니 고칠 수 있게 둔다.
-                        */}
-                        {depositDraft && (
-                          <div className="absolute right-0 top-full mt-2 z-30 w-[268px] p-3.5 rounded-xl"
-                            style={{ background: "#fff", border: "1px solid #E9EBEF", boxShadow: "0 8px 28px rgba(15,23,42,0.14)" }}>
-                            <p className="text-xs font-bold mb-2.5" style={{ color: "#191F28" }}>입금확인요청</p>
-
-                            <label className={labelCls} style={labelStyle}>입금자명</label>
-                            <input value={depositDraft.name} autoFocus
-                              onChange={e => setDepositDraft(d => d && { ...d, name: e.target.value })}
-                              placeholder="통장에 찍힌 이름"
-                              className={inputCls} style={inputStyle} />
-
-                            <label className={labelCls} style={{ ...labelStyle, marginTop: 10 }}>입금날짜</label>
-                            <input type="date" value={depositDraft.date}
-                              onChange={e => setDepositDraft(d => d && { ...d, date: e.target.value })}
-                              className={inputCls} style={inputStyle} />
-
-                            <div className="flex gap-1.5 mt-3">
-                              <button type="button" onClick={() => setDepositDraft(null)} disabled={depositSending}
-                                className="flex-1 py-1.5 text-xs font-semibold rounded-lg transition-colors hover:brightness-95 disabled:opacity-50"
-                                style={{ background: "#F1F5F9", color: "#64748B" }}>취소</button>
-                              <button type="button"
-                                disabled={depositSending || !depositDraft.name.trim() || !depositDraft.date}
-                                onClick={async () => {
-                                  setDepositSending(true);
-                                  try {
-                                    const pid = await ensureSaved();
-                                    if (!pid) return;
-                                    let clientBusinessNumber = "", clientEmail = "", clientIndustry = "", clientCategory = "";
-                                    if (form.clientId) {
-                                      try {
-                                        const res = await fetch(`/api/clients/${form.clientId}`);
-                                        const { client } = await res.json();
-                                        clientBusinessNumber = client?.businessNumber ?? "";
-                                        clientEmail          = client?.contactEmail  ?? "";
-                                        clientIndustry       = client?.industry      ?? "";
-                                        clientCategory       = client?.category      ?? "";
-                                      } catch {}
-                                    }
-                                    const clientInfo = clients.find((c) => c.id === form.clientId);
-                                    const newReq = await addConfirmRequest({
-                                      projectId:      pid,
-                                      rowKey:         contractKey,
-                                      clientId:       form.clientId,
-                                      assignedTeam:   form.assignedTeam || null,
-                                      projectName:    form.campaignName || "미지정",
-                                      requester:      form.assignedPerson || "—",
-                                      productName:    "계약금액 일괄",
-                                      description:    form.campaignName || "",
-                                      quantity:       "1",
-                                      amount:         `₩${effectiveTotal.toLocaleString()}`,
-                                      workStartDate:  form.startDate || "",
-                                      workEndDate:    form.endDate || "",
-                                      clientName:      clientInfo?.companyName || form.advertiser || "—",
-                                      clientStoreName: clientInfo?.storeName || "",
-                                      clientBusinessNumber,
-                                      clientEmail,
-                                      clientIndustry,
-                                      clientCategory,
-                                      dueDate:        form.startDate || "",
-                                      depositAccount: revenuesRef.current.find(r => r.depositAccount)?.depositAccount || "",
-                                      depositorName:  depositDraft.name.trim(),
-                                      depositDate:    depositDraft.date,
-                                      taxExempt:      effectiveTax === 0,
-                                    });
-                                    setConfirmStatuses((p) => ({ ...p, [contractKey]: { status: "대기", requestId: newReq.id } }));
-                                    invalidateProjectCache(pid);
-                                    window.dispatchEvent(new Event("approval-request-added"));
-                                    setDepositDraft(null);
-                                    showToast("요청이 완료되었습니다.");
-                                  } catch (err) {
-                                    setError(err instanceof Error ? err.message : "입금확인 요청에 실패했습니다.");
-                                  } finally {
-                                    setDepositSending(false);
-                                  }
-                                }}
-                                className="flex-1 py-1.5 text-xs font-semibold rounded-lg text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-                                style={{ background: "linear-gradient(135deg,#3182F6,#2462D8)" }}>
-                                {depositSending ? "요청 중..." : "요청"}
-                              </button>
-                            </div>
-                          </div>
-                        )}
                       </div>
                     </div>
                   </div>
