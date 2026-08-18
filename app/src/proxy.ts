@@ -73,5 +73,7 @@ export async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  // public/fonts 는 인증 대상이 아니다. 제외하지 않으면 로그인 화면에서 폰트 요청이
+  // /login 리다이렉트로 응답돼 서체가 시스템 폰트로 떨어진다.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|fonts/).*)"],
 };

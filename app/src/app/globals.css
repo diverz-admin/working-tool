@@ -1,4 +1,11 @@
-@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css");
+/*
+ * Pretendard는 public/fonts 에 직접 넣어 서비스한다.
+ * 이전에는 jsdelivr CDN의 static 버전을 불러왔는데, 그 CSS에는 unicode-range가 없어
+ * 굵기 하나당 한글 전체(약 730KB)를 통째로 받았다. 굵기를 여러 개 쓰는 화면에서는 수 MB가 됐다.
+ * 지금은 가변 폰트 + 자모 구간별 서브셋이라, 브라우저가 실제로 쓰인 글자 구간만 받는다.
+ * CDN이 죽어도 폰트가 시스템 폰트로 떨어지지 않는다는 점도 중요하다.
+ */
+@import "./fonts.css";
 @import "tailwindcss";
 
 @theme inline {
@@ -7,8 +14,12 @@
   --color-diverz-white: #FFFFFF;
   --color-diverz-bg: #F2F4F6;
   --color-diverz-border: #E5E8EB;
-  --font-sans: "Pretendard", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  --font-display: "Montserrat", "Pretendard", sans-serif;
+  /*
+   * 앱 전체가 Pretendard 하나로 간다. display용 별도 서체(Montserrat)는 쓰는 곳이 없어 걷어냈다.
+   * 폴백은 한글이 깨지지 않는 순서로 둔다 — macOS(Apple SD Gothic Neo) → Windows(맑은 고딕).
+   */
+  --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "맑은 고딕", system-ui, sans-serif;
+  --font-display: var(--font-sans);
 }
 
 :root {
@@ -19,10 +30,23 @@
   --diverz-border: #E5E8EB;
 }
 
+/* html에도 걸어야 body 밖(스크롤바·폼 컨트롤 등)과 포털로 붙는 요소까지 같은 서체를 쓴다 */
+html,
+body {
+  font-family: var(--font-sans);
+}
+
+/* 버튼·입력창은 브라우저 기본 서체를 쓰므로 따로 상속시켜야 한다 */
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
 body {
   background: #F2F4F6;
   color: #191F28;
-  font-family: "Pretendard", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
