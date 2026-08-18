@@ -99,7 +99,9 @@ export default function MeetingsPage() {
         </select>
       </div>
 
-      <MeetingSection year={year} month={month} criteria={criteria} />
+      {/* 공유 이미지에 "무엇을 매출로 본 수치인지" 적어야 해서 라벨까지 함께 넘긴다 */}
+      <MeetingSection year={year} month={month} criteria={criteria}
+        criteriaLabel={CRITERIA.find(c => c.value === criteria)?.label ?? criteria} />
     </div>
   );
 }

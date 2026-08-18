@@ -34,6 +34,8 @@ import { TEAM_FILTERS } from "@/lib/teams";
 import {
   normalizeMeetingSections, meetingSectionsAreEmpty, axisHasText, MEETING_WRITABLE_AXIS_KEYS,
 } from "@/lib/meeting-sections";
+import { briefStats, briefText, wonExact, BRIEF_TONE, type RevenueBriefData } from "@/lib/meeting-brief";
+import { renderMeetingImage } from "@/lib/meeting-image";
 import type { MeetingAxisKey, MeetingSections } from "@/db/schema";
 
 // ─── 타입 ─────────────────────────────────────────────────────
@@ -45,16 +47,6 @@ export interface ReportNote {
 
 interface MonthFigure { month: number; revenue: number; cost: number; margin: number; marginRate: number; count: number }
 interface FiguresSource { monthly: MonthFigure[]; teams: { team: string; monthly: MonthFigure[] }[] }
-
-/** 매출현황 축 브리핑 — /api/projects/revenue-brief 응답 */
-interface RevenueBriefData {
-  asOf: string; asOfDay: number;
-  kpiTarget: number | null;
-  asOfRevenue: number; monthRevenue: number;
-  asOfCost: number; monthCost: number;
-  forecast: number;
-  projects: { total: number; guaranteed: number; managed: number; etc: number; fresh: number; extended: number };
-}
 
 // ─── 상수 ─────────────────────────────────────────────────────
 const DOW = ["일", "월", "화", "수", "목", "금", "토"];
@@ -72,17 +64,8 @@ const C = {
   accentSoft: "#EAF2FE",
 };
 
-/**
- * 자동 집계 전용 색.
- * 목표 / 실적 / 전망을 색으로 갈라야 세 숫자가 한 덩어리로 안 뭉친다.
- * 본문(회의록 입력)에는 색을 쓰지 않으므로, 색이 있는 곳 = 시스템이 계산한 값이라는 신호도 된다.
- */
-const K = {
-  target:   { fg: "#7048E8", bg: "#F5F2FF" },  // 목표 — 월 KPI
-  actual:   { fg: "#1971C2", bg: "#EBF5FF" },  // 실적 — 누적 매출
-  forecast: { fg: "#0B8457", bg: "#E9F9F1" },  // 전망 — 월말 예상
-  cost:     { fg: "#D9480F", bg: "#FFF4E6" },  // 지출 — 누적 매입
-};
+/** 자동 집계 전용 색 — 화면·공유 이미지가 같은 값을 쓰도록 lib에 둔다 */
+const K = BRIEF_TONE;
 
 const AXES: { key: MeetingAxisKey; label: string; hint: string }[] = [
   { key: "revenue",   label: "매출현황",     hint: "자동 집계 — 매출·매입·마진, 목표 대비 달성" },
@@ -101,14 +84,6 @@ const normalize = (s: MeetingSections | null | undefined): MeetingSections => no
 
 // ─── 유틸 ─────────────────────────────────────────────────────
 const pct = (n: number) => `${n.toFixed(1)}%`;
-
-/**
- * 자동 집계 금액은 반올림하지 않는다.
- * 만원 단위로 끊으면 3,384,000원이 "338만원"이 되어 회의록에 옮겨 적을 때 실제 금액과 어긋난다.
- */
-function wonExact(n: number) {
-  return `${n.toLocaleString()}원`;
-}
 
 function fmtNoteDate(iso?: string) {
   if (!iso) return "";
@@ -164,7 +139,9 @@ function delta(cur: number, prev: number) {
 }
 
 // ─── 메인 ─────────────────────────────────────────────────────
-export default function MeetingSection({ year, month, criteria }: { year: number; month: number; criteria: string }) {
+export default function MeetingSection({ year, month, criteria, criteriaLabel }: {
+  year: number; month: number; criteria: string; criteriaLabel: string;
+}) {
   const [noteTeam,  setNoteTeam]  = useState("전체");
   const [notes,     setNotes]     = useState<ReportNote[]>([]);
   const [prevNotes, setPrevNotes] = useState<ReportNote[]>([]);
@@ -180,6 +157,7 @@ export default function MeetingSection({ year, month, criteria }: { year: number
   const [deleting, setDeleting] = useState(false);
   const [saved,    setSaved]    = useState(false);
   const [copied,   setCopied]   = useState(false);
+  const [imaging,  setImaging]  = useState(false);
   const [error,    setError]    = useState<string | null>(null);
 
   const weekRows = weekRowsOf(year, month);
@@ -383,6 +361,51 @@ export default function MeetingSection({ year, month, criteria }: { year: number
     }
   }
 
+  /**
+   * 회의록 요약을 이미지 한 장으로 만들어 넘긴다 — 카카오톡 공유용.
+   *
+   * 카톡으로 바로 보내려면 공유 시트(navigator.share)가 있어야 하는데 대체로 모바일에만 있다.
+   * 없는 환경에서는 파일로 내려받아 사용자가 직접 첨부하게 둔다. 둘 다 같은 이미지다.
+   */
+  async function handleImage() {
+    setImaging(true);
+    setError(null);
+    // 파일 이름에 못 쓰는 문자와 공백을 걷어낸다
+    const fileName = `${noteTeam}_${year}_${fullLabel}`.replace(/[\s/\\:*?"<>|]/g, "") + ".png";
+    try {
+      const blob = await renderMeetingImage({
+        team:    noteTeam,
+        title:   fullLabel,
+        caption: `${year}년 · ${criteriaLabel}${draftAuthor ? ` · ${draftAuthor}` : ""}`,
+        nowLabel, nextLabel,
+        stats: brief ? briefStats(brief, isMonthly) : [],
+        axes:  WRITABLE.map(a => ({
+          label:   a.label,
+          current: draftSections[a.key].current,
+          next:    draftSections[a.key].next,
+        })),
+        memo: draftContent,
+      });
+      const file = new File([blob], fileName, { type: "image/png" });
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: `${noteTeam} ${fullLabel}` });
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = fileName;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+    } catch (e) {
+      // 공유 시트를 사용자가 그냥 닫은 것은 실패가 아니다
+      if (!(e instanceof DOMException && e.name === "AbortError")) {
+        setError("이미지를 만들지 못했습니다.");
+      }
+    }
+    setImaging(false);
+  }
+
   // ── 매출 브리핑 ──
   /**
    * "N일 매출"의 기준일.
@@ -545,6 +568,7 @@ export default function MeetingSection({ year, month, criteria }: { year: number
             className="px-3 py-2 text-[13px] rounded-lg outline-none border transition-colors focus:border-[#3182F6] placeholder:text-[#8B95A1]"
             style={{ borderColor: C.line, color: C.ink, width: 92 }} />
           <TextButton onClick={handleCopy}>{copied ? "복사됨" : "복사"}</TextButton>
+          <TextButton onClick={handleImage} disabled={imaging}>{imaging ? "만드는 중" : "이미지 공유"}</TextButton>
           {currentNote && <TextButton onClick={handleDelete} disabled={deleting || saving} danger>{deleting ? "삭제 중" : "삭제"}</TextButton>}
           <button onClick={handleSave} disabled={saving || deleting}
             className="px-4 py-2 rounded-lg text-[13px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
@@ -717,33 +741,6 @@ function Field({ label, value, onChange, placeholder, rows = 5, note, action }: 
 }
 
 /**
- * 브리핑을 메신저·메일에 그대로 붙일 수 있는 텍스트로 만든다.
- * 화면 표시와 복사본이 어긋나면 안 되므로 한 곳에서 만든다.
- * 주간회의는 월 단위 진척(KPI·누적 매출·누적 매입)만 본다 — 프로젝트 구성이나 월말 전망은 월간회의 몫이다.
- */
-function briefText(b: RevenueBriefData, isMonthly: boolean) {
-  const kpi = b.kpiTarget === null ? "미설정" : wonExact(b.kpiTarget);
-  if (!isMonthly) {
-    return [
-      "[매출 현황]",
-      `1. 월 KPI: ${kpi}`,
-      `2. 월 누적 매출: ${wonExact(b.monthRevenue)}`,
-      `3. 월 누적 매입: ${wonExact(b.monthCost)}`,
-    ].join("\n");
-  }
-  const p = b.projects;
-  return [
-    "[매출 현황]",
-    `1. 월 KPI: ${kpi}`,
-    `2. ${b.asOfDay}일 매출: ${wonExact(b.asOfRevenue)} (월말 예상매출 ${wonExact(b.forecast)})`,
-    "3. 프로젝트 현황",
-    ` - 보장형 ${p.guaranteed}건`,
-    ` - 관리형 ${p.managed}건`,
-    ` - 신규 ${p.fresh}건`,
-  ].join("\n");
-}
-
-/**
  * 매출현황 축 맨 위 자동 집계.
  *
  * 한 덩어리 목록으로 두면 전부 같은 크기의 회색 글자가 되어 무엇이 중요한지 안 보인다.
@@ -766,15 +763,13 @@ function RevenueBrief({ brief, month, prevMonth, cur, prevFig, isMonthly }: {
     );
   }
 
-  const { kpiTarget, asOfDay, asOfRevenue, monthRevenue, monthCost, forecast, projects: p } = brief;
-  const hasKpi    = kpiTarget !== null && kpiTarget > 0;
-  const rate      = hasKpi ? Math.round((asOfRevenue  / kpiTarget!) * 100) : null;
-  const monthRate = hasKpi ? Math.round((monthRevenue / kpiTarget!) * 100) : null;
-  const fcstRate  = hasKpi ? Math.round((forecast     / kpiTarget!) * 100) : null;
-  const kpiStat = (
-    <Stat label="월 KPI" tone={K.target}
-      value={hasKpi ? wonExact(kpiTarget!) : "미설정"} dim={!hasKpi}
-      sub={hasKpi ? undefined : "프로젝트 관리에서 등록"} />
+  const { asOfDay, projects: p } = brief;
+  const statRow = (
+    <div className="grid gap-px" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", background: C.line }}>
+      {briefStats(brief, isMonthly).map(st => (
+        <Stat key={st.label} label={st.label} tone={K[st.tone]} value={st.value} sub={st.sub} dim={st.dim} />
+      ))}
+    </div>
   );
 
   /** 회의록에는 옮겨 적지 않는다. 메신저·메일로 그대로 넘길 수 있게 복사만 준다. */
@@ -795,17 +790,10 @@ function RevenueBrief({ brief, month, prevMonth, cur, prevFig, isMonthly }: {
    * 프로젝트 관리·리포트가 보여주는 월 매출과 값이 어긋난다. 회의록만 다른 숫자를 말하면 안 된다.
    */
   if (!isMonthly) {
-    const monthMargin = monthRevenue - monthCost;
     return (
       <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${C.line}` }}>
         <BriefHeader label={`자동 집계 · ${month}월 전체`} copied={copied} onCopy={() => copy(false)} />
-        <div className="grid gap-px" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", background: C.line }}>
-          {kpiStat}
-          <Stat label="월 누적 매출" tone={K.actual} value={wonExact(monthRevenue)}
-            sub={monthRate !== null ? `KPI 달성 ${monthRate}%` : undefined} />
-          <Stat label="월 누적 매입" tone={K.cost} value={wonExact(monthCost)}
-            sub={`마진 ${wonExact(monthMargin)}`} />
-        </div>
+        {statRow}
       </div>
     );
   }
@@ -820,15 +808,7 @@ function RevenueBrief({ brief, month, prevMonth, cur, prevFig, isMonthly }: {
       <BriefHeader label={`자동 집계 · ${month}월 ${asOfDay}일 기준`} copied={copied} onCopy={() => copy(true)} />
 
       {/* 핵심 금액 — 목표·실적·전망을 색으로 가른다 */}
-      <div className="grid gap-px" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", background: C.line }}>
-        {kpiStat}
-        <Stat label={`${asOfDay}일 매출`} tone={K.actual}
-          value={wonExact(asOfRevenue)}
-          sub={rate !== null ? `KPI 달성 ${rate}%` : undefined} />
-        <Stat label="월말 예상매출" tone={K.forecast}
-          value={wonExact(forecast)}
-          sub={fcstRate !== null ? `예상 달성 ${fcstRate}%` : undefined} />
-      </div>
+      {statRow}
 
       {/* 프로젝트 건수 */}
       <div className="px-4 py-3" style={{ borderTop: `1px solid ${C.line}` }}>
