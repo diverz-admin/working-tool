@@ -1,27 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { reportMeetings, type MeetingSections, type MeetingAxisKey } from "@/db/schema";
+import { reportMeetings, type MeetingSections } from "@/db/schema";
 import { eq, and, or, isNull } from "drizzle-orm";
+import { normalizeMeetingSections, meetingSectionsAreEmpty } from "@/lib/meeting-sections";
 
-const AXIS_KEYS: MeetingAxisKey[] = ["revenue", "operation", "sales", "marketing"];
-
-/** 클라이언트가 보낸 sections를 4축 × 3필드 문자열로 정규화한다. 전부 비면 null(구버전과 동일 취급). */
+/** 클라이언트가 보낸 sections를 4축 × 자유 서술로 정규화한다. 전부 비면 null(구버전과 동일 취급). */
 function normalizeSections(raw: unknown): MeetingSections | null {
   if (!raw || typeof raw !== "object") return null;
-  const src = raw as Record<string, unknown>;
-  const out = {} as MeetingSections;
-  let filled = false;
-  for (const key of AXIS_KEYS) {
-    const e = (src[key] ?? {}) as Record<string, unknown>;
-    const entry = {
-      check:   typeof e.check   === "string" ? e.check   : "",
-      current: typeof e.current === "string" ? e.current : "",
-      plan:    typeof e.plan    === "string" ? e.plan    : "",
-    };
-    if (entry.check.trim() || entry.current.trim() || entry.plan.trim()) filled = true;
-    out[key] = entry;
-  }
-  return filled ? out : null;
+  const out = normalizeMeetingSections(raw);
+  return meetingSectionsAreEmpty(out) ? null : out;
 }
 
 /**

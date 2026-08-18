@@ -413,13 +413,19 @@ export const productSections = pgTable("product_sections", {
 export type MeetingAxisKey = "revenue" | "operation" | "sales" | "marketing";
 
 /**
- * 한 축의 기록. 세 칸이 곧 회의 흐름이다.
- * check   — 지난 회의에서 세운 계획이 어떻게 됐는지 (전월/전주 대비)
- * current — 이번 기간 현황
- * plan    — 다음 기간 계획 (다음 회의에서 check의 대상이 된다)
+ * 한 축의 기록. 자유 서술 한 칸이다.
+ *
+ * 처음에는 점검·현황·계획 세 칸으로 나눴는데 회의에서 세 칸의 경계가 매번 흐려졌다.
+ * 같은 얘기를 셋으로 쪼개 적거나 가운데 칸만 채우는 일이 반복돼 칸을 하나로 합쳤다.
  */
-export type MeetingAxisEntry = { check: string; current: string; plan: string };
+export type MeetingAxisEntry = { text: string };
 export type MeetingSections = Record<MeetingAxisKey, MeetingAxisEntry>;
+
+/**
+ * 3칸(점검·현황·계획) 시절 기록. 이 형태로 저장된 회의록이 이미 있으므로
+ * 읽을 때 한 칸으로 합친다 — src/lib/meeting-sections.ts 참고.
+ */
+export type LegacyMeetingAxisEntry = { check?: string; current?: string; plan?: string };
 
 export const reportMeetings = pgTable("report_meetings", {
   id:         uuid("id").primaryKey().defaultRandom(),

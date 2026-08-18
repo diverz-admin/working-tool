@@ -4,12 +4,12 @@
  * 정기 회의록 — 월간회의 / 주간회의.
  *
  * 설계 의도: 회의록을 "이번에 무슨 얘기를 했나"가 아니라 **직전 회의와의 연결**로 만든다.
- * 직전 회의가 세운 계획이 화면 위쪽에 읽기전용으로 자동으로 붙고, 그것과 비교해 아래를 채운다.
+ * 직전 회의의 같은 축 기록이 화면 위쪽에 읽기전용으로 자동으로 붙고, 그것과 비교해 아래를 채운다.
  *
- * 축마다 세 칸을 시간 순으로 가로로 늘어놓는다.
- *   월간회의 — 전월(계획 점검) · 당월(현황) · 익월(계획)
- *   주간회의 — 전주(계획 점검) · 금주(현황) · 차주(계획)
- * 오른쪽 끝 칸(익월·차주 계획)이 다음 회의의 왼쪽 끝 칸이 되어 계획이 끊기지 않는다.
+ * 축마다 입력은 자유 서술 한 칸이다.
+ * 처음에는 점검·현황·계획 세 칸으로 나눴는데, 회의에서 세 칸의 경계가 매번 흐려져
+ * 같은 얘기를 셋으로 쪼개 적거나 가운데 칸만 채우는 일이 반복됐다. 칸을 하나로 합쳤다.
+ * 대신 위에 붙는 직전 회의 기록이 "지난번에 뭘 하기로 했나"를 대신 짚어준다.
  *
  * 비교 대상:
  *   월간회의   → 전월 월간회의
@@ -26,6 +26,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { fetchJson, saveErrorMessage } from "@/lib/fetch-json";
 import { TEAM_FILTERS } from "@/lib/teams";
+import { normalizeMeetingSections } from "@/lib/meeting-sections";
 import type { MeetingAxisKey, MeetingSections } from "@/db/schema";
 
 // ─── 타입 ─────────────────────────────────────────────────────
@@ -83,24 +84,10 @@ const AXES: { key: MeetingAxisKey; label: string; hint: string }[] = [
   { key: "marketing", label: "마케팅현황",   hint: "채널·콘텐츠·브랜딩·리드" },
 ];
 
-const EMPTY_ENTRY = { check: "", current: "", plan: "" };
-const emptySections = (): MeetingSections => ({
-  revenue:   { ...EMPTY_ENTRY },
-  operation: { ...EMPTY_ENTRY },
-  sales:     { ...EMPTY_ENTRY },
-  marketing: { ...EMPTY_ENTRY },
-});
+const emptySections = (): MeetingSections => normalizeMeetingSections(null);
 
-/** 저장된 값이 없거나 일부만 있어도 항상 4축 × 3필드를 채워 돌려준다. */
-function normalize(s: MeetingSections | null | undefined): MeetingSections {
-  const base = emptySections();
-  if (!s) return base;
-  for (const { key } of AXES) {
-    const e = s[key];
-    if (e) base[key] = { check: e.check ?? "", current: e.current ?? "", plan: e.plan ?? "" };
-  }
-  return base;
-}
+/** 저장된 값이 없거나 구버전(3칸) 형태여도 항상 4축을 채워 돌려준다. */
+const normalize = (s: MeetingSections | null | undefined): MeetingSections => normalizeMeetingSections(s);
 
 // ─── 유틸 ─────────────────────────────────────────────────────
 const pct = (n: number) => `${n.toFixed(1)}%`;
@@ -131,12 +118,9 @@ function weekRowsOf(y: number, m: number) {
 function noteHasContent(n?: ReportNote | null) {
   if (!n) return false;
   if (n.content.trim()) return true;
-  const s = n.sections;
-  if (!s) return false;
-  return AXES.some(a => {
-    const e = s[a.key];
-    return !!e && !!(e.check?.trim() || e.current?.trim() || e.plan?.trim());
-  });
+  if (!n.sections) return false;
+  const s = normalize(n.sections);
+  return AXES.some(a => !!s[a.key].text.trim());
 }
 
 /**
@@ -269,11 +253,7 @@ export default function MeetingSection({ year, month, criteria }: { year: number
     const saved0 = normalize(currentNote?.sections);
     if ((currentNote?.content ?? "") !== draftContent) return true;
     if ((currentNote?.authorName ?? "") !== draftAuthor) return true;
-    return AXES.some(a =>
-      saved0[a.key].check   !== draftSections[a.key].check ||
-      saved0[a.key].current !== draftSections[a.key].current ||
-      saved0[a.key].plan    !== draftSections[a.key].plan
-    );
+    return AXES.some(a => saved0[a.key].text !== draftSections[a.key].text);
   }, [currentNote, draftSections, draftContent, draftAuthor]);
 
   /** 저장 안 된 내용이 있으면 확인 후 이동 */
@@ -283,16 +263,7 @@ export default function MeetingSection({ year, month, criteria }: { year: number
   }
 
   // ── 라벨 ──
-  const fullLabel  = isMonthly ? `${month}월 월간회의` : `${month}월 ${week}주차 주간회의`;
-  // 가로 3칸의 머리말은 기간 이름만 둔다 — 무엇을 적는지는 아래 note가 설명한다
-  const checkLabel = isMonthly ? "① 전월" : "① 전주";
-  const nowLabel   = isMonthly ? "② 당월" : "② 금주";
-  const planLabel  = isMonthly ? "③ 익월" : "③ 차주";
-  /**
-   * 위에 붙는 읽기전용 참조 = 직전 회의가 세운 계획.
-   * 7월 월간회의의 "익월 계획"이 곧 8월의 계획이므로, "전월 계획"이 아니라 "이번 달 계획"이라 부른다.
-   */
-  const prevRefLabel = isMonthly ? "이번 달 계획" : "이번 주 계획";
+  const fullLabel = isMonthly ? `${month}월 월간회의` : `${month}월 ${week}주차 주간회의`;
 
   // ── 저장 / 삭제 ──
   async function handleSave() {
@@ -348,13 +319,9 @@ export default function MeetingSection({ year, month, criteria }: { year: number
     if (draftAuthor) lines.push(`작성자: ${draftAuthor}`);
     lines.push(`비교 기준: ${prev.label}`, "");
     for (const a of AXES) {
-      const e = draftSections[a.key];
-      if (!e.check.trim() && !e.current.trim() && !e.plan.trim()) continue;
-      lines.push(`■ ${a.label}`);
-      if (e.check.trim())   lines.push(`  ${checkLabel} 계획 점검\n${e.check.trim()}`);
-      if (e.current.trim()) lines.push(`  ${nowLabel} 현황\n${e.current.trim()}`);
-      if (e.plan.trim())    lines.push(`  ${planLabel} 계획\n${e.plan.trim()}`);
-      lines.push("");
+      const text = draftSections[a.key].text.trim();
+      if (!text) continue;
+      lines.push(`■ ${a.label}`, text, "");
     }
     if (draftContent.trim()) lines.push("■ 기타 논의·메모", draftContent.trim());
     try {
@@ -410,10 +377,7 @@ export default function MeetingSection({ year, month, criteria }: { year: number
     (w: number | null) => noteHasContent(notes.find(n => n.team === noteTeam && (w === null ? n.week === null : n.week === w))),
     [notes, noteTeam],
   );
-  const axisFilled = (k: MeetingAxisKey) => {
-    const e = draftSections[k];
-    return !!(e.check.trim() || e.current.trim() || e.plan.trim());
-  };
+  const axisFilled = (k: MeetingAxisKey) => !!draftSections[k].text.trim();
   const filledCount = AXES.filter(a => axisFilled(a.key)).length;
 
   // 달력의 회의록 작성일 점
@@ -551,10 +515,10 @@ export default function MeetingSection({ year, month, criteria }: { year: number
         {AXES.map(axis => {
           const open  = !collapsed[axis.key];
           const entry = draftSections[axis.key];
-          // 직전 회의가 세운 계획 = 이번 기간에 하기로 한 일. ① 칸의 점검 대상이다.
-          const prevText = prevSections[axis.key].plan.trim();
-          const set = (field: keyof typeof entry, v: string) =>
-            setDraftSections(p => ({ ...p, [axis.key]: { ...p[axis.key], [field]: v } }));
+          // 직전 회의의 같은 축 기록 — 이번에 무엇과 비교해 적어야 하는지의 기준이 된다
+          const prevText = prevSections[axis.key].text.trim();
+          const setText = (v: string) =>
+            setDraftSections(p => ({ ...p, [axis.key]: { text: v } }));
 
           return (
             <section key={axis.key} style={{ borderBottom: `1px solid ${C.line}` }}>
@@ -577,32 +541,24 @@ export default function MeetingSection({ year, month, criteria }: { year: number
                     <RevenueBrief
                       brief={brief} month={month} prevMonth={figPrevMonth} isMonthly={isMonthly}
                       cur={curFigure} prevFig={prevFigure}
-                      onInsert={t => set("current", entry.current.trim() ? `${entry.current.trimEnd()}\n\n${t}` : t)}
+                      onInsert={t => setText(entry.text.trim() ? `${entry.text.trimEnd()}\n\n${t}` : t)}
                     />
                   )}
 
-                  {/* 직전 회의 내용 — 읽기 전용 */}
+                  {/* 직전 회의 기록 — 읽기 전용 */}
                   <div className="rounded-lg px-3.5 py-3" style={{ background: C.soft }}>
                     <p className="text-xs mb-1.5" style={{ color: C.muted }}>
-                      {prevRefLabel} <span style={{ color: C.faint }}>· {prev.label}</span>
+                      직전 회의 <span style={{ color: C.faint }}>· {prev.label}</span>
                     </p>
                     <p className="text-[13px] whitespace-pre-wrap leading-relaxed" style={{ color: prevText ? C.body : C.faint }}>
-                      {prevText || (prev.note ? `${axis.label} 계획이 없습니다.` : "기록이 없습니다.")}
+                      {prevText || (prev.note ? `${axis.label} 기록이 없습니다.` : "기록이 없습니다.")}
                     </p>
                   </div>
 
-                  {/* 전월 · 당월 · 익월(전주 · 금주 · 차주)을 시간 순으로 가로 배치 */}
-                  <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))" }}>
-                    <Field label={checkLabel} note="계획 점검"
-                      placeholder={`${prevRefLabel}이 어떻게 됐는지\n예) 완료 / 지연 — 사유`}
-                      value={entry.check} onChange={v => set("check", v)} />
-                    <Field label={nowLabel} note="현황"
-                      placeholder={"현재 상태\n예) 수치, 진행 건, 이슈"}
-                      value={entry.current} onChange={v => set("current", v)} />
-                    <Field label={planLabel} note="계획"
-                      placeholder={`${isMonthly ? "다음 달" : "다음 주"}까지 할 일\n예) 담당 · 기한 · 목표 수치`}
-                      value={entry.plan} onChange={v => set("plan", v)} />
-                  </div>
+                  {/* 자유 서술 한 칸 */}
+                  <Field rows={6}
+                    placeholder={`현황과 ${isMonthly ? "다음 달" : "다음 주"} 계획\n예) 수치 · 진행 건 · 이슈 / 담당 · 기한 · 목표`}
+                    value={entry.text} onChange={setText} />
                 </div>
               )}
             </section>
@@ -668,17 +624,22 @@ function TextButton({ children, onClick, disabled, danger }: {
   );
 }
 
-/** 축 안의 입력 한 칸. 테두리 1px + 포커스 시 파랑 — 그 이상 장식하지 않는다. */
+/**
+ * 축 안의 입력 한 칸. 테두리 1px + 포커스 시 파랑 — 그 이상 장식하지 않는다.
+ * 축 제목이 바로 위에 있으므로 라벨은 대개 생략한다.
+ */
 function Field({ label, value, onChange, placeholder, rows = 5, note }: {
-  label: string; value: string; onChange: (v: string) => void;
+  label?: string; value: string; onChange: (v: string) => void;
   placeholder: string; rows?: number; note?: string;
 }) {
   return (
     <div className="min-w-0">
-      <p className="text-[13px] font-semibold mb-1.5" style={{ color: C.body }}>
-        {label}
-        {note && <span className="font-normal ml-1.5" style={{ color: C.faint }}>{note}</span>}
-      </p>
+      {label && (
+        <p className="text-[13px] font-semibold mb-1.5" style={{ color: C.body }}>
+          {label}
+          {note && <span className="font-normal ml-1.5" style={{ color: C.faint }}>{note}</span>}
+        </p>
+      )}
       <textarea value={value} onChange={e => onChange(e.target.value)} rows={rows} placeholder={placeholder}
         className="w-full px-3.5 py-2.5 text-sm rounded-lg outline-none border leading-relaxed transition-colors focus:border-[#3182F6] placeholder:text-[#8B95A1]"
         style={{ borderColor: C.line, color: C.ink, resize: "vertical" }} />
