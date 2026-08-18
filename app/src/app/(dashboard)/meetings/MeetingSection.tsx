@@ -69,9 +69,9 @@ const K = BRIEF_TONE;
 
 const AXES: { key: MeetingAxisKey; label: string; hint: string }[] = [
   { key: "revenue",   label: "매출현황",     hint: "자동 집계 — 매출·매입·마진, 목표 대비 달성" },
-  { key: "operation", label: "관리운영현황", hint: "인력·비용·프로세스·리스크" },
-  { key: "sales",     label: "영업현황",     hint: "신규·기존 광고주, 제안·수주" },
-  { key: "marketing", label: "마케팅현황",   hint: "채널·콘텐츠·브랜딩·리드" },
+  { key: "operation", label: "관리운영현황", hint: "현재 관리중인 프로젝트 운영 현황" },
+  { key: "sales",     label: "영업현황",     hint: "신규 모집을 위한 영업 현황" },
+  { key: "marketing", label: "마케팅현황",   hint: "신규 모집을 위한 마케팅 현황" },
 ];
 
 const emptySections = (): MeetingSections => normalizeMeetingSections(null);
