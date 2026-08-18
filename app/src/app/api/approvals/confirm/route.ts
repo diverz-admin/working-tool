@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { confirmRequests, projectRevenues, projects } from "@/db/schema";
-import { eq, desc, getTableColumns, sql, isNull, inArray, and, asc } from "drizzle-orm";
+import { eq, desc, getTableColumns, sql, isNull, inArray, and } from "drizzle-orm";
 
 // assignedTeam: 저장된 값이 있으면 사용, 없으면 projects 테이블에서 서브쿼리로 조회
 const assignedTeamExpr = sql<string | null>`
@@ -21,7 +21,7 @@ async function enrichWithProjectData(rows: Record<string, unknown>[]) {
     .from(projects)
     .where(inArray(projects.id, projectIds));
 
-  // 그룹 내 캠페인 순번 계산 (캠페인 1, 캠페인 2...)
+  // 그룹 내 캠페인 순번 계산 (캠페인 1, 캠페인 2...) — 프로젝트관리 목록과 같은 createdAt 내림차순
   const groupIds = [...new Set(projectRows.map(p => p.projectGroupId).filter(Boolean))] as string[];
   const campaignNumberMap = new Map<string, number>();
   if (groupIds.length > 0) {
@@ -29,7 +29,7 @@ async function enrichWithProjectData(rows: Record<string, unknown>[]) {
       .select({ id: projects.id, projectGroupId: projects.projectGroupId })
       .from(projects)
       .where(inArray(projects.projectGroupId, groupIds))
-      .orderBy(asc(projects.createdAt));
+      .orderBy(desc(projects.createdAt));
     const groupCounters = new Map<string, number>();
     for (const s of siblings) {
       if (!s.projectGroupId) continue;

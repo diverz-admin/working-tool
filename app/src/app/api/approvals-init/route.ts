@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { confirmRequests, paymentRequests, projectRevenues, projects } from "@/db/schema";
-import { desc, getTableColumns, sql, inArray, asc, eq, and, isNotNull } from "drizzle-orm";
+import { desc, getTableColumns, sql, inArray, eq, and, isNotNull } from "drizzle-orm";
 import { fillVendorBankAccounts } from "@/lib/vendor-account.server";
 
 // 팀 표시값: 요청 행의 assignedTeam 우선, 없으면 프로젝트의 assignedTeam — 행당 서브쿼리 대신 LEFT JOIN
@@ -33,13 +33,13 @@ export async function GET() {
 
     if (projectIds.length === 0) {
       const enriched = (confirmRows as unknown as Record<string, unknown>[]).map(r => ({
-        ...r, projectType: null, projectProduct: null, revenueLines: [], campaignNumber: null,
+        ...r, projectType: null, projectProduct: null, revenueLines: [], campaignNumber: null, campaignName: null,
       }));
       return NextResponse.json({ confirms: enriched, payments: await paymentsPromise });
     }
 
     const [projectRows, revenueRows, siblings] = await Promise.all([
-      db.select({ id: projects.id, projectType: projects.projectType, product: projects.product, projectGroupId: projects.projectGroupId })
+      db.select({ id: projects.id, projectType: projects.projectType, product: projects.product, projectGroupId: projects.projectGroupId, campaignName: projects.campaignName })
         .from(projects)
         .where(inArray(projects.id, projectIds)),
       db.select({
@@ -52,6 +52,7 @@ export async function GET() {
         .from(projectRevenues)
         .where(inArray(projectRevenues.projectId, projectIds)),
       // 캠페인 순번용 형제 프로젝트 — groupId를 서브쿼리로 해석해 추가 round-trip 제거
+      // 정렬은 프로젝트관리 캠페인 목록과 동일하게 createdAt 내림차순 (같은 캠페인에 같은 번호가 붙도록)
       db.select({ id: projects.id, projectGroupId: projects.projectGroupId })
         .from(projects)
         .where(inArray(
@@ -59,10 +60,10 @@ export async function GET() {
           db.select({ gid: projects.projectGroupId }).from(projects)
             .where(and(inArray(projects.id, projectIds), isNotNull(projects.projectGroupId))),
         ))
-        .orderBy(asc(projects.createdAt)),
+        .orderBy(desc(projects.createdAt)),
     ]);
 
-    // 3. 캠페인 순번 (그룹별 createdAt 오름차순 순번)
+    // 3. 캠페인 순번 (그룹별 createdAt 내림차순 순번 — 프로젝트관리 화면과 동일)
     const campaignNumberMap = new Map<string, number>();
     const counters = new Map<string, number>();
     for (const s of siblings) {
@@ -73,6 +74,7 @@ export async function GET() {
     }
 
     const typeMap    = new Map(projectRows.map(p => [p.id, p.projectType]));
+    const nameMap    = new Map(projectRows.map(p => [p.id, p.campaignName]));
     const productMap = new Map(projectRows.map(p => [p.id, p.product]));
     const linesMap   = new Map<string, { productName: string | null; quantity: number | null; total: number | null; depositAccount: string | null }[]>();
     for (const rv of revenueRows) {
@@ -87,6 +89,7 @@ export async function GET() {
       projectProduct: r.projectId ? (productMap.get(r.projectId as string) ?? null) : null,
       revenueLines:   r.projectId ? (linesMap.get(r.projectId as string) ?? []) : [],
       campaignNumber: r.projectId ? (campaignNumberMap.get(r.projectId as string) ?? null) : null,
+      campaignName:   r.projectId ? (nameMap.get(r.projectId as string) ?? null) : null,
     }));
 
     return NextResponse.json({ confirms: enriched, payments: await paymentsPromise });
