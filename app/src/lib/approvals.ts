@@ -119,7 +119,7 @@ export async function addConfirmRequest(
 
 export async function updateConfirmRequest(
   id: string,
-  updates: Partial<Pick<ConfirmRequest, "status" | "rejectReason" | "taxInvoiceDate" | "depositConfirmedAt">>
+  updates: Partial<Pick<ConfirmRequest, "status" | "rejectReason" | "taxInvoiceDate" | "depositConfirmedAt" | "depositorName" | "depositDate">>
 ): Promise<void> {
   const res = await fetch(`/api/approvals/confirm/${id}`, {
     method: "PATCH",

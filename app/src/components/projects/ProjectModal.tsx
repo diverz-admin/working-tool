@@ -1183,13 +1183,33 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                 const isTaxExempt = effectiveTax === 0;
 
                 /**
-                 * 요청이 이미 나갔으면 그때 보낸 값을 그대로 보여주고(수정해도 반영될 곳이 없다),
-                 * 아직이면 입력 칸을 연다. 기본값은 광고주 담당자명과 오늘 날짜.
+                 * 입금자명·입금날짜는 요청 전후 모두 직접 고칠 수 있다.
+                 * 통장을 다시 보고 바로잡는 일이 흔한데, 요청을 낸 뒤 잠가버리면
+                 * 반려받고 재요청하는 것 말고는 고칠 방법이 없어진다.
+                 *
+                 * 표시 우선순위: 사용자가 친 값 → 이미 보낸 요청의 값 → 기본값(담당자명 / 오늘).
                  */
-                const hasRequest    = Boolean(cs);
                 const clientContact = clients.find((c) => c.id === form.clientId)?.advertiserName || form.advertiser || "";
-                const depositName   = depositInfo.name ?? clientContact;
-                const depositDate   = depositInfo.date ?? todayStr();
+                const depositName   = depositInfo.name ?? cs?.depositorName ?? clientContact;
+                const depositDate   = depositInfo.date ?? cs?.depositDate ?? todayStr();
+
+                /** 이미 요청된 건이면 고친 값을 그 요청에 바로 반영한다 */
+                const saveDeposit = async (next: { name?: string; date?: string }) => {
+                  const reqId = cs?.requestId;
+                  if (!reqId) return;
+                  const name = (next.name ?? depositName).trim();
+                  const date = next.date ?? depositDate;
+                  if (name === (cs?.depositorName ?? "") && date === (cs?.depositDate ?? "")) return;
+                  try {
+                    await updateConfirmRequest(reqId, { depositorName: name, depositDate: date });
+                    setConfirmStatuses((p) => ({ ...p, [contractKey]: { ...p[contractKey], depositorName: name, depositDate: date } }));
+                    const pid = savedIdRef.current ?? savedId;
+                    if (pid) invalidateProjectCache(pid);
+                    showToast("입금 정보를 수정했습니다.");
+                  } catch {
+                    setError("입금 정보 수정에 실패했습니다.");
+                  }
+                };
 
                 return (
                   <div className="mb-4 p-4 rounded-2xl" style={{ background: "#F8FAFC", border: "1px solid #E9EBEF" }}>
@@ -1283,31 +1303,20 @@ export default function ProjectModal({ initial, onClose, onSaved, onDelete, onVi
                       <div className="w-px self-stretch" style={{ background: "#E9EBEF" }} />
                       <div>
                         <p className="text-xs mb-1.5" style={{ color: "#94A3B8" }}>입금자명</p>
-                        {hasRequest ? (
-                          <p className="text-sm font-bold" style={{ color: cs?.depositorName ? "#191F28" : "#CBD5E1" }}>
-                            {cs?.depositorName || "—"}
-                          </p>
-                        ) : (
-                          <input type="text" value={depositName}
-                            onChange={(e) => setDepositInfo((p) => ({ ...p, name: e.target.value }))}
-                            placeholder="통장에 찍힌 이름"
-                            className="text-sm font-bold outline-none border-b-2 bg-transparent transition-colors focus:border-[#3182F6] placeholder:font-medium placeholder:text-[#CBD5E1]"
-                            style={{ color: "#191F28", borderColor: "#E9EBEF", width: 110 }} />
-                        )}
+                        <input type="text" value={depositName}
+                          onChange={(e) => setDepositInfo((p) => ({ ...p, name: e.target.value }))}
+                          onBlur={(e) => saveDeposit({ name: e.target.value })}
+                          placeholder="통장에 찍힌 이름"
+                          className="text-sm font-bold outline-none border-b-2 bg-transparent transition-colors focus:border-[#3182F6] placeholder:font-medium placeholder:text-[#CBD5E1]"
+                          style={{ color: "#191F28", borderColor: "#E9EBEF", width: 110 }} />
                       </div>
                       <div className="w-px self-stretch" style={{ background: "#E9EBEF" }} />
                       <div>
                         <p className="text-xs mb-1.5" style={{ color: "#94A3B8" }}>입금날짜</p>
-                        {hasRequest ? (
-                          <p className="text-sm font-bold" style={{ color: cs?.depositDate ? "#191F28" : "#CBD5E1" }}>
-                            {cs?.depositDate || "—"}
-                          </p>
-                        ) : (
-                          <input type="date" value={depositDate}
-                            onChange={(e) => setDepositInfo((p) => ({ ...p, date: e.target.value }))}
-                            className="text-sm font-bold outline-none border-b-2 bg-transparent transition-colors focus:border-[#3182F6]"
-                            style={{ color: "#191F28", borderColor: "#E9EBEF", width: 130 }} />
-                        )}
+                        <input type="date" value={depositDate}
+                          onChange={(e) => { setDepositInfo((p) => ({ ...p, date: e.target.value })); saveDeposit({ date: e.target.value }); }}
+                          className="text-sm font-bold outline-none border-b-2 bg-transparent transition-colors focus:border-[#3182F6]"
+                          style={{ color: "#191F28", borderColor: "#E9EBEF", width: 130 }} />
                       </div>
 
                       {/* 입금확인요청 버튼 — 우측 정렬 */}

@@ -29,6 +29,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     ...(body.rejectReason    !== undefined && { rejectReason:    body.rejectReason }),
     ...(body.taxInvoiceDate      !== undefined && { taxInvoiceDate:      body.taxInvoiceDate }),
     ...(body.depositConfirmedAt  !== undefined && { depositConfirmedAt:  body.depositConfirmedAt }),
+    // 요청을 낸 뒤에도 통장을 다시 보고 고칠 수 있어야 한다
+    ...(body.depositorName       !== undefined && { depositorName:       body.depositorName }),
+    ...(body.depositDate         !== undefined && { depositDate:         body.depositDate }),
   }).where(eq(confirmRequests.id, id)).returning();
   if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
