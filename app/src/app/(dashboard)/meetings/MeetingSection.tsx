@@ -9,8 +9,9 @@
  * 축마다 지난 기간 · 이번 기간 · 다음 기간을 시간 순으로 가로에 늘어놓는다.
  *   월간회의 — 전월 · 당월 · 익월
  *   주간회의 — 전주 · 금주 · 차주
- * 오른쪽 끝 칸(차주·익월 계획)이 다음 회의의 왼쪽 끝 칸으로 그대로 넘어온다.
- * 넘겨받은 내용은 지우고 다시 쓰라는 뜻이 아니라, 그 아래에 됐는지 안 됐는지를 덧붙이라는 뜻이다.
+ * 가운데 칸(금주·당월 현황)이 다음 회의의 왼쪽 끝 칸으로 그대로 넘어온다 —
+ * 2주차 회의에 적은 "금주 현황"이 3주차 회의에서는 "전주"다. 같은 주를 가리키므로 그대로 옮겨진다.
+ * 넘겨받은 내용은 지우고 다시 쓰라는 뜻이 아니라, 그 아래에 그 뒤로 어떻게 됐는지를 덧붙이라는 뜻이다.
  *
  * 매출현황 축만 입력 칸이 없다. 자동 집계가 회의에서 읽을 수치를 전부 만들어 주므로
  * 같은 숫자를 손으로 옮겨 적게 두면 집계와 어긋나는 순간 어느 쪽이 맞는지 알 수 없어진다.
@@ -258,7 +259,8 @@ export default function MeetingSection({ year, month, criteria }: { year: number
   }, [loadKey, currentNote]);
 
   /**
-   * 직전 회의의 "차주(익월) 계획"을 이번 회의의 "전주(전월)" 칸으로 넘겨받는다.
+   * 직전 회의의 "금주(당월) 현황"을 이번 회의의 "전주(전월)" 칸으로 넘겨받는다.
+   * 2주차의 금주와 3주차의 전주는 둘 다 2주차를 가리키므로 같은 내용이 그대로 옮겨진다.
    * 비어 있는 칸에만 넣으므로 이미 쓴 내용을 덮지 않는다.
    *
    * 적재(위 effect)와 분리한 이유: 직전 회의록은 당월·전월을 함께 받아오느라
@@ -272,7 +274,7 @@ export default function MeetingSection({ year, month, criteria }: { year: number
       let changed = false;
       const out = { ...p };
       for (const a of WRITABLE) {
-        const carry = prevSections[a.key].next.trim();
+        const carry = prevSections[a.key].current.trim();
         if (!carry || p[a.key].prev.trim()) continue;
         out[a.key] = { ...p[a.key], prev: carry };
         changed = true;
@@ -564,11 +566,11 @@ export default function MeetingSection({ year, month, criteria }: { year: number
           const open     = !collapsed[axis.key];
           const writable = axis.key !== "revenue";
           const entry    = draftSections[axis.key];
-          // 직전 회의가 이번 기간을 두고 세운 계획 — 전주(전월) 칸이 점검할 대상이다
-          const carry = prevSections[axis.key].next.trim();
+          // 직전 회의에 적은 그 기간의 현황 — 이번 회의의 전주(전월) 칸이 가리키는 바로 그 기간이다
+          const carry = prevSections[axis.key].current.trim();
           const set = (field: keyof typeof entry, v: string) =>
             setDraftSections(p => ({ ...p, [axis.key]: { ...p[axis.key], [field]: v } }));
-          // 다시 가져올 때 이미 쓴 점검 내용을 덮지 않도록 아래에 잇는다
+          // 다시 가져올 때 이미 쓴 내용을 덮지 않도록 아래에 잇는다
           const pullCarry = () => set("prev", entry.prev.trim() ? `${entry.prev.trimEnd()}\n\n${carry}` : carry);
 
           return (
@@ -599,12 +601,12 @@ export default function MeetingSection({ year, month, criteria }: { year: number
                   ) : (
                     /* 지난 기간 · 이번 기간 · 다음 기간을 시간 순으로 가로 배치 */
                     <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))" }}>
-                      <Field label={prevLabel} note="점검"
-                        placeholder={`${prev.label}에서 세운 계획이 어떻게 됐는지\n예) 완료 / 지연 — 사유`}
+                      <Field label={prevLabel} note="지난 기간"
+                        placeholder={`${prev.label}에 적은 현황이 넘어옵니다\n그 뒤로 어떻게 됐는지 덧붙이세요`}
                         value={entry.prev} onChange={v => set("prev", v)}
                         action={carry
                           ? <MiniButton onClick={pullCarry}>{prev.label}에서 가져오기</MiniButton>
-                          : <span className="text-xs" style={{ color: C.faint }}>가져올 계획 없음</span>} />
+                          : <span className="text-xs" style={{ color: C.faint }}>가져올 내용 없음</span>} />
                       <Field label={nowLabel} note="현황"
                         placeholder={"현재 상태\n예) 수치, 진행 건, 이슈"}
                         value={entry.current} onChange={v => set("current", v)} />
