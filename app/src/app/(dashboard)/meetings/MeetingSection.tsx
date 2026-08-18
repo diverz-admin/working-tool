@@ -158,7 +158,16 @@ export default function MeetingSection({ year, month, criteria, criteriaLabel }:
   const [saved,    setSaved]    = useState(false);
   const [copied,   setCopied]   = useState(false);
   const [imaging,  setImaging]  = useState(false);
+  const [canShareFile, setCanShareFile] = useState(false);
   const [error,    setError]    = useState<string | null>(null);
+
+  // navigator를 렌더 중에 보면 서버 렌더 결과와 어긋나므로 마운트 뒤에 확인한다
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    const probe = new File([new Uint8Array()], "probe.png", { type: "image/png" });
+    setCanShareFile(!!navigator.canShare?.({ files: [probe] }));
+  }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const weekRows = weekRowsOf(year, month);
   const weekNums = useMemo(() => Array.from({ length: weekRows }, (_, i) => i + 1), [weekRows]);
@@ -362,12 +371,13 @@ export default function MeetingSection({ year, month, criteria, criteriaLabel }:
   }
 
   /**
-   * 회의록 요약을 이미지 한 장으로 만들어 넘긴다 — 카카오톡 공유용.
+   * 회의록 요약을 이미지 한 장으로 만든다 — 카카오톡 공유용.
    *
-   * 카톡으로 바로 보내려면 공유 시트(navigator.share)가 있어야 하는데 대체로 모바일에만 있다.
-   * 없는 환경에서는 파일로 내려받아 사용자가 직접 첨부하게 둔다. 둘 다 같은 이미지다.
+   * 내려받기는 어디서나 되고, 공유 시트(navigator.share)는 대체로 모바일에만 있다.
+   * 공유가 되는 기기에서는 카톡을 바로 고를 수 있으므로 버튼을 하나 더 내준다.
+   * 어느 쪽이든 같은 이미지다.
    */
-  async function handleImage() {
+  async function handleImage(mode: "download" | "share") {
     setImaging(true);
     setError(null);
     // 파일 이름에 못 쓰는 문자와 공백을 걷어낸다
@@ -386,16 +396,20 @@ export default function MeetingSection({ year, month, criteria, criteriaLabel }:
         })),
         memo: draftContent,
       });
-      const file = new File([blob], fileName, { type: "image/png" });
-      if (navigator.canShare?.({ files: [file] })) {
+      if (mode === "share") {
+        const file = new File([blob], fileName, { type: "image/png" });
         await navigator.share({ files: [file], title: `${noteTeam} ${fullLabel}` });
       } else {
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
         a.download = fileName;
+        // 문서에 붙였다 떼야 한다. 떠 있는 a가 아니면 클릭이 무시되는 브라우저가 있다.
+        document.body.appendChild(a);
         a.click();
-        URL.revokeObjectURL(url);
+        a.remove();
+        // 바로 revoke하면 내려받기가 시작되기 전에 주소가 사라져 파일이 안 떨어진다
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
       }
     } catch (e) {
       // 공유 시트를 사용자가 그냥 닫은 것은 실패가 아니다
@@ -568,7 +582,12 @@ export default function MeetingSection({ year, month, criteria, criteriaLabel }:
             className="px-3 py-2 text-[13px] rounded-lg outline-none border transition-colors focus:border-[#3182F6] placeholder:text-[#8B95A1]"
             style={{ borderColor: C.line, color: C.ink, width: 92 }} />
           <TextButton onClick={handleCopy}>{copied ? "복사됨" : "복사"}</TextButton>
-          <TextButton onClick={handleImage} disabled={imaging}>{imaging ? "만드는 중" : "이미지 공유"}</TextButton>
+          <TextButton onClick={() => handleImage("download")} disabled={imaging}>
+            {imaging ? "만드는 중" : "이미지 저장"}
+          </TextButton>
+          {canShareFile && (
+            <TextButton onClick={() => handleImage("share")} disabled={imaging}>공유</TextButton>
+          )}
           {currentNote && <TextButton onClick={handleDelete} disabled={deleting || saving} danger>{deleting ? "삭제 중" : "삭제"}</TextButton>}
           <button onClick={handleSave} disabled={saving || deleting}
             className="px-4 py-2 rounded-lg text-[13px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
