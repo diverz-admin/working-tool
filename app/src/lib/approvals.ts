@@ -1,4 +1,5 @@
 import { fetchJson } from "@/lib/fetch-json";
+import { todayStr } from "@/lib/today";
 
 export type ConfirmStatus = "대기" | "확인완료" | "반려";
 export type PaymentStatus = "대기" | "승인" | "반려";
@@ -52,6 +53,8 @@ export interface ConfirmRequest {
   dueDate: string;
   depositAccount?: string;
   depositorName?: string;
+  /** 요청자가 적은 입금일. 결재자가 확정하는 depositConfirmedAt과 다르다 */
+  depositDate?: string;
   requestedAt: string;
   status: ConfirmStatus;
   taxInvoiceDate?: string;
@@ -106,7 +109,7 @@ export async function addConfirmRequest(
   const res = await fetch("/api/approvals/confirm", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...item, requestedAt: new Date().toISOString().slice(0, 10) }),
+    body: JSON.stringify({ ...item, requestedAt: todayStr() }),
   });
   if (!res.ok) throw new Error(`입금확인요청 저장 실패 (${res.status})`);
   invalidateApprovalsCache();
@@ -148,7 +151,7 @@ export async function addPaymentRequest(
   const res = await fetch("/api/approvals/payment", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...item, requestedAt: new Date().toISOString().slice(0, 10) }),
+    body: JSON.stringify({ ...item, requestedAt: todayStr() }),
   });
   if (!res.ok) throw new Error(`입금요청 저장 실패 (${res.status})`);
   invalidateApprovalsCache();

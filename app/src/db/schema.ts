@@ -354,7 +354,13 @@ export const confirmRequests = pgTable("confirm_requests", {
   clientCategory:       text("client_category"),
   dueDate:              text("due_date"),
   depositAccount:       text("deposit_account"),
-  depositorName:        text("depositor_name"),
+  depositorName:        text("depositor_name"),      // 요청자가 적는 입금자명
+  /**
+   * 요청자가 적는 실제 입금일.
+   * 결재자가 확정하는 deposit_confirmed_at과 다르다 — 요청 시점에 이미 돈은 들어와 있고,
+   * 결재는 그걸 확인하는 절차다. 둘이 어긋날 수 있어야 "언제 들어왔는데 언제 확인됐나"가 남는다.
+   */
+  depositDate:          text("deposit_date"),
   requestedAt:          text("requested_at").notNull(),
   status:               text("status").notNull().default("대기"),
   taxInvoiceDate:        text("tax_invoice_date"),

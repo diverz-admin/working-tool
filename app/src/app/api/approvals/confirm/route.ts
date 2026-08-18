@@ -151,6 +151,7 @@ export async function POST(req: NextRequest) {
     dueDate:              body.dueDate              || null,
     depositAccount:       body.depositAccount       || null,
     depositorName:        body.depositorName        || null,
+    depositDate:          body.depositDate          || null,
     requestedAt:          body.requestedAt          ?? new Date().toISOString().slice(0, 10),
     status:               "대기",
     taxExempt:            body.taxExempt            ?? false,

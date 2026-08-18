@@ -34,6 +34,7 @@ import {
 } from "@/lib/approvals";
 import { invalidateProjectCache } from "@/components/projects/ProjectModal";
 import { teamBadgeStyle } from "@/lib/teams";
+import { todayStr } from "@/lib/today";
 
 // ─── 공급자 고정 정보 ─────────────────────────────────────────
 const SUPPLIER = { companyName: "주식회사 다이버즈", businessNumber: "174-88-03266" };
@@ -83,7 +84,7 @@ function buildRows(items: ConfirmRequest[], clientMap: Map<string, ClientRow>) {
     const tax    = raw - supply;
     const qty    = parseInt(item.quantity) || 1;
     const unit   = qty > 0 ? Math.round(supply / qty) : supply;
-    const date   = (item.taxInvoiceDate || item.dueDate)?.replace(/-/g, "") || new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    const date   = (item.taxInvoiceDate || item.dueDate)?.replace(/-/g, "") || todayStr().replace(/-/g, "");
 
     const bizNum    = ((client?.businessNumber  ?? item.clientBusinessNumber ?? "") as string).replace(/-/g, "");
     const corpName  = (client?.companyName       ?? item.clientName)           as string;
@@ -111,7 +112,7 @@ function exportExcel(items: ConfirmRequest[], clientMap: Map<string, ClientRow>,
   ws["!cols"] = HOMETAX_HEADERS.map((_, i) => ({ wch: i < 3 ? 14 : i < 18 ? 20 : 12 }));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "세금계산서");
-  XLSX.writeFile(wb, `세금계산서_${label}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  XLSX.writeFile(wb, `세금계산서_${label}_${todayStr()}.xlsx`);
 }
 
 // ─── 매출행 날짜 업데이트 공통 헬퍼 ─────────────────────────
@@ -171,8 +172,17 @@ export default function ConfirmPage() {
   const [rejectReason, setRejectReason] = useState("");
   const [cancelTarget,  setCancelTarget]  = useState<ConfirmRequest | null>(null);
   const [cancelling,    setCancelling]    = useState(false);
-  const [confirmDate,   setConfirmDate]   = useState(new Date().toISOString().slice(0, 10));
-  const [issueDate,     setIssueDate]     = useState(new Date().toISOString().slice(0, 10));
+  const [confirmDate,   setConfirmDate]   = useState(todayStr);
+  /**
+   * 요청을 열 때 입금완료 날짜를 요청자가 적은 입금일로 맞춘다.
+   * 대개 그 날짜가 맞고, 통장과 다르면 결재자가 고치면 된다 — 매번 손으로 넣게 두면 오늘 날짜로 굳는다.
+   */
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (selected) setConfirmDate(selected.depositDate || todayStr());
+  }, [selected]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+  const [issueDate,     setIssueDate]     = useState(todayStr());
   const [approvedToast,   setApprovedToast]   = useState(false);
   const [clientBizRegUrl, setClientBizRegUrl] = useState<string | null>(null);
 
@@ -210,7 +220,7 @@ export default function ConfirmPage() {
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (selected) {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = todayStr();
       setConfirmDate(today);
       setIssueDate(today);
     }
@@ -274,7 +284,7 @@ export default function ConfirmPage() {
     setSelected(null);
 
     if (status === "확인완료") {
-      const dateStr = date || new Date().toISOString().slice(0, 10);
+      const dateStr = date || todayStr();
       await Promise.all(
         targets.map((item) => updateRevenueField(item.projectId, item.rowKey, "paymentDate", dateStr))
       );
@@ -308,7 +318,7 @@ export default function ConfirmPage() {
 
   async function handleIssueComplete(item: ConfirmRequest, date?: string) {
     setIssuing(item.id);
-    const dateStr = date || new Date().toISOString().slice(0, 10);
+    const dateStr = date || todayStr();
     // 입금완료 + 계산서발행 모두 완료 시 확인완료 전환
     const moveToDone = item.status === "대기" && Boolean(item.depositConfirmedAt);
     const updates: Parameters<typeof updateConfirmRequest>[1] = { taxInvoiceDate: dateStr };
@@ -339,7 +349,7 @@ export default function ConfirmPage() {
   }
 
   async function handlePaymentDone(item: ConfirmRequest, date: string) {
-    const dateStr = date || new Date().toISOString().slice(0, 10);
+    const dateStr = date || todayStr();
     // 세금계산서 불필요(taxExempt)하거나 계산서가 이미 발행된 경우 확인완료로 전환
     const moveToDone = Boolean(item.taxExempt) || Boolean(item.taxInvoiceDate);
     const updates: Parameters<typeof updateConfirmRequest>[1] = { depositConfirmedAt: dateStr };
@@ -926,7 +936,7 @@ export default function ConfirmPage() {
                 return (
                   <div className="rounded-xl" style={{ background: "#F8FAFC", border: "1px solid #ECEEF2" }}>
                     <p className="px-4 pt-3 pb-2 text-xs font-bold" style={{ color: "#94A3B8" }}>입금 정보</p>
-                    <div className="grid grid-cols-2 gap-4 px-4 pb-3">
+                    <div className="grid grid-cols-3 gap-4 px-4 pb-3">
                       <div>
                         <p className="text-xs mb-0.5" style={{ color: "#94A3B8" }}>입금계좌</p>
                         {uniqueAccounts.length > 1 ? (
@@ -942,6 +952,11 @@ export default function ConfirmPage() {
                       <div>
                         <p className="text-xs mb-0.5" style={{ color: "#94A3B8" }}>입금자명</p>
                         <p className="text-sm font-medium" style={{ color: "#191F28" }}>{selected.depositorName || "—"}</p>
+                      </div>
+                      <div>
+                        {/* 요청자가 적은 입금일. 아래 입금완료 날짜의 기본값이 된다 */}
+                        <p className="text-xs mb-0.5" style={{ color: "#94A3B8" }}>입금날짜</p>
+                        <p className="text-sm font-medium" style={{ color: "#191F28" }}>{selected.depositDate || "—"}</p>
                       </div>
                     </div>
                   </div>
