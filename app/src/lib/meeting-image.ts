@@ -8,8 +8,8 @@ import { BRIEF_TONE, wonExact, type BriefStat, type BriefProgress } from "@/lib/
  * 입력창 테두리·버튼·접힘 화살표는 받는 사람에게 아무 의미가 없고, 세로로 길어져
  * 카톡 미리보기에서 글씨가 뭉갠다. 공유용은 화면과 다른 물건이라 따로 그린다.
  *
- * 담는 것: 팀·회의 이름 / 매출현황(수치·KPI 달성·월별 추이) / 축별 이번 기간·다음 기간 / 기타 메모.
- * 빼는 것: 지난 기간 칸. 직전 회의에서 넘어온 기록이라 공유 카드에서는 중복이다.
+ * 담는 것: 팀·회의 이름 / 매출현황(수치·KPI 달성·월별 추이) /
+ *          축별 지난 기간·이번 기간·다음 기간 / 기타 메모.
  */
 
 // 카카오톡 채팅방 미리보기에서 뭉개지지 않는 가로폭
@@ -33,6 +33,8 @@ const font = (weight: number, size: number) => `${weight} ${size}px ${FONT}`;
 
 export interface MeetingImageAxis {
   label: string;
+  /** 지난 기간 (전주 / 전월) */
+  prev: string;
   /** 이번 기간 현황 (금주 / 당월) */
   current: string;
   /** 다음 기간 계획 (차주 / 익월) */
@@ -54,6 +56,7 @@ export interface MeetingImageInput {
   title: string;
   /** "2026년 · 캠페인 시작일 기준" 같은 부연 */
   caption: string;
+  prevLabel: string;
   nowLabel: string;
   nextLabel: string;
   stats: BriefStat[];
@@ -267,7 +270,8 @@ export async function renderMeetingImage(input: MeetingImageInput): Promise<Blob
     input.team, input.title, input.caption, input.memo,
     "매출현황 기타 논의 메모 KPI 달성 목표까지 월별 매출 최고 년 월 원 DIVERZ Work",
     ...input.stats.flatMap(s => [s.label, s.value, s.sub ?? ""]),
-    ...input.axes.flatMap(a => [a.label, a.current, a.next]),
+    input.prevLabel, input.nowLabel, input.nextLabel,
+    ...input.axes.flatMap(a => [a.label, a.prev, a.current, a.next]),
     input.kpi ? `${input.kpi.label}${wonExact(input.kpi.remaining)}` : "",
     input.trend ? String(input.trend.year) + input.trend.values.map(wonExact).join("") : "",
   ].join(" ");
@@ -300,6 +304,7 @@ export async function renderMeetingImage(input: MeetingImageInput): Promise<Blob
 
   for (const axis of input.axes) {
     const parts = [
+      ...partOps(measure, input.prevLabel, axis.prev),
       ...partOps(measure, input.nowLabel, axis.current),
       ...partOps(measure, `${input.nextLabel} 계획`, axis.next),
     ];

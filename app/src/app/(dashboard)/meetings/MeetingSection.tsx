@@ -159,6 +159,7 @@ export default function MeetingSection({ year, month, criteria, criteriaLabel }:
   const [copied,   setCopied]   = useState(false);
   const [imaging,  setImaging]  = useState(false);
   const [canShareFile, setCanShareFile] = useState(false);
+  const imagingRef = useRef(false);
   const [error,    setError]    = useState<string | null>(null);
 
   // navigator를 렌더 중에 보면 서버 렌더 결과와 어긋나므로 마운트 뒤에 확인한다
@@ -378,6 +379,12 @@ export default function MeetingSection({ year, month, criteria, criteriaLabel }:
    * 어느 쪽이든 같은 이미지다.
    */
   async function handleImage(mode: "download" | "share") {
+    /**
+     * disabled는 state라 다음 렌더에야 걸린다. 그 사이에 한 번 더 눌리면 핸들러가 두 번 돌아
+     * 공유 시트에 같은 이미지가 두 장 실린다. ref는 그 자리에서 막힌다.
+     */
+    if (imagingRef.current) return;
+    imagingRef.current = true;
     setImaging(true);
     setError(null);
     // 파일 이름에 못 쓰는 문자와 공백을 걷어낸다
@@ -387,12 +394,13 @@ export default function MeetingSection({ year, month, criteria, criteriaLabel }:
         team:    noteTeam,
         title:   fullLabel,
         caption: `${year}년 · ${criteriaLabel}${draftAuthor ? ` · ${draftAuthor}` : ""}`,
-        nowLabel, nextLabel,
+        prevLabel, nowLabel, nextLabel,
         stats: brief ? briefStats(brief, isMonthly) : [],
         kpi:   brief ? briefProgress(brief, isMonthly) : null,
         trend: curFig ? { year, values: yearRevenues, highlight: month } : null,
         axes:  WRITABLE.map(a => ({
           label:   a.label,
+          prev:    draftSections[a.key].prev,
           current: draftSections[a.key].current,
           next:    draftSections[a.key].next,
         })),
@@ -420,6 +428,7 @@ export default function MeetingSection({ year, month, criteria, criteriaLabel }:
       }
     }
     setImaging(false);
+    imagingRef.current = false;
   }
 
   // ── 매출 브리핑 ──
@@ -722,7 +731,7 @@ function TextButton({ children, onClick, disabled, danger }: {
   children: React.ReactNode; onClick: () => void; disabled?: boolean; danger?: boolean;
 }) {
   return (
-    <button onClick={onClick} disabled={disabled}
+    <button type="button" onClick={onClick} disabled={disabled}
       className="px-3 py-2 rounded-lg text-[13px] font-semibold border transition-colors hover:bg-slate-50 disabled:opacity-40"
       style={{ color: danger ? "#E03131" : C.muted, borderColor: C.line }}>
       {children}
