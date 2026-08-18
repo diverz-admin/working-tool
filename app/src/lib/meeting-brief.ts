@@ -85,6 +85,34 @@ export function briefStats(b: RevenueBriefData, isMonthly: boolean): BriefStat[]
   ];
 }
 
+export interface BriefProgress {
+  /** 무엇이 목표에 닿았는지 — 주간은 월 누적, 월간은 기준일까지 */
+  label: string;
+  achieved: number;
+  target: number;
+  /** 달성률(%). 100을 넘을 수 있다 */
+  rate: number;
+  /** 목표까지 남은 금액. 이미 넘겼으면 0 */
+  remaining: number;
+}
+
+/**
+ * 목표 대비 어디까지 왔는지. KPI가 없으면 그릴 것도 없으므로 null이다.
+ * 주간회의는 월 누적 매출을, 월간회의는 기준일까지의 매출을 목표와 견준다 —
+ * briefStats가 각각 두 번째 칸에 놓는 값과 같은 것이라야 카드 안에서 숫자가 갈라지지 않는다.
+ */
+export function briefProgress(b: RevenueBriefData, isMonthly: boolean): BriefProgress | null {
+  if (b.kpiTarget === null || b.kpiTarget <= 0) return null;
+  const achieved = isMonthly ? b.asOfRevenue : b.monthRevenue;
+  return {
+    label:     isMonthly ? `${b.asOfDay}일 매출` : "월 누적 매출",
+    achieved,
+    target:    b.kpiTarget,
+    rate:      (achieved / b.kpiTarget) * 100,
+    remaining: Math.max(0, b.kpiTarget - achieved),
+  };
+}
+
 /** 브리핑을 메신저·메일에 그대로 붙일 수 있는 텍스트로 만든다. */
 export function briefText(b: RevenueBriefData, isMonthly: boolean) {
   const lines = ["[매출 현황]"];

@@ -1,4 +1,4 @@
-import { BRIEF_TONE, type BriefStat } from "@/lib/meeting-brief";
+import { BRIEF_TONE, wonExact, type BriefStat, type BriefProgress } from "@/lib/meeting-brief";
 
 /**
  * 회의록 요약을 PNG 한 장으로 그린다. 카카오톡으로 넘기기 위한 것이다.
@@ -8,7 +8,7 @@ import { BRIEF_TONE, type BriefStat } from "@/lib/meeting-brief";
  * 입력창 테두리·버튼·접힘 화살표는 받는 사람에게 아무 의미가 없고, 세로로 길어져
  * 카톡 미리보기에서 글씨가 뭉갠다. 공유용은 화면과 다른 물건이라 따로 그린다.
  *
- * 담는 것: 팀·회의 이름 / 자동 집계 세 수치 / 축별 이번 기간·다음 기간 / 기타 메모.
+ * 담는 것: 팀·회의 이름 / 매출현황(수치·KPI 달성·월별 추이) / 축별 이번 기간·다음 기간 / 기타 메모.
  * 빼는 것: 지난 기간 칸. 직전 회의에서 넘어온 기록이라 공유 카드에서는 중복이다.
  */
 
@@ -39,6 +39,15 @@ export interface MeetingImageAxis {
   next: string;
 }
 
+/** 올해 월별 매출 추이 */
+export interface MeetingImageTrend {
+  year: number;
+  /** 1월부터 12월까지. 실적이 없는 달은 0 */
+  values: number[];
+  /** 진하게 칠할 달 (1~12) */
+  highlight: number;
+}
+
 export interface MeetingImageInput {
   team: string;
   /** "8월 3주차 주간회의" */
@@ -48,6 +57,10 @@ export interface MeetingImageInput {
   nowLabel: string;
   nextLabel: string;
   stats: BriefStat[];
+  /** 목표 대비 진척. KPI가 없으면 null */
+  kpi: BriefProgress | null;
+  /** 월별 추이. 집계를 못 받았으면 null */
+  trend: MeetingImageTrend | null;
   axes: MeetingImageAxis[];
   memo: string;
 }
@@ -128,6 +141,108 @@ function statsOp(ctx: CanvasRenderingContext2D, stats: BriefStat[]): Op {
   };
 }
 
+/** 캔버스에는 둥근 사각형 채우기가 없다. 막대 끝을 둥글게 하려면 직접 그려야 한다. */
+function roundRect(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  const rr = Math.min(r, h / 2, w / 2);
+  c.beginPath();
+  c.moveTo(x + rr, y);
+  c.arcTo(x + w, y,     x + w, y + h, rr);
+  c.arcTo(x + w, y + h, x,     y + h, rr);
+  c.arcTo(x,     y + h, x,     y,     rr);
+  c.arcTo(x,     y,     x + w, y,     rr);
+  c.closePath();
+  c.fill();
+}
+
+/**
+ * 목표 대비 어디까지 왔는지 막대 하나로.
+ * 숫자만 늘어놓으면 33%가 많은 건지 적은 건지 한눈에 안 온다. 남은 칸이 그걸 대신 말해준다.
+ */
+function kpiOp(p: BriefProgress): Op {
+  const done = p.rate >= 100;
+  const fill = done ? BRIEF_TONE.forecast.fg : BRIEF_TONE.actual.fg;
+  const barY = 34, barH = 20;
+  return {
+    h: barY + barH + 34,
+    draw: (c, y) => {
+      c.font = font(700, 21);
+      c.fillStyle = COLOR.muted;
+      c.fillText(`KPI 달성 · ${p.label}`, PAD, y + 20);
+
+      c.font = font(800, 25);
+      c.fillStyle = fill;
+      c.textAlign = "right";
+      c.fillText(`${Math.round(p.rate)}%`, PAD + INNER, y + 21);
+      c.textAlign = "left";
+
+      c.fillStyle = COLOR.line;
+      roundRect(c, PAD, y + barY, INNER, barH, barH / 2);
+      // 100%를 넘어도 막대는 끝까지만 찬다. 아주 적은 값도 점처럼은 보이게 최소 폭을 준다.
+      const w = Math.min(1, Math.max(0, p.rate / 100)) * INNER;
+      if (w > 0) {
+        c.fillStyle = fill;
+        roundRect(c, PAD, y + barY, Math.max(w, barH), barH, barH / 2);
+      }
+
+      c.font = font(500, 19);
+      c.fillStyle = COLOR.faint;
+      c.fillText(p.remaining > 0 ? `목표까지 ${wonExact(p.remaining)}` : "목표 달성", PAD, y + barY + barH + 24);
+    },
+  };
+}
+
+/**
+ * 올해 월별 매출 막대.
+ *
+ * 막대 위에 금액을 적지 않는다. 열두 칸에 들어갈 만큼 줄이려면 만원 단위로 끊어야 하는데,
+ * 그러면 위 자동 집계와 자릿수가 어긋나 어느 쪽이 맞는지 헷갈린다.
+ * 그래프는 흐름만 보여주고 정확한 금액은 위 세 칸이 맡는다. 축척은 최고액 한 줄로 밝힌다.
+ */
+function trendOp(t: MeetingImageTrend): Op | null {
+  const max = Math.max(...t.values);
+  if (!(max > 0)) return null;   // 실적이 하나도 없으면 빈 격자만 남는다
+
+  const titleH = 34, chartH = 150, labelH = 32;
+  const slot = INNER / 12;
+  const barW = Math.round(slot * 0.54);
+  const peak = t.values.indexOf(max) + 1;
+
+  return {
+    h: titleH + chartH + labelH,
+    draw: (c, y) => {
+      c.font = font(700, 21);
+      c.fillStyle = COLOR.muted;
+      c.fillText(`월별 매출 · ${t.year}년`, PAD, y + 20);
+
+      c.font = font(500, 19);
+      c.fillStyle = COLOR.faint;
+      c.textAlign = "right";
+      c.fillText(`최고 ${wonExact(max)} · ${peak}월`, PAD + INNER, y + 20);
+      c.textAlign = "left";
+
+      const base = y + titleH + chartH;
+      c.fillStyle = COLOR.line;
+      c.fillRect(PAD, base, INNER, 1);
+
+      t.values.forEach((v, i) => {
+        const m = i + 1;
+        const on = m === t.highlight;
+        const x = PAD + slot * i + (slot - barW) / 2;
+        // 실적이 없는 달도 자리는 남긴다 — 빈칸이 곧 "그 달은 없었다"는 정보다
+        const h = v > 0 ? Math.max(4, Math.round((v / max) * (chartH - 8))) : 3;
+        c.fillStyle = v > 0 ? (on ? BRIEF_TONE.actual.fg : "#C7DBF2") : COLOR.line;
+        roundRect(c, x, base - h, barW, h, 5);
+
+        c.font = font(on ? 800 : 500, 19);
+        c.fillStyle = on ? COLOR.ink : COLOR.faint;
+        c.textAlign = "center";
+        c.fillText(String(m), PAD + slot * i + slot / 2, base + 24);
+        c.textAlign = "left";
+      });
+    },
+  };
+}
+
 /** 축 안의 한 칸 — "금주" 같은 머리말 + 본문 */
 function partOps(ctx: CanvasRenderingContext2D, label: string, body: string): Op[] {
   if (!body.trim()) return [];
@@ -150,8 +265,11 @@ export async function renderMeetingImage(input: MeetingImageInput): Promise<Blob
    */
   const allText = [
     input.team, input.title, input.caption, input.memo,
+    "매출현황 기타 논의 메모 KPI 달성 목표까지 월별 매출 최고 년 월 원 DIVERZ Work",
     ...input.stats.flatMap(s => [s.label, s.value, s.sub ?? ""]),
     ...input.axes.flatMap(a => [a.label, a.current, a.next]),
+    input.kpi ? `${input.kpi.label}${wonExact(input.kpi.remaining)}` : "",
+    input.trend ? String(input.trend.year) + input.trend.values.map(wonExact).join("") : "",
   ].join(" ");
   try {
     await Promise.all([400, 500, 700, 800].map(w => document.fonts.load(font(w, 32), allText)));
@@ -167,7 +285,18 @@ export async function renderMeetingImage(input: MeetingImageInput): Promise<Blob
     gap(28),
   ];
 
-  if (input.stats.length) ops.push(statsOp(measure, input.stats), gap(36));
+  const trend = input.trend ? trendOp(input.trend) : null;
+  if (input.stats.length || input.kpi || trend) {
+    ops.push(
+      rule(), gap(24),
+      textOp(measure, "매출현황", font(800, 29), COLOR.ink, 40),
+      gap(14),
+    );
+    if (input.stats.length) ops.push(statsOp(measure, input.stats), gap(24));
+    if (input.kpi)          ops.push(kpiOp(input.kpi), gap(20));
+    if (trend)              ops.push(trend, gap(8));
+    ops.push(gap(12));
+  }
 
   for (const axis of input.axes) {
     const parts = [

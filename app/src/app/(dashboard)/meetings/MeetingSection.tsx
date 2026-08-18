@@ -34,7 +34,7 @@ import { TEAM_FILTERS } from "@/lib/teams";
 import {
   normalizeMeetingSections, meetingSectionsAreEmpty, axisHasText, MEETING_WRITABLE_AXIS_KEYS,
 } from "@/lib/meeting-sections";
-import { briefStats, briefText, wonExact, BRIEF_TONE, type RevenueBriefData } from "@/lib/meeting-brief";
+import { briefStats, briefText, briefProgress, wonExact, BRIEF_TONE, type RevenueBriefData } from "@/lib/meeting-brief";
 import { renderMeetingImage } from "@/lib/meeting-image";
 import type { MeetingAxisKey, MeetingSections } from "@/db/schema";
 
@@ -389,6 +389,8 @@ export default function MeetingSection({ year, month, criteria, criteriaLabel }:
         caption: `${year}년 · ${criteriaLabel}${draftAuthor ? ` · ${draftAuthor}` : ""}`,
         nowLabel, nextLabel,
         stats: brief ? briefStats(brief, isMonthly) : [],
+        kpi:   brief ? briefProgress(brief, isMonthly) : null,
+        trend: curFig ? { year, values: yearRevenues, highlight: month } : null,
         axes:  WRITABLE.map(a => ({
           label:   a.label,
           current: draftSections[a.key].current,
@@ -452,6 +454,11 @@ export default function MeetingSection({ year, month, criteria, criteriaLabel }:
   // ── 매출 자동 수치 ──
   // 매출 집계는 월 단위밖에 없다. 주간회의에서도 "전주 대비"인 척하지 않고 당월 vs 전월로 고정한다.
   const figPrevMonth = month === 1 ? 12 : month - 1;
+  /** 공유 이미지 월별 추이용 — 조회 중인 해의 1~12월 매출. 실적이 없는 달은 0이다. */
+  const yearRevenues = useMemo(
+    () => Array.from({ length: 12 }, (_, i) => pickFigure(curFig, noteTeam, i + 1)?.revenue ?? 0),
+    [curFig, noteTeam],
+  );
   const curFigure  = pickFigure(curFig, noteTeam, month);
   const prevFigure = pickFigure(month === 1 ? prevYearFig : curFig, noteTeam, figPrevMonth);
 
