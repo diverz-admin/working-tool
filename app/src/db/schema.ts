@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, integer, real, date, timestamp, boolean, index, unique } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, integer, real, date, timestamp, boolean, jsonb, index, unique } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id:           uuid("id").primaryKey().defaultRandom(),
@@ -406,13 +406,29 @@ export const productSections = pgTable("product_sections", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/**
+ * 회의록 4대 축. 월간·주간 모두 같은 축을 쓰기 때문에 회의 간 비교가 성립한다.
+ * 축을 늘릴 때는 화면(projects/report)의 AXES 목록도 함께 고쳐야 한다.
+ */
+export type MeetingAxisKey = "revenue" | "operation" | "sales" | "marketing";
+
+/**
+ * 한 축의 기록. 세 칸이 곧 회의 흐름이다.
+ * check   — 지난 회의에서 세운 계획이 어떻게 됐는지 (전월/전주 대비)
+ * current — 이번 기간 현황
+ * plan    — 다음 기간 계획 (다음 회의에서 check의 대상이 된다)
+ */
+export type MeetingAxisEntry = { check: string; current: string; plan: string };
+export type MeetingSections = Record<MeetingAxisKey, MeetingAxisEntry>;
+
 export const reportMeetings = pgTable("report_meetings", {
   id:         uuid("id").primaryKey().defaultRandom(),
   year:       integer("year").notNull(),
   month:      integer("month").notNull(),
   week:       integer("week"),             // null = 월간, 1~5 = 주간
   team:       text("team").notNull().default("전체"),
-  content:    text("content").notNull().default(""),
+  content:    text("content").notNull().default(""),   // 기타 논의·메모 (구버전 자유 서술도 여기에 남는다)
+  sections:   jsonb("sections").$type<MeetingSections>(),  // 4대 축 기록. null = 구버전 회의록
   authorName: text("author_name"),
   createdAt:  timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt:  timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

@@ -93,6 +93,14 @@ const IC = {
       <line x1="19" y1="8" x2="23" y2="8"/>
     </svg>
   ),
+  // 정기 회의록 — 달력 + 체크. 위 meeting(사람 아이콘)과 헷갈리지 않게 다른 계열을 쓴다.
+  recurring: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="4" width="18" height="18" rx="2"/>
+      <line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+      <polyline points="9 15 11 17 15 13"/>
+    </svg>
+  ),
   chat: (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
@@ -129,6 +137,7 @@ const navItems = [
   { href: "/dashboard",      label: "대시보드",   icon: IC.dashboard },
   { href: "/clients",        label: "광고주 관리", icon: IC.clients },
   { href: "/products",       label: "상품관리",    icon: IC.products },
+  { href: "/meetings",       label: "정기 회의록",  icon: IC.recurring },
   { href: "/meeting-notes",  label: "회의/미팅록",  icon: IC.meeting },
   { href: "/work-journal",   label: "업무일지",    icon: IC.journal },
   { href: "/chat",           label: "채팅",        icon: IC.chat },
