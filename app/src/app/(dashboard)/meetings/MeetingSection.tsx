@@ -6,10 +6,14 @@
  * 설계 의도: 회의록을 "이번에 무슨 얘기를 했나"가 아니라 **직전 회의와의 연결**로 만든다.
  * 직전 회의의 같은 축 기록이 화면 위쪽에 읽기전용으로 자동으로 붙고, 그것과 비교해 아래를 채운다.
  *
- * 축마다 입력은 자유 서술 한 칸이다.
- * 처음에는 점검·현황·계획 세 칸으로 나눴는데, 회의에서 세 칸의 경계가 매번 흐려져
- * 같은 얘기를 셋으로 쪼개 적거나 가운데 칸만 채우는 일이 반복됐다. 칸을 하나로 합쳤다.
- * 대신 위에 붙는 직전 회의 기록이 "지난번에 뭘 하기로 했나"를 대신 짚어준다.
+ * 축마다 지난 기간 · 이번 기간 · 다음 기간을 시간 순으로 가로에 늘어놓는다.
+ *   월간회의 — 전월 · 당월 · 익월
+ *   주간회의 — 전주 · 금주 · 차주
+ * 오른쪽 끝 칸(차주·익월 계획)이 다음 회의의 왼쪽 끝 칸으로 그대로 넘어온다.
+ * 넘겨받은 내용은 지우고 다시 쓰라는 뜻이 아니라, 그 아래에 됐는지 안 됐는지를 덧붙이라는 뜻이다.
+ *
+ * 매출현황 축만 입력 칸이 없다. 자동 집계가 회의에서 읽을 수치를 전부 만들어 주므로
+ * 같은 숫자를 손으로 옮겨 적게 두면 집계와 어긋나는 순간 어느 쪽이 맞는지 알 수 없어진다.
  *
  * 비교 대상:
  *   월간회의   → 전월 월간회의
@@ -26,7 +30,9 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { fetchJson, saveErrorMessage } from "@/lib/fetch-json";
 import { TEAM_FILTERS } from "@/lib/teams";
-import { normalizeMeetingSections } from "@/lib/meeting-sections";
+import {
+  normalizeMeetingSections, meetingSectionsAreEmpty, axisHasText, MEETING_WRITABLE_AXIS_KEYS,
+} from "@/lib/meeting-sections";
 import type { MeetingAxisKey, MeetingSections } from "@/db/schema";
 
 // ─── 타입 ─────────────────────────────────────────────────────
@@ -78,13 +84,16 @@ const K = {
 };
 
 const AXES: { key: MeetingAxisKey; label: string; hint: string }[] = [
-  { key: "revenue",   label: "매출현황",     hint: "매출·매입·마진, 목표 대비 달성" },
+  { key: "revenue",   label: "매출현황",     hint: "자동 집계 — 매출·매입·마진, 목표 대비 달성" },
   { key: "operation", label: "관리운영현황", hint: "인력·비용·프로세스·리스크" },
   { key: "sales",     label: "영업현황",     hint: "신규·기존 광고주, 제안·수주" },
   { key: "marketing", label: "마케팅현황",   hint: "채널·콘텐츠·브랜딩·리드" },
 ];
 
 const emptySections = (): MeetingSections => normalizeMeetingSections(null);
+
+/** 사람이 쓰는 축만 — 매출현황은 자동 집계라 작성 여부를 세지 않는다. */
+const WRITABLE = AXES.filter(a => MEETING_WRITABLE_AXIS_KEYS.includes(a.key));
 
 /** 저장된 값이 없거나 구버전(3칸) 형태여도 항상 4축을 채워 돌려준다. */
 const normalize = (s: MeetingSections | null | undefined): MeetingSections => normalizeMeetingSections(s);
@@ -119,8 +128,7 @@ function noteHasContent(n?: ReportNote | null) {
   if (!n) return false;
   if (n.content.trim()) return true;
   if (!n.sections) return false;
-  const s = normalize(n.sections);
-  return AXES.some(a => !!s[a.key].text.trim());
+  return !meetingSectionsAreEmpty(normalize(n.sections));
 }
 
 /**
@@ -249,11 +257,39 @@ export default function MeetingSection({ year, month, criteria }: { year: number
     setSaved(false);
   }, [loadKey, currentNote]);
 
+  /**
+   * 직전 회의의 "차주(익월) 계획"을 이번 회의의 "전주(전월)" 칸으로 넘겨받는다.
+   * 비어 있는 칸에만 넣으므로 이미 쓴 내용을 덮지 않는다.
+   *
+   * 적재(위 effect)와 분리한 이유: 직전 회의록은 당월·전월을 함께 받아오느라
+   * 화면이 먼저 그려진 뒤에 도착할 수 있다. 같은 effect에 두면 그때 이미 늦는다.
+   */
+  const carriedRef = useRef("");
+  useEffect(() => {
+    if (carriedRef.current === loadKey || !prev.note) return;
+    carriedRef.current = loadKey;
+    setDraftSections(p => {
+      let changed = false;
+      const out = { ...p };
+      for (const a of WRITABLE) {
+        const carry = prevSections[a.key].next.trim();
+        if (!carry || p[a.key].prev.trim()) continue;
+        out[a.key] = { ...p[a.key], prev: carry };
+        changed = true;
+      }
+      return changed ? out : p;
+    });
+  }, [loadKey, prev.note, prevSections]);
+
   const dirty = useMemo(() => {
     const saved0 = normalize(currentNote?.sections);
     if ((currentNote?.content ?? "") !== draftContent) return true;
     if ((currentNote?.authorName ?? "") !== draftAuthor) return true;
-    return AXES.some(a => saved0[a.key].text !== draftSections[a.key].text);
+    return WRITABLE.some(a =>
+      saved0[a.key].prev    !== draftSections[a.key].prev ||
+      saved0[a.key].current !== draftSections[a.key].current ||
+      saved0[a.key].next    !== draftSections[a.key].next
+    );
   }, [currentNote, draftSections, draftContent, draftAuthor]);
 
   /** 저장 안 된 내용이 있으면 확인 후 이동 */
@@ -264,6 +300,10 @@ export default function MeetingSection({ year, month, criteria }: { year: number
 
   // ── 라벨 ──
   const fullLabel = isMonthly ? `${month}월 월간회의` : `${month}월 ${week}주차 주간회의`;
+  // 가로 3칸의 머리말은 기간 이름만 둔다 — 무엇을 적는지는 그 옆 note가 설명한다
+  const prevLabel = isMonthly ? "전월" : "전주";
+  const nowLabel  = isMonthly ? "당월" : "금주";
+  const nextLabel = isMonthly ? "익월" : "차주";
 
   // ── 저장 / 삭제 ──
   async function handleSave() {
@@ -289,7 +329,11 @@ export default function MeetingSection({ year, month, criteria }: { year: number
         if (idx >= 0) { const next = [...p]; next[idx] = data.note; return next; }
         return [...p, data.note];
       });
-      loadedRef.current = `${noteTeam}|${week ?? "M"}|${data.note.id}`;
+      // 저장하면 새 회의록의 id가 붙어 loadKey가 바뀐다. 두 ref를 함께 옮겨야
+      // 적재가 draft를 다시 덮거나, 지운 점검 내용이 다시 넘어오는 일이 없다.
+      const savedKey = `${noteTeam}|${week ?? "M"}|${data.note.id}`;
+      loadedRef.current  = savedKey;
+      carriedRef.current = savedKey;
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     }
@@ -318,10 +362,14 @@ export default function MeetingSection({ year, month, criteria }: { year: number
     const lines: string[] = [`[${noteTeam}] ${year}년 ${fullLabel}`];
     if (draftAuthor) lines.push(`작성자: ${draftAuthor}`);
     lines.push(`비교 기준: ${prev.label}`, "");
-    for (const a of AXES) {
-      const text = draftSections[a.key].text.trim();
-      if (!text) continue;
-      lines.push(`■ ${a.label}`, text, "");
+    for (const a of WRITABLE) {
+      const e = draftSections[a.key];
+      if (!axisHasText(e)) continue;
+      lines.push(`■ ${a.label}`);
+      if (e.prev.trim())    lines.push(`  [${prevLabel}]\n${e.prev.trim()}`);
+      if (e.current.trim()) lines.push(`  [${nowLabel}]\n${e.current.trim()}`);
+      if (e.next.trim())    lines.push(`  [${nextLabel} 계획]\n${e.next.trim()}`);
+      lines.push("");
     }
     if (draftContent.trim()) lines.push("■ 기타 논의·메모", draftContent.trim());
     try {
@@ -377,8 +425,8 @@ export default function MeetingSection({ year, month, criteria }: { year: number
     (w: number | null) => noteHasContent(notes.find(n => n.team === noteTeam && (w === null ? n.week === null : n.week === w))),
     [notes, noteTeam],
   );
-  const axisFilled = (k: MeetingAxisKey) => !!draftSections[k].text.trim();
-  const filledCount = AXES.filter(a => axisFilled(a.key)).length;
+  const axisFilled = (k: MeetingAxisKey) => axisHasText(draftSections[k]);
+  const filledCount = WRITABLE.filter(a => axisFilled(a.key)).length;
 
   // 달력의 회의록 작성일 점
   const writtenDays = useMemo(() => {
@@ -485,7 +533,7 @@ export default function MeetingSection({ year, month, criteria }: { year: number
             {noteTeam} · {fullLabel}
           </p>
           <p className="text-[13px] mt-1" style={{ color: C.muted }}>
-            {filledCount}/4 축 작성 · 비교 대상 {prev.label}{!prev.note && " (기록 없음)"}
+            {filledCount}/{WRITABLE.length} 축 작성 · 비교 대상 {prev.label}{!prev.note && " (기록 없음)"}
             {currentNote?.updatedAt && ` · 저장 ${fmtNoteDate(currentNote.updatedAt)}`}
             {dirty && <span style={{ color: "#E8590C", fontWeight: 700 }}> · 저장 안 됨</span>}
           </p>
@@ -513,12 +561,15 @@ export default function MeetingSection({ year, month, criteria }: { year: number
       {/* 4개 축 + 기타 메모 */}
       <div onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === "s") { e.preventDefault(); handleSave(); } }}>
         {AXES.map(axis => {
-          const open  = !collapsed[axis.key];
-          const entry = draftSections[axis.key];
-          // 직전 회의의 같은 축 기록 — 이번에 무엇과 비교해 적어야 하는지의 기준이 된다
-          const prevText = prevSections[axis.key].text.trim();
-          const setText = (v: string) =>
-            setDraftSections(p => ({ ...p, [axis.key]: { text: v } }));
+          const open     = !collapsed[axis.key];
+          const writable = axis.key !== "revenue";
+          const entry    = draftSections[axis.key];
+          // 직전 회의가 이번 기간을 두고 세운 계획 — 전주(전월) 칸이 점검할 대상이다
+          const carry = prevSections[axis.key].next.trim();
+          const set = (field: keyof typeof entry, v: string) =>
+            setDraftSections(p => ({ ...p, [axis.key]: { ...p[axis.key], [field]: v } }));
+          // 다시 가져올 때 이미 쓴 점검 내용을 덮지 않도록 아래에 잇는다
+          const pullCarry = () => set("prev", entry.prev.trim() ? `${entry.prev.trimEnd()}\n\n${carry}` : carry);
 
           return (
             <section key={axis.key} style={{ borderBottom: `1px solid ${C.line}` }}>
@@ -527,38 +578,41 @@ export default function MeetingSection({ year, month, criteria }: { year: number
                 <Chevron open={open} />
                 <span className="text-[15px] font-bold" style={{ color: C.ink }}>{axis.label}</span>
                 <span className="text-xs truncate" style={{ color: C.faint }}>{axis.hint}</span>
-                <span className="ml-auto flex items-center gap-1.5 text-xs shrink-0"
-                  style={{ color: axisFilled(axis.key) ? C.accent : C.faint }}>
-                  <Dot on={axisFilled(axis.key)} />
-                  {axisFilled(axis.key) ? "작성됨" : "미작성"}
-                </span>
+                {writable ? (
+                  <span className="ml-auto flex items-center gap-1.5 text-xs shrink-0"
+                    style={{ color: axisFilled(axis.key) ? C.accent : C.faint }}>
+                    <Dot on={axisFilled(axis.key)} />
+                    {axisFilled(axis.key) ? "작성됨" : "미작성"}
+                  </span>
+                ) : (
+                  // 쓸 칸이 없는 축에 "미작성"을 띄우면 빠뜨린 것처럼 읽힌다
+                  <span className="ml-auto text-xs shrink-0" style={{ color: C.faint }}>자동 집계</span>
+                )}
               </button>
 
               {open && (
-                <div className="px-5 pb-5 space-y-3">
-                  {/* 매출현황만 자동 집계가 붙는다 */}
-                  {axis.key === "revenue" && (
-                    <RevenueBrief
-                      brief={brief} month={month} prevMonth={figPrevMonth} isMonthly={isMonthly}
-                      cur={curFigure} prevFig={prevFigure}
-                      onInsert={t => setText(entry.text.trim() ? `${entry.text.trimEnd()}\n\n${t}` : t)}
-                    />
+                <div className="px-5 pb-5">
+                  {/* 매출현황은 자동 집계만 본다 — 손으로 옮겨 적을 칸을 두지 않는다 */}
+                  {!writable ? (
+                    <RevenueBrief brief={brief} month={month} prevMonth={figPrevMonth}
+                      isMonthly={isMonthly} cur={curFigure} prevFig={prevFigure} />
+                  ) : (
+                    /* 지난 기간 · 이번 기간 · 다음 기간을 시간 순으로 가로 배치 */
+                    <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))" }}>
+                      <Field label={prevLabel} note="점검"
+                        placeholder={`${prev.label}에서 세운 계획이 어떻게 됐는지\n예) 완료 / 지연 — 사유`}
+                        value={entry.prev} onChange={v => set("prev", v)}
+                        action={carry
+                          ? <MiniButton onClick={pullCarry}>{prev.label}에서 가져오기</MiniButton>
+                          : <span className="text-xs" style={{ color: C.faint }}>가져올 계획 없음</span>} />
+                      <Field label={nowLabel} note="현황"
+                        placeholder={"현재 상태\n예) 수치, 진행 건, 이슈"}
+                        value={entry.current} onChange={v => set("current", v)} />
+                      <Field label={nextLabel} note="계획"
+                        placeholder={`${isMonthly ? "다음 달" : "다음 주"}까지 할 일\n예) 담당 · 기한 · 목표 수치`}
+                        value={entry.next} onChange={v => set("next", v)} />
+                    </div>
                   )}
-
-                  {/* 직전 회의 기록 — 읽기 전용 */}
-                  <div className="rounded-lg px-3.5 py-3" style={{ background: C.soft }}>
-                    <p className="text-xs mb-1.5" style={{ color: C.muted }}>
-                      직전 회의 <span style={{ color: C.faint }}>· {prev.label}</span>
-                    </p>
-                    <p className="text-[13px] whitespace-pre-wrap leading-relaxed" style={{ color: prevText ? C.body : C.faint }}>
-                      {prevText || (prev.note ? `${axis.label} 기록이 없습니다.` : "기록이 없습니다.")}
-                    </p>
-                  </div>
-
-                  {/* 자유 서술 한 칸 */}
-                  <Field rows={6}
-                    placeholder={`현황과 ${isMonthly ? "다음 달" : "다음 주"} 계획\n예) 수치 · 진행 건 · 이슈 / 담당 · 기한 · 목표`}
-                    value={entry.text} onChange={setText} />
                 </div>
               )}
             </section>
@@ -624,21 +678,34 @@ function TextButton({ children, onClick, disabled, danger }: {
   );
 }
 
-/**
- * 축 안의 입력 한 칸. 테두리 1px + 포커스 시 파랑 — 그 이상 장식하지 않는다.
- * 축 제목이 바로 위에 있으므로 라벨은 대개 생략한다.
- */
-function Field({ label, value, onChange, placeholder, rows = 5, note }: {
+/** 칸 머리말 옆에 붙는 작은 보조 동작. 저장·삭제와 경쟁하지 않게 테두리 없이 둔다. */
+function MiniButton({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
+  return (
+    <button onClick={onClick}
+      className="text-xs font-bold px-2 py-0.5 rounded-md transition-colors hover:brightness-95"
+      style={{ color: C.accent, background: C.accentSoft }}>
+      {children}
+    </button>
+  );
+}
+
+/** 축 안의 입력 한 칸. 테두리 1px + 포커스 시 파랑 — 그 이상 장식하지 않는다. */
+function Field({ label, value, onChange, placeholder, rows = 5, note, action }: {
   label?: string; value: string; onChange: (v: string) => void;
-  placeholder: string; rows?: number; note?: string;
+  placeholder: string; rows?: number; note?: string; action?: React.ReactNode;
 }) {
   return (
     <div className="min-w-0">
-      {label && (
-        <p className="text-[13px] font-semibold mb-1.5" style={{ color: C.body }}>
-          {label}
-          {note && <span className="font-normal ml-1.5" style={{ color: C.faint }}>{note}</span>}
-        </p>
+      {(label || action) && (
+        <div className="flex items-center gap-2 mb-1.5 min-h-[22px]">
+          {label && (
+            <p className="text-[13px] font-semibold" style={{ color: C.body }}>
+              {label}
+              {note && <span className="font-normal ml-1.5" style={{ color: C.faint }}>{note}</span>}
+            </p>
+          )}
+          {action && <span className="ml-auto shrink-0">{action}</span>}
+        </div>
       )}
       <textarea value={value} onChange={e => onChange(e.target.value)} rows={rows} placeholder={placeholder}
         className="w-full px-3.5 py-2.5 text-sm rounded-lg outline-none border leading-relaxed transition-colors focus:border-[#3182F6] placeholder:text-[#8B95A1]"
@@ -648,7 +715,7 @@ function Field({ label, value, onChange, placeholder, rows = 5, note }: {
 }
 
 /**
- * 브리핑을 회의록에 그대로 붙일 수 있는 텍스트로 만든다.
+ * 브리핑을 메신저·메일에 그대로 붙일 수 있는 텍스트로 만든다.
  * 화면 표시와 복사본이 어긋나면 안 되므로 한 곳에서 만든다.
  * 주간회의는 월 단위 진척(KPI·누적 매출·누적 매입)만 본다 — 프로젝트 구성이나 월말 전망은 월간회의 몫이다.
  */
@@ -683,12 +750,11 @@ function briefText(b: RevenueBriefData, isMonthly: boolean) {
  *   ② 프로젝트 건수 — 중간
  *   ③ 전월 대비     — 작게, 배경을 깔아 참고 정보임을 드러낸다
  */
-function RevenueBrief({ brief, month, prevMonth, cur, prevFig, isMonthly, onInsert }: {
+function RevenueBrief({ brief, month, prevMonth, cur, prevFig, isMonthly }: {
   brief: RevenueBriefData | null; month: number; prevMonth: number;
   cur: MonthFigure | null; prevFig: MonthFigure | null; isMonthly: boolean;
-  onInsert: (text: string) => void;
 }) {
-  const [inserted, setInserted] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   if (!brief) {
     return (
@@ -709,6 +775,15 @@ function RevenueBrief({ brief, month, prevMonth, cur, prevFig, isMonthly, onInse
       sub={hasKpi ? undefined : "프로젝트 관리에서 등록"} />
   );
 
+  /** 회의록에는 옮겨 적지 않는다. 메신저·메일로 그대로 넘길 수 있게 복사만 준다. */
+  const copy = async (monthly: boolean) => {
+    try {
+      await navigator.clipboard.writeText(briefText(brief, monthly));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch { /* 클립보드가 막힌 환경 — 화면의 수치는 그대로 읽을 수 있다 */ }
+  };
+
   /**
    * 주간회의는 월 KPI · 월 누적 매출 · 월 누적 매입 세 가지만 본다.
    * 주 단위 회의에서 필요한 건 "이번 달 어디까지 왔나"이지 프로젝트 구성이나 월말 전망이 아니다.
@@ -721,8 +796,7 @@ function RevenueBrief({ brief, month, prevMonth, cur, prevFig, isMonthly, onInse
     const monthMargin = monthRevenue - monthCost;
     return (
       <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${C.line}` }}>
-        <BriefHeader label={`자동 집계 · ${month}월 전체`} inserted={inserted}
-          onInsert={() => { onInsert(briefText(brief, false)); setInserted(true); setTimeout(() => setInserted(false), 2000); }} />
+        <BriefHeader label={`자동 집계 · ${month}월 전체`} copied={copied} onCopy={() => copy(false)} />
         <div className="grid gap-px" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", background: C.line }}>
           {kpiStat}
           <Stat label="월 누적 매출" tone={K.actual} value={wonExact(monthRevenue)}
@@ -741,8 +815,7 @@ function RevenueBrief({ brief, month, prevMonth, cur, prevFig, isMonthly, onInse
 
   return (
     <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${C.line}` }}>
-      <BriefHeader label={`자동 집계 · ${month}월 ${asOfDay}일 기준`} inserted={inserted}
-        onInsert={() => { onInsert(briefText(brief, true)); setInserted(true); setTimeout(() => setInserted(false), 2000); }} />
+      <BriefHeader label={`자동 집계 · ${month}월 ${asOfDay}일 기준`} copied={copied} onCopy={() => copy(true)} />
 
       {/* 핵심 금액 — 목표·실적·전망을 색으로 가른다 */}
       <div className="grid gap-px" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", background: C.line }}>
@@ -784,16 +857,16 @@ function RevenueBrief({ brief, month, prevMonth, cur, prevFig, isMonthly, onInse
   );
 }
 
-function BriefHeader({ label, inserted, onInsert }: {
-  label: string; inserted: boolean; onInsert: () => void;
+function BriefHeader({ label, copied, onCopy }: {
+  label: string; copied: boolean; onCopy: () => void;
 }) {
   return (
     <div className="flex items-center justify-between gap-2 px-4 py-2.5" style={{ background: C.soft, borderBottom: `1px solid ${C.line}` }}>
       <span className="text-xs font-semibold" style={{ color: C.muted }}>{label}</span>
-      <button onClick={onInsert}
+      <button onClick={onCopy}
         className="text-xs font-bold px-2.5 py-1 rounded-md transition-colors"
         style={{ color: C.accent, background: C.accentSoft }}>
-        {inserted ? "넣었습니다" : "② 현황에 넣기"}
+        {copied ? "복사됨" : "수치 복사"}
       </button>
     </div>
   );

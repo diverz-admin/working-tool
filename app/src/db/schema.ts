@@ -413,19 +413,25 @@ export const productSections = pgTable("product_sections", {
 export type MeetingAxisKey = "revenue" | "operation" | "sales" | "marketing";
 
 /**
- * 한 축의 기록. 자유 서술 한 칸이다.
+ * 한 축의 기록. 지난 기간 · 이번 기간 · 다음 기간 세 칸이다.
+ *   월간회의 — 전월 · 당월 · 익월
+ *   주간회의 — 전주 · 금주 · 차주
  *
- * 처음에는 점검·현황·계획 세 칸으로 나눴는데 회의에서 세 칸의 경계가 매번 흐려졌다.
- * 같은 얘기를 셋으로 쪼개 적거나 가운데 칸만 채우는 일이 반복돼 칸을 하나로 합쳤다.
+ * next(차주·익월 계획)가 다음 회의의 prev로 넘어가면서 계획이 끊기지 않는다.
+ * 매출현황 축은 자동 집계만 보므로 사람이 쓰는 칸이 없다 — 항상 빈 값으로 남는다.
  */
-export type MeetingAxisEntry = { text: string };
+export type MeetingAxisEntry = { prev: string; current: string; next: string };
 export type MeetingSections = Record<MeetingAxisKey, MeetingAxisEntry>;
 
 /**
- * 3칸(점검·현황·계획) 시절 기록. 이 형태로 저장된 회의록이 이미 있으므로
- * 읽을 때 한 칸으로 합친다 — src/lib/meeting-sections.ts 참고.
+ * 지난 형태로 저장된 기록. 읽을 때 위 세 칸으로 옮긴다 — src/lib/meeting-sections.ts 참고.
+ *   check/current/plan — 점검·현황·계획 3칸 시절
+ *   text               — 자유 서술 1칸 시절
  */
-export type LegacyMeetingAxisEntry = { check?: string; current?: string; plan?: string };
+export type LegacyMeetingAxisEntry = {
+  check?: string; current?: string; plan?: string;
+  text?: string;
+};
 
 export const reportMeetings = pgTable("report_meetings", {
   id:         uuid("id").primaryKey().defaultRandom(),
