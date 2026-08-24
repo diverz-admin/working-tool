@@ -68,9 +68,6 @@ export interface MeetingImageInput {
   memo: string;
 }
 
-/** 한 축에서 칸마다 잘라내는 줄 수. 넘치면 …로 끊는다 — 공유 카드는 요약이지 회의록 전문이 아니다. */
-const MAX_LINES = 6;
-
 /** 캔버스에는 자동 줄바꿈이 없다. 글자 폭을 재서 직접 끊는다. */
 function wrap(ctx: CanvasRenderingContext2D, text: string, maxW: number, f: string): string[] {
   ctx.font = f;
@@ -89,18 +86,11 @@ function wrap(ctx: CanvasRenderingContext2D, text: string, maxW: number, f: stri
   return out;
 }
 
-function clamp(lines: string[], max: number): string[] {
-  if (lines.length <= max) return lines;
-  const cut = lines.slice(0, max);
-  cut[max - 1] = `${cut[max - 1].slice(0, -1)}…`;
-  return cut;
-}
-
 /** 그리기 명령 하나. 높이를 먼저 재야 캔버스 크기를 정할 수 있어 2단계로 나눈다. */
 type Op = { h: number; draw: (ctx: CanvasRenderingContext2D, y: number) => void };
 
-function textOp(ctx: CanvasRenderingContext2D, text: string, f: string, color: string, lh: number, maxLines?: number): Op {
-  const lines = maxLines ? clamp(wrap(ctx, text, INNER, f), maxLines) : wrap(ctx, text, INNER, f);
+function textOp(ctx: CanvasRenderingContext2D, text: string, f: string, color: string, lh: number): Op {
+  const lines = wrap(ctx, text, INNER, f);
   return {
     h: lines.length * lh,
     draw: (c, y) => {
@@ -252,7 +242,7 @@ function partOps(ctx: CanvasRenderingContext2D, label: string, body: string): Op
   return [
     textOp(ctx, label, font(700, 20), COLOR.muted, 28),
     gap(4),
-    textOp(ctx, body.trim(), font(500, 25), COLOR.body, 38, MAX_LINES),
+    textOp(ctx, body.trim(), font(500, 25), COLOR.body, 38),
     gap(16),
   ];
 }
@@ -323,7 +313,7 @@ export async function renderMeetingImage(input: MeetingImageInput): Promise<Blob
       rule(), gap(24),
       textOp(measure, "기타 논의 · 메모", font(800, 29), COLOR.ink, 40),
       gap(14),
-      textOp(measure, input.memo.trim(), font(500, 25), COLOR.body, 38, MAX_LINES),
+      textOp(measure, input.memo.trim(), font(500, 25), COLOR.body, 38),
       gap(12),
     );
   }
