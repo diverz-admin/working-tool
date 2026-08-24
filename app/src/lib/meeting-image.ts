@@ -134,8 +134,8 @@ function statsOp(ctx: CanvasRenderingContext2D, stats: BriefStat[]): Op {
   };
 }
 
-/** 캔버스에는 둥근 사각형 채우기가 없다. 막대 끝을 둥글게 하려면 직접 그려야 한다. */
-function roundRect(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+/** 캔버스에는 둥근 사각형이 없다. 막대 끝을 둥글게 하려면 경로를 직접 그려야 한다. */
+function roundRectPath(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   const rr = Math.min(r, h / 2, w / 2);
   c.beginPath();
   c.moveTo(x + rr, y);
@@ -144,6 +144,10 @@ function roundRect(c: CanvasRenderingContext2D, x: number, y: number, w: number,
   c.arcTo(x,     y + h, x,     y,     rr);
   c.arcTo(x,     y,     x + w, y,     rr);
   c.closePath();
+}
+
+function roundRect(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  roundRectPath(c, x, y, w, h, r);
   c.fill();
 }
 
@@ -236,15 +240,39 @@ function trendOp(t: MeetingImageTrend): Op | null {
   };
 }
 
-/** 축 안의 한 칸 — "금주" 같은 머리말 + 본문 */
-function partOps(ctx: CanvasRenderingContext2D, label: string, body: string): Op[] {
-  if (!body.trim()) return [];
-  return [
-    textOp(ctx, label, font(700, 20), COLOR.muted, 28),
-    gap(4),
-    textOp(ctx, body.trim(), font(500, 25), COLOR.body, 38),
-    gap(16),
-  ];
+/**
+ * 축 안의 한 칸 — "금주" 같은 머리말 + 본문을 카드 하나로 묶는다.
+ *
+ * 화면 편집 UI에서는 전주·금주·차주가 각각 테두리 있는 칸(Field)으로 나뉘어 있어
+ * 어디까지가 한 기간인지 눈에 바로 들어온다. 이전 버전은 라벨+본문을 그냥 위아래로
+ * 이어 붙였는데, 그러면 기간 경계가 문단 구분과 구별이 안 갔다. 배경과 테두리로
+ * 박스를 둘러 화면과 같은 방식으로 구분한다.
+ */
+function partOp(ctx: CanvasRenderingContext2D, label: string, body: string): Op | null {
+  if (!body.trim()) return null;
+  const padX = 24, padTop = 18, padBottom = 20, labelH = 30, bodyLH = 36;
+  const bodyFont = font(500, 24);
+  const lines = wrap(ctx, body.trim(), INNER - padX * 2, bodyFont);
+  const h = padTop + labelH + lines.length * bodyLH + padBottom;
+  return {
+    h,
+    draw: (c, y) => {
+      c.fillStyle = COLOR.soft;
+      roundRect(c, PAD, y, INNER, h, 14);
+      c.strokeStyle = COLOR.line;
+      c.lineWidth = 1;
+      roundRectPath(c, PAD + 0.5, y + 0.5, INNER - 1, h - 1, 14);
+      c.stroke();
+
+      c.font = font(700, 19);
+      c.fillStyle = COLOR.muted;
+      c.fillText(label, PAD + padX, y + padTop + 18);
+
+      c.font = bodyFont;
+      c.fillStyle = COLOR.body;
+      lines.forEach((ln, i) => c.fillText(ln, PAD + padX, y + padTop + labelH + bodyLH * (i + 0.72)));
+    },
+  };
 }
 
 export async function renderMeetingImage(input: MeetingImageInput): Promise<Blob> {
@@ -294,18 +322,18 @@ export async function renderMeetingImage(input: MeetingImageInput): Promise<Blob
 
   for (const axis of input.axes) {
     const parts = [
-      ...partOps(measure, input.prevLabel, axis.prev),
-      ...partOps(measure, input.nowLabel, axis.current),
-      ...partOps(measure, `${input.nextLabel} 계획`, axis.next),
-    ];
+      partOp(measure, input.prevLabel, axis.prev),
+      partOp(measure, input.nowLabel, axis.current),
+      partOp(measure, `${input.nextLabel} 계획`, axis.next),
+    ].filter((p): p is Op => p !== null);
     if (!parts.length) continue;   // 빈 축은 카드에 싣지 않는다
     ops.push(
       rule(), gap(24),
       textOp(measure, axis.label, font(800, 29), COLOR.ink, 40),
       gap(14),
-      ...parts,
-      gap(12),
     );
+    parts.forEach((p, i) => { ops.push(p); if (i < parts.length - 1) ops.push(gap(14)); });
+    ops.push(gap(20));
   }
 
   if (input.memo.trim()) {
