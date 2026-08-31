@@ -7,10 +7,10 @@
  * 직전 회의의 같은 축 기록이 화면 위쪽에 읽기전용으로 자동으로 붙고, 그것과 비교해 아래를 채운다.
  *
  * 축마다 지난 기간 · 이번 기간 · 다음 기간을 시간 순으로 가로에 늘어놓는다.
- *   월간회의 — 전월 · 당월 · 익월
- *   주간회의 — 전주 · 금주 · 차주
- * 가운데 칸(금주·당월 현황)이 다음 회의의 왼쪽 끝 칸으로 그대로 넘어온다 —
- * 2주차 회의에 적은 "금주 현황"이 3주차 회의에서는 "전주"다. 같은 주를 가리키므로 그대로 옮겨진다.
+ *   월간회의 — 전전월 · 전월 · 당월
+ *   주간회의 — 전전주 · 전주 · 금주
+ * 가운데 칸(전주·전월 현황)이 다음 회의의 왼쪽 끝 칸으로 그대로 넘어온다 —
+ * 2주차 회의에 적은 "전주 현황"이 3주차 회의에서는 "전전주"다. 같은 주를 가리키므로 그대로 옮겨진다.
  * 넘겨받은 내용은 지우고 다시 쓰라는 뜻이 아니라, 그 아래에 그 뒤로 어떻게 됐는지를 덧붙이라는 뜻이다.
  *
  * 매출현황 축만 입력 칸이 없다. 자동 집계가 회의에서 읽을 수치를 전부 만들어 주므로
@@ -247,8 +247,8 @@ export default function MeetingSection({ year, month, criteria, criteriaLabel }:
   }, [loadKey, currentNote]);
 
   /**
-   * 직전 회의의 "금주(당월) 현황"을 이번 회의의 "전주(전월)" 칸으로 넘겨받는다.
-   * 2주차의 금주와 3주차의 전주는 둘 다 2주차를 가리키므로 같은 내용이 그대로 옮겨진다.
+   * 직전 회의의 "전주(전월) 현황"을 이번 회의의 "전전주(전전월)" 칸으로 넘겨받는다.
+   * 2주차의 전주와 3주차의 전전주는 둘 다 같은 주를 가리키므로 같은 내용이 그대로 옮겨진다.
    * 비어 있는 칸에만 넣으므로 이미 쓴 내용을 덮지 않는다.
    *
    * 적재(위 effect)와 분리한 이유: 직전 회의록은 당월·전월을 함께 받아오느라
@@ -291,9 +291,9 @@ export default function MeetingSection({ year, month, criteria, criteriaLabel }:
   // ── 라벨 ──
   const fullLabel = isMonthly ? `${month}월 월간회의` : `${month}월 ${week}주차 주간회의`;
   // 가로 3칸의 머리말은 기간 이름만 둔다 — 무엇을 적는지는 그 옆 note가 설명한다
-  const prevLabel = isMonthly ? "전월" : "전주";
-  const nowLabel  = isMonthly ? "당월" : "금주";
-  const nextLabel = isMonthly ? "익월" : "차주";
+  const prevLabel = isMonthly ? "전전월" : "전전주";
+  const nowLabel  = isMonthly ? "전월" : "전주";
+  const nextLabel = isMonthly ? "당월" : "금주";
 
   // ── 저장 / 삭제 ──
   async function handleSave() {
@@ -625,7 +625,7 @@ export default function MeetingSection({ year, month, criteria, criteriaLabel }:
           const open     = !collapsed[axis.key];
           const writable = axis.key !== "revenue";
           const entry    = draftSections[axis.key];
-          // 직전 회의에 적은 그 기간의 현황 — 이번 회의의 전주(전월) 칸이 가리키는 바로 그 기간이다
+          // 직전 회의에 적은 그 기간의 현황 — 이번 회의의 전전주(전전월) 칸이 가리키는 바로 그 기간이다
           const carry = prevSections[axis.key].current.trim();
           const set = (field: keyof typeof entry, v: string) =>
             setDraftSections(p => ({ ...p, [axis.key]: { ...p[axis.key], [field]: v } }));

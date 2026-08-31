@@ -420,10 +420,10 @@ export type MeetingAxisKey = "revenue" | "operation" | "sales" | "marketing";
 
 /**
  * 한 축의 기록. 지난 기간 · 이번 기간 · 다음 기간 세 칸이다.
- *   월간회의 — 전월 · 당월 · 익월
- *   주간회의 — 전주 · 금주 · 차주
+ *   월간회의 — 전전월 · 전월 · 당월
+ *   주간회의 — 전전주 · 전주 · 금주
  *
- * next(차주·익월 계획)가 다음 회의의 prev로 넘어가면서 계획이 끊기지 않는다.
+ * next(금주·당월 계획)가 다음 회의의 prev로 넘어가면서 계획이 끊기지 않는다.
  * 매출현황 축은 자동 집계만 보므로 사람이 쓰는 칸이 없다 — 항상 빈 값으로 남는다.
  */
 export type MeetingAxisEntry = { prev: string; current: string; next: string };

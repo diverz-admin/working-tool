@@ -33,11 +33,11 @@ const font = (weight: number, size: number) => `${weight} ${size}px ${FONT}`;
 
 export interface MeetingImageAxis {
   label: string;
-  /** 지난 기간 (전주 / 전월) */
+  /** 지난 기간 (전전주 / 전전월) */
   prev: string;
-  /** 이번 기간 현황 (금주 / 당월) */
+  /** 이번 기간 현황 (전주 / 전월) */
   current: string;
-  /** 다음 기간 계획 (차주 / 익월) */
+  /** 다음 기간 계획 (금주 / 당월) */
   next: string;
 }
 
@@ -241,36 +241,77 @@ function trendOp(t: MeetingImageTrend): Op | null {
 }
 
 /**
- * 축 안의 한 칸 — "금주" 같은 머리말 + 본문을 카드 하나로 묶는다.
+ * 한 칸의 시각 톤. 지난 기간 → 이번 현황 → 다음 계획 순으로 무게가 붙는다.
  *
- * 화면 편집 UI에서는 전주·금주·차주가 각각 테두리 있는 칸(Field)으로 나뉘어 있어
+ * 세 칸이 같은 회색 상자였을 때는 머리말 글자 하나만이 경계였고, 본문이 길면
+ * 스크롤 도중 지금 어느 기간을 읽는 중인지 놓쳤다. 색 띠 · 머리말 배지 · 바탕색을
+ * 셋 다 다르게 줘서 카드를 확대하지 않아도 기간이 구분되게 한다.
+ * 색은 매출현황 지표(BRIEF_TONE)와 같은 계열로 맞춰 한 장 안에서 따로 놀지 않게 했다.
+ */
+const PART_TONE = {
+  /** 지난 기간 — 참고용이라 가장 흐리게 */
+  past:    { rail: "#C4CBD4", bg: "#FAFBFC", line: "#E8EBEE", label: COLOR.faint, chip: "#EDEFF2", body: COLOR.muted },
+  /** 이번 현황 — 회의에서 실제로 읽는 칸이라 가장 진하게 */
+  present: { rail: "#1971C2", bg: "#F5F9FF", line: "#D3E4F7", label: "#1663AC", chip: "#E2EFFC", body: COLOR.body  },
+  /** 다음 계획 — 앞을 보는 칸이라 다른 색 계열로 */
+  plan:    { rail: "#0B8457", bg: "#F4FBF7", line: "#D2EBDF", label: "#0A7A50", chip: "#DDF2E7", body: COLOR.body  },
+} as const;
+
+type PartTone = keyof typeof PART_TONE;
+
+/**
+ * 축 안의 한 칸 — "전주" 같은 머리말 + 본문을 카드 하나로 묶는다.
+ *
+ * 화면 편집 UI에서는 전전주·전주·금주가 각각 테두리 있는 칸(Field)으로 나뉘어 있어
  * 어디까지가 한 기간인지 눈에 바로 들어온다. 이전 버전은 라벨+본문을 그냥 위아래로
  * 이어 붙였는데, 그러면 기간 경계가 문단 구분과 구별이 안 갔다. 배경과 테두리로
- * 박스를 둘러 화면과 같은 방식으로 구분한다.
+ * 박스를 둘러 화면과 같은 방식으로 구분하고, 기간마다 색을 달리해 순서까지 보이게 한다.
  */
-function partOp(ctx: CanvasRenderingContext2D, label: string, body: string): Op | null {
+function partOp(ctx: CanvasRenderingContext2D, label: string, body: string, tone: PartTone): Op | null {
   if (!body.trim()) return null;
-  const padX = 24, padTop = 18, padBottom = 20, labelH = 30, bodyLH = 36;
-  const bodyFont = font(500, 24);
-  const lines = wrap(ctx, body.trim(), INNER - padX * 2, bodyFont);
-  const h = padTop + labelH + lines.length * bodyLH + padBottom;
+  const t = PART_TONE[tone];
+  const RAIL = 7;                       // 왼쪽 색 띠
+  const padX = 22, padTop = 18, padBottom = 20, bodyLH = 36;
+  const chipH = 30, chipPadX = 13, chipGap = 12;
+  const labelFont = font(700, 19);
+  const bodyFont  = font(500, 24);
+  const textX = PAD + RAIL + padX;
+  const lines = wrap(ctx, body.trim(), W - PAD - textX - padX, bodyFont);
+
+  ctx.font = labelFont;
+  const chipW = Math.ceil(ctx.measureText(label).width) + chipPadX * 2;
+
+  const h = padTop + chipH + chipGap + lines.length * bodyLH + padBottom;
   return {
     h,
     draw: (c, y) => {
-      c.fillStyle = COLOR.soft;
+      // 바탕 + 테두리
+      c.fillStyle = t.bg;
       roundRect(c, PAD, y, INNER, h, 14);
-      c.strokeStyle = COLOR.line;
+      c.strokeStyle = t.line;
       c.lineWidth = 1;
       roundRectPath(c, PAD + 0.5, y + 0.5, INNER - 1, h - 1, 14);
       c.stroke();
 
-      c.font = font(700, 19);
-      c.fillStyle = COLOR.muted;
-      c.fillText(label, PAD + padX, y + padTop + 18);
+      // 왼쪽 색 띠 — 카드 모양대로 잘라내 위아래 모서리가 둥글게 남는다
+      c.save();
+      roundRectPath(c, PAD, y, INNER, h, 14);
+      c.clip();
+      c.fillStyle = t.rail;
+      c.fillRect(PAD, y, RAIL, h);
+      c.restore();
+
+      // 머리말 배지
+      c.fillStyle = t.chip;
+      roundRect(c, textX, y + padTop, chipW, chipH, 9);
+      c.font = labelFont;
+      c.fillStyle = t.label;
+      c.fillText(label, textX + chipPadX, y + padTop + 21);
 
       c.font = bodyFont;
-      c.fillStyle = COLOR.body;
-      lines.forEach((ln, i) => c.fillText(ln, PAD + padX, y + padTop + labelH + bodyLH * (i + 0.72)));
+      c.fillStyle = t.body;
+      const bodyTop = y + padTop + chipH + chipGap;
+      lines.forEach((ln, i) => c.fillText(ln, textX, bodyTop + bodyLH * (i + 0.72)));
     },
   };
 }
@@ -322,9 +363,9 @@ export async function renderMeetingImage(input: MeetingImageInput): Promise<Blob
 
   for (const axis of input.axes) {
     const parts = [
-      partOp(measure, input.prevLabel, axis.prev),
-      partOp(measure, input.nowLabel, axis.current),
-      partOp(measure, `${input.nextLabel} 계획`, axis.next),
+      partOp(measure, input.prevLabel, axis.prev, "past"),
+      partOp(measure, input.nowLabel, axis.current, "present"),
+      partOp(measure, `${input.nextLabel} 계획`, axis.next, "plan"),
     ].filter((p): p is Op => p !== null);
     if (!parts.length) continue;   // 빈 축은 카드에 싣지 않는다
     ops.push(
