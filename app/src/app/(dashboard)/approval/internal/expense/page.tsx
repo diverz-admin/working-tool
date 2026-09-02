@@ -130,7 +130,8 @@ function RequestModal({ defaultRequester, initial, onClose, onSubmit }: {
   onClose:  () => void;
   onSubmit: (form: RequestForm) => Promise<void>;
 }) {
-  const isEdit = Boolean(initial);
+  const isEdit    = Boolean(initial);
+  const isRejected = initial?.status === "반려";
   const [form, setForm] = useState<RequestForm>({
     title:           initial?.title           ?? "",
     assignedTeam:    initial?.assignedTeam    ?? "",
@@ -173,7 +174,7 @@ function RequestModal({ defaultRequester, initial, onClose, onSubmit }: {
     <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(25,31,40,0.45)" }} onClick={onClose}>
       <div className="rounded-2xl w-full max-w-lg mx-4 overflow-hidden" style={{ background: "#fff", boxShadow: "0 20px 60px rgba(22,31,51,0.18)" }} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: "1px solid #F1F5F9" }}>
-          <h2 className="text-sm font-bold" style={{ color: "#191F28" }}>{isEdit ? "내부지출 수정 후 재요청" : "내부지출 결재 요청"}</h2>
+          <h2 className="text-sm font-bold" style={{ color: "#191F28" }}>{!isEdit ? "내부지출 결재 요청" : isRejected ? "내부지출 수정 후 재요청" : "내부지출 요청 수정"}</h2>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2.5" strokeLinecap="round">
               <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -289,7 +290,7 @@ function RequestModal({ defaultRequester, initial, onClose, onSubmit }: {
             disabled={saving || !form.title.trim() || !form.requester.trim()}
             className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
             style={{ background: "#3182F6" }}>
-            {saving ? "요청 중..." : isEdit ? "재요청" : "결재 요청"}
+            {saving ? "저장 중..." : !isEdit ? "결재 요청" : isRejected ? "재요청" : "수정 저장"}
           </button>
         </div>
       </div>
@@ -297,12 +298,12 @@ function RequestModal({ defaultRequester, initial, onClose, onSubmit }: {
   );
 }
 
-// ── 상세 모달 (조회 전용) ──────────────────────────────────
-function DetailModal({ item, onClose, onDelete, onResubmit }: {
-  item:        ExpenseItem;
-  onClose:     () => void;
-  onDelete:    (id: string) => Promise<void>;
-  onResubmit?: () => void;
+// ── 상세 모달 ─────────────────────────────────────────────
+function DetailModal({ item, onClose, onDelete, onEdit }: {
+  item:     ExpenseItem;
+  onClose:  () => void;
+  onDelete: (id: string) => Promise<void>;
+  onEdit?:  () => void;
 }) {
   const attachments = parseAttachments(item.attachments);
   const [deleting, setDeleting] = useState(false);
@@ -424,12 +425,12 @@ function DetailModal({ item, onClose, onDelete, onResubmit }: {
 
         {(item.status === "대기" || item.status === "반려") && (
           <div className="flex gap-2 px-6 py-4" style={{ borderTop: "1px solid #F1F5F9" }}>
-            {item.status === "반려" && onResubmit && (
+            {onEdit && (
               <button
-                onClick={onResubmit}
+                onClick={onEdit}
                 className="flex-1 py-2.5 rounded-xl text-sm font-semibold hover:opacity-80"
                 style={{ background: "rgba(49,130,246,0.1)", color: "#3182F6" }}>
-                수정 후 재요청
+                {item.status === "반려" ? "수정 후 재요청" : "수정"}
               </button>
             )}
             <button
@@ -508,8 +509,9 @@ export default function ExpensePage() {
     setShowForm(false);
   }
 
-  async function handleResubmit(form: RequestForm) {
+  async function handleEdit(form: RequestForm) {
     if (!editItem) return;
+    const wasRejected = editItem.status === "반려";
     const res = await fetch(`/api/approvals/expense/${editItem.id}`, {
       method:  "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -526,7 +528,7 @@ export default function ExpensePage() {
         rejectReason:    null,
       }),
     });
-    if (!res.ok) { alert("재상신에 실패했습니다. 다시 시도해주세요."); return; }
+    if (!res.ok) { alert(wasRejected ? "재상신에 실패했습니다. 다시 시도해주세요." : "수정에 실패했습니다. 다시 시도해주세요."); return; }
     const { item } = await res.json();
     setItems((p) => p.map((i) => i.id === editItem.id ? item : i));
     setEditItem(null);
@@ -645,7 +647,7 @@ export default function ExpensePage() {
           defaultRequester={currentUser}
           initial={editItem}
           onClose={() => setEditItem(null)}
-          onSubmit={handleResubmit}
+          onSubmit={handleEdit}
         />
       )}
 
@@ -654,7 +656,7 @@ export default function ExpensePage() {
           item={selected}
           onClose={() => setSelected(null)}
           onDelete={handleDelete}
-          onResubmit={() => { setEditItem(selected); setSelected(null); }}
+          onEdit={() => { setEditItem(selected); setSelected(null); }}
         />
       )}
     </div>

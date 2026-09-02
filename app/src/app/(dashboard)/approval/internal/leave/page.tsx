@@ -64,7 +64,8 @@ function RequestModal({ remaining, initial, onClose, onSubmit }: {
   onClose:   () => void;
   onSubmit:  (form: RequestForm) => Promise<void>;
 }) {
-  const isEdit = Boolean(initial);
+  const isEdit     = Boolean(initial);
+  const isRejected = initial?.status === "반려";
   const today  = new Date().toISOString().slice(0, 10);
   const [form, setForm] = useState<RequestForm>({
     leaveType:   initial?.leaveType   ?? "연차",
@@ -104,7 +105,7 @@ function RequestModal({ remaining, initial, onClose, onSubmit }: {
     <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(25,31,40,0.45)" }} onClick={onClose}>
       <div className="rounded-2xl w-full max-w-lg mx-4 overflow-hidden" style={{ background: "#fff", boxShadow: "0 20px 60px rgba(22,31,51,0.18)" }} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: "1px solid #F1F5F9" }}>
-          <h2 className="text-sm font-bold" style={{ color: "#191F28" }}>{isEdit ? "휴가 수정 후 재요청" : "휴가 결재 요청"}</h2>
+          <h2 className="text-sm font-bold" style={{ color: "#191F28" }}>{!isEdit ? "휴가 결재 요청" : isRejected ? "휴가 수정 후 재요청" : "휴가 요청 수정"}</h2>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2.5" strokeLinecap="round">
               <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -220,7 +221,7 @@ function RequestModal({ remaining, initial, onClose, onSubmit }: {
             disabled={saving || !form.title.trim() || !form.startDate || invalidRange}
             className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
             style={{ background: "#8B5CF6" }}>
-            {saving ? "요청 중..." : isEdit ? "재요청" : "결재 요청"}
+            {saving ? "저장 중..." : !isEdit ? "결재 요청" : isRejected ? "재요청" : "수정 저장"}
           </button>
         </div>
       </div>
@@ -229,11 +230,11 @@ function RequestModal({ remaining, initial, onClose, onSubmit }: {
 }
 
 // ── 상세 모달 (조회 전용) ──────────────────────────────────
-function DetailModal({ item, onClose, onDelete, onResubmit }: {
+function DetailModal({ item, onClose, onDelete, onEdit }: {
   item:        LeaveItem;
   onClose:     () => void;
   onDelete:    (id: string) => Promise<void>;
-  onResubmit?: () => void;
+  onEdit?:     () => void;
 }) {
   const [deleting, setDeleting] = useState(false);
   const ss = STATUS_STYLE[item.status];
@@ -301,11 +302,11 @@ function DetailModal({ item, onClose, onDelete, onResubmit }: {
 
         {(item.status === "대기" || item.status === "반려") && (
           <div className="flex gap-2 px-6 py-4" style={{ borderTop: "1px solid #F1F5F9" }}>
-            {item.status === "반려" && onResubmit && (
-              <button onClick={onResubmit}
+            {onEdit && (
+              <button onClick={onEdit}
                 className="flex-1 py-2.5 rounded-xl text-sm font-semibold hover:opacity-80"
                 style={{ background: "rgba(139,92,246,0.1)", color: "#8B5CF6" }}>
-                수정 후 재요청
+                {item.status === "반려" ? "수정 후 재요청" : "수정"}
               </button>
             )}
             {item.status === "대기" && (
@@ -393,7 +394,7 @@ export default function LeavePage() {
     setShowForm(false);
   }
 
-  async function handleResubmit(form: RequestForm) {
+  async function handleEdit(form: RequestForm) {
     if (!editItem) return;
     await submitForm(form, editItem.id);
     setEditItem(null);
@@ -511,7 +512,7 @@ export default function LeavePage() {
           remaining={remaining}
           initial={editItem}
           onClose={() => setEditItem(null)}
-          onSubmit={handleResubmit}
+          onSubmit={handleEdit}
         />
       )}
 
@@ -520,7 +521,7 @@ export default function LeavePage() {
           item={selected}
           onClose={() => setSelected(null)}
           onDelete={handleDelete}
-          onResubmit={() => { setEditItem(selected); setSelected(null); }}
+          onEdit={() => { setEditItem(selected); setSelected(null); }}
         />
       )}
     </div>
