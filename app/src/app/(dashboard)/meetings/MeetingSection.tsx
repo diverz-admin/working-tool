@@ -34,7 +34,7 @@ import { TEAM_FILTERS } from "@/lib/teams";
 import {
   normalizeMeetingSections, meetingSectionsAreEmpty, axisHasText, MEETING_WRITABLE_AXIS_KEYS,
 } from "@/lib/meeting-sections";
-import { briefStats, briefText, briefProgress, wonExact, BRIEF_TONE, type RevenueBriefData } from "@/lib/meeting-brief";
+import { briefStats, briefText, briefProgress, briefActiveProjects, wonExact, BRIEF_TONE, type RevenueBriefData } from "@/lib/meeting-brief";
 import { renderMeetingImage } from "@/lib/meeting-image";
 import type { MeetingAxisKey, MeetingSections } from "@/db/schema";
 
@@ -396,6 +396,7 @@ export default function MeetingSection({ year, month, criteria, criteriaLabel }:
         caption: `${year}년 · ${criteriaLabel}${draftAuthor ? ` · ${draftAuthor}` : ""}`,
         prevLabel, nowLabel, nextLabel,
         stats: brief ? briefStats(brief, isMonthly) : [],
+        projects: brief ? { counts: briefActiveProjects(brief), asOfDay: brief.asOfDay } : null,
         kpi:   brief ? briefProgress(brief, isMonthly) : null,
         trend: curFig ? { year, values: yearRevenues, highlight: month } : null,
         axes:  WRITABLE.map(a => ({
@@ -829,6 +830,7 @@ function RevenueBrief({ brief, month, prevMonth, cur, prevFig, isMonthly }: {
       <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${C.line}` }}>
         <BriefHeader label={`자동 집계 · ${month}월 전체`} copied={copied} onCopy={() => copy(false)} />
         {statRow}
+        <ActiveProjects brief={brief} />
       </div>
     );
   }
@@ -845,15 +847,18 @@ function RevenueBrief({ brief, month, prevMonth, cur, prevFig, isMonthly }: {
       {/* 핵심 금액 — 목표·실적·전망을 색으로 가른다 */}
       {statRow}
 
-      {/* 프로젝트 건수 */}
+      {/* 운영중 프로젝트 — 지난달 시작분까지 포함한 "지금 도는 건수" */}
+      <ActiveProjects brief={brief} />
+
+      {/* 당월 시작 프로젝트 건수 */}
       <div className="px-4 py-3" style={{ borderTop: `1px solid ${C.line}` }}>
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs shrink-0" style={{ color: C.muted, minWidth: 52 }}>프로젝트</span>
+          <span className="text-xs shrink-0" style={{ color: C.muted, minWidth: 52 }}>당월 시작</span>
           <Count label="보장형" n={p.guaranteed} tone={K.actual} />
           <Count label="관리형" n={p.managed}    tone={K.target} />
           <Count label="신규"   n={p.fresh}      tone={K.forecast} />
           <span className="text-xs" style={{ color: C.faint }}>
-            당월 시작 {p.total}건 · 신규 = 첫 거래 광고주
+            합계 {p.total}건 · 신규 = 첫 거래 광고주
           </span>
         </div>
       </div>
@@ -870,6 +875,28 @@ function RevenueBrief({ brief, month, prevMonth, cur, prevFig, isMonthly }: {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * 기준일 현재 운영 중인 프로젝트 건수.
+ *
+ * 당월 시작 건수와 다른 수다 — 지난달에 시작해 이번 달에도 도는 캠페인이 여기 들어간다.
+ * 주간회의에서 "지금 몇 건 돌고 있나"는 매달 새로 잡히는 건수보다 자주 쓰여서 월간·주간 모두에 둔다.
+ */
+function ActiveProjects({ brief }: { brief: RevenueBriefData }) {
+  return (
+    <div className="px-4 py-3" style={{ borderTop: `1px solid ${C.line}` }}>
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-xs shrink-0" style={{ color: C.muted, minWidth: 52 }}>운영중</span>
+        {briefActiveProjects(brief).map(c => (
+          <Count key={c.label} label={c.label === "운영중" ? "전체" : c.label} n={c.n} tone={K[c.tone]} />
+        ))}
+        <span className="text-xs" style={{ color: C.faint }}>
+          {brief.asOfDay}일 기준 진행중인 캠페인
+        </span>
+      </div>
     </div>
   );
 }

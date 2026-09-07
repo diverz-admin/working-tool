@@ -12,7 +12,12 @@ export interface RevenueBriefData {
   asOfRevenue: number; monthRevenue: number;
   asOfCost: number; monthCost: number;
   forecast: number;
-  projects: { total: number; guaranteed: number; managed: number; etc: number; fresh: number; extended: number };
+  projects: {
+    /** 기준일 현재 운영 중 — 지난달 시작해 이번 달에도 도는 캠페인을 포함한다 */
+    active: number; activeGuaranteed: number; activeManaged: number;
+    /** 당월 시작분 */
+    total: number; guaranteed: number; managed: number; etc: number; fresh: number; extended: number;
+  };
 }
 
 /**
@@ -113,15 +118,38 @@ export function briefProgress(b: RevenueBriefData, isMonthly: boolean): BriefPro
   };
 }
 
+/**
+ * 운영중 프로젝트 배지 세 칸 — 화면·복사 텍스트·공유 이미지가 같은 순서와 색을 쓴다.
+ * "당월 시작" 건수와 헷갈리지 않도록 라벨에 항상 운영중이 앞선다.
+ */
+export interface BriefCount { label: string; n: number; tone: BriefTone }
+
+export function briefActiveProjects(b: RevenueBriefData): BriefCount[] {
+  const p = b.projects;
+  return [
+    { label: "운영중", n: p.active,           tone: "forecast" },
+    { label: "보장형", n: p.activeGuaranteed, tone: "actual" },
+    { label: "관리형", n: p.activeManaged,    tone: "target" },
+  ];
+}
+
 /** 브리핑을 메신저·메일에 그대로 붙일 수 있는 텍스트로 만든다. */
 export function briefText(b: RevenueBriefData, isMonthly: boolean) {
   const lines = ["[매출 현황]"];
-  briefStats(b, isMonthly).forEach((s, i) => {
+  const stats = briefStats(b, isMonthly);
+  stats.forEach((s, i) => {
     lines.push(`${i + 1}. ${s.label}: ${s.value}${s.sub && !s.dim ? ` (${s.sub})` : ""}`);
   });
+  const p = b.projects;
+  lines.push(
+    `${stats.length + 1}. 운영중 프로젝트 (${b.asOfDay}일 기준)`,
+    ` - 전체 ${p.active}건`, ` - 보장형 ${p.activeGuaranteed}건`, ` - 관리형 ${p.activeManaged}건`,
+  );
   if (isMonthly) {
-    const p = b.projects;
-    lines.push("4. 프로젝트 현황", ` - 보장형 ${p.guaranteed}건`, ` - 관리형 ${p.managed}건`, ` - 신규 ${p.fresh}건`);
+    lines.push(
+      `${stats.length + 2}. 당월 시작 프로젝트`,
+      ` - 보장형 ${p.guaranteed}건`, ` - 관리형 ${p.managed}건`, ` - 신규 ${p.fresh}건`,
+    );
   }
   return lines.join("\n");
 }

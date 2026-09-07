@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { projects, projectRevenues, projectCosts, kpiTargets } from "@/db/schema";
-import { and, eq, gte, lt, lte, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, eq, ne, or, gte, lt, lte, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { monthRange } from "@/lib/month-range";
 
 /**
@@ -11,7 +11,7 @@ import { monthRange } from "@/lib/month-range";
  *   1. 월 KPI            — kpi_targets에 등록된 팀 월 목표
  *   2. N일 매출           — 1일부터 기준일(asOf)까지 잡힌 매출
  *      월말 예상매출      — 당월 시작 프로젝트의 계약 공급가 합계(이미 수주해 확보한 금액)
- *   3. 프로젝트 현황       — 보장형 / 관리형 / 신규 건수
+ *   3. 프로젝트 현황       — 기준일 현재 운영중(보장형/관리형) · 당월 시작분의 보장형 / 관리형 / 신규 건수
  *
  * "N일 매출"은 화면에서 고른 기준(통장·계산서·캠페인 시작일)을 따르고,
  * "월말 예상매출"은 기준과 무관하게 항상 수주(계약 공급가) 기준이다.
@@ -150,7 +150,28 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // ── 4. 프로젝트 현황 ──
+    /**
+     * ── 4. 기준일 현재 운영 중인 프로젝트 ──
+     * "당월 시작"과는 다른 수다. 지난달에 시작해 이번 달에도 돌고 있는 캠페인이
+     * 회의에서 말하는 "지금 운영중"이고, 주간회의에서는 이쪽이 훨씬 자주 쓰인다.
+     *
+     * status("진행")로 세지 않는다. status는 자동 종료 크론이 오늘 기준으로만 맞춰 두므로
+     * 지난 달 회의록을 열면 그 달이 아니라 오늘의 건수가 나온다. 날짜 구간으로 판별해야
+     * 어느 회의록을 열어도 그 기준일의 운영 현황이 나온다. 아직 계약 전인 리드는 뺀다.
+     */
+    const activeProjects = await db
+      .select({ projectType: projects.projectType })
+      .from(projects)
+      .where(and(
+        team ? eq(projects.assignedTeam, team) : undefined,
+        ne(projects.status, "리드"),
+        isNotNull(projects.startDate),
+        lte(projects.startDate, asOf),
+        or(isNull(projects.endDate), gte(projects.endDate, asOf)),
+      ));
+    const activeOfType = (t: string) => activeProjects.filter(p => p.projectType === t).length;
+
+    // ── 5. 당월 시작 프로젝트 현황 ──
     const countType = (t: string) => monthProjects.filter(p => p.projectType === t).length;
     const guaranteed = countType("보장형");
     const managed    = countType("관리형");
@@ -181,6 +202,11 @@ export async function GET(req: NextRequest) {
       monthCost,
       forecast,
       projects: {
+        // 기준일 현재 운영중 — 당월 시작분과 별개로 센다
+        active:           activeProjects.length,
+        activeGuaranteed: activeOfType("보장형"),
+        activeManaged:    activeOfType("관리형"),
+
         total:      monthProjects.length,
         guaranteed,
         managed,

@@ -1,4 +1,4 @@
-import { BRIEF_TONE, wonExact, type BriefStat, type BriefProgress } from "@/lib/meeting-brief";
+import { BRIEF_TONE, wonExact, type BriefStat, type BriefProgress, type BriefCount } from "@/lib/meeting-brief";
 
 /**
  * 회의록 요약을 PNG 한 장으로 그린다. 카카오톡으로 넘기기 위한 것이다.
@@ -8,7 +8,7 @@ import { BRIEF_TONE, wonExact, type BriefStat, type BriefProgress } from "@/lib/
  * 입력창 테두리·버튼·접힘 화살표는 받는 사람에게 아무 의미가 없고, 세로로 길어져
  * 카톡 미리보기에서 글씨가 뭉갠다. 공유용은 화면과 다른 물건이라 따로 그린다.
  *
- * 담는 것: 팀·회의 이름 / 매출현황(수치·KPI 달성·월별 추이) /
+ * 담는 것: 팀·회의 이름 / 매출현황(수치·운영중 프로젝트·KPI 달성·월별 추이) /
  *          축별 지난 기간·이번 기간·다음 기간 / 기타 메모.
  */
 
@@ -50,6 +50,13 @@ export interface MeetingImageTrend {
   highlight: number;
 }
 
+/** 기준일 현재 운영 중인 프로젝트 건수 */
+export interface MeetingImageProjects {
+  counts: BriefCount[];
+  /** "12일 기준" — 어느 시점의 건수인지 밝힌다 */
+  asOfDay: number;
+}
+
 export interface MeetingImageInput {
   team: string;
   /** "8월 3주차 주간회의" */
@@ -60,6 +67,8 @@ export interface MeetingImageInput {
   nowLabel: string;
   nextLabel: string;
   stats: BriefStat[];
+  /** 운영중 프로젝트 건수. 집계를 못 받았으면 null */
+  projects: MeetingImageProjects | null;
   /** 목표 대비 진척. KPI가 없으면 null */
   kpi: BriefProgress | null;
   /** 월별 추이. 집계를 못 받았으면 null */
@@ -149,6 +158,51 @@ function roundRectPath(c: CanvasRenderingContext2D, x: number, y: number, w: num
 function roundRect(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   roundRectPath(c, x, y, w, h, r);
   c.fill();
+}
+
+/**
+ * 기준일 현재 운영 중인 프로젝트 건수.
+ *
+ * 금액 세 칸(statsOp)과 같은 회색 판에 얹지 않는다. 건수는 원과 단위가 달라 나란히 두면
+ * 숫자 크기가 서로를 흉내 내 읽는 사람이 단위를 놓친다. 알약 배지로 따로 끊고,
+ * 색은 매출현황 지표와 같은 계열을 써서 한 장 안에서 따로 놀지 않게 한다.
+ */
+function projectsOp(ctx: CanvasRenderingContext2D, p: MeetingImageProjects): Op {
+  const titleH = 32, chipH = 48, padX = 18, labelGap = 10, chipGap = 12;
+  const labelFont = font(700, 21);
+  const numFont   = font(800, 25);
+
+  // 폭은 글자를 재서 정한다 — 건수가 세 자리로 늘어도 배지가 글자를 자르지 않게
+  const chips = p.counts.map(c => {
+    const num = `${c.n}건`;
+    ctx.font = labelFont;
+    const lw = ctx.measureText(c.label).width;
+    ctx.font = numFont;
+    const nw = ctx.measureText(num).width;
+    return { ...c, num, lw, w: padX * 2 + lw + labelGap + nw };
+  });
+
+  return {
+    h: titleH + chipH,
+    draw: (c, y) => {
+      c.font = labelFont;
+      c.fillStyle = COLOR.muted;
+      c.fillText(`운영중 프로젝트 · ${p.asOfDay}일 기준`, PAD, y + 20);
+
+      let x = PAD;
+      for (const chip of chips) {
+        c.fillStyle = BRIEF_TONE[chip.tone].bg;
+        roundRect(c, x, y + titleH, chip.w, chipH, 12);
+        c.font = labelFont;
+        c.fillStyle = BRIEF_TONE[chip.tone].fg;
+        c.fillText(chip.label, x + padX, y + titleH + 31);
+        c.font = numFont;
+        c.fillStyle = COLOR.ink;
+        c.fillText(chip.num, x + padX + chip.lw + labelGap, y + titleH + 32);
+        x += chip.w + chipGap;
+      }
+    },
+  };
 }
 
 /**
@@ -327,7 +381,8 @@ export async function renderMeetingImage(input: MeetingImageInput): Promise<Blob
    */
   const allText = [
     input.team, input.title, input.caption, input.memo,
-    "매출현황 기타 논의 메모 KPI 달성 목표까지 월별 매출 최고 년 월 원 DIVERZ Work",
+    "매출현황 기타 논의 메모 KPI 달성 목표까지 월별 매출 최고 년 월 일 건 원 운영중 프로젝트 기준 DIVERZ Work",
+    ...(input.projects?.counts ?? []).map(c => `${c.label}${c.n}`),
     ...input.stats.flatMap(s => [s.label, s.value, s.sub ?? ""]),
     input.prevLabel, input.nowLabel, input.nextLabel,
     ...input.axes.flatMap(a => [a.label, a.prev, a.current, a.next]),
@@ -349,13 +404,14 @@ export async function renderMeetingImage(input: MeetingImageInput): Promise<Blob
   ];
 
   const trend = input.trend ? trendOp(input.trend) : null;
-  if (input.stats.length || input.kpi || trend) {
+  if (input.stats.length || input.projects || input.kpi || trend) {
     ops.push(
       rule(), gap(24),
       textOp(measure, "매출현황", font(800, 29), COLOR.ink, 40),
       gap(14),
     );
     if (input.stats.length) ops.push(statsOp(measure, input.stats), gap(24));
+    if (input.projects)     ops.push(projectsOp(measure, input.projects), gap(24));
     if (input.kpi)          ops.push(kpiOp(input.kpi), gap(20));
     if (trend)              ops.push(trend, gap(8));
     ops.push(gap(12));
