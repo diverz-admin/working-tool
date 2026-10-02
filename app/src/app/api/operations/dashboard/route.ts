@@ -4,6 +4,7 @@ import { projects, projectRevenues, projectCosts, annualCosts } from "@/db/schem
 import { eq, and, gte, lte, isNotNull, sql } from "drizzle-orm";
 import { monthRange } from "@/lib/month-range";
 import { TEAM_ORDER } from "@/lib/teams";
+import { isRevenueConfirmed } from "@/lib/revenue-stats";
 
 export async function GET(req: NextRequest) {
   try {
@@ -25,7 +26,7 @@ export async function GET(req: NextRequest) {
       })
       .from(projects)
       .leftJoin(projectRevenues, eq(projectRevenues.projectId, projects.id))
-      .where(sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`)
+      .where(and(sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`, isRevenueConfirmed(projects.id)))
       .groupBy(projects.id, projects.assignedTeam, projects.assignedPerson, projects.startDate, projects.kpiSupply),
 
       // 2. 연간 수동 비용
@@ -51,6 +52,7 @@ export async function GET(req: NextRequest) {
         isNotNull(projects.startDate),
         gte(projects.startDate, from),
         lte(projects.startDate, to),
+        isRevenueConfirmed(projects.id),
       ))
       .groupBy(projects.id, projects.assignedTeam, projects.contractAmount, projects.kpiSupply, projects.kpiTax),
 

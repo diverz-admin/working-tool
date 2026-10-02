@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { projects, projectRevenues, projectCosts } from "@/db/schema";
 import { eq, and, gte, lte, isNotNull, inArray, sql } from "drizzle-orm";
 import { monthRange } from "@/lib/month-range";
+import { isRevenueConfirmed } from "@/lib/revenue-stats";
 
 export async function GET(req: NextRequest) {
   try {
@@ -32,6 +33,7 @@ export async function GET(req: NextRequest) {
         status:         projects.status,
         startDate:      projects.startDate,
         endDate:        projects.endDate,
+        confirmed:      isRevenueConfirmed(projects.id),
       })
       .from(projects)
       .where(
@@ -70,7 +72,7 @@ export async function GET(req: NextRequest) {
 
     const projectIds = projectRows.map(p => p.id);
 
-    // 확정 매출 (입금확인요청이 제출된 프로젝트 = confirmRequest 존재, 반려 제외)
+    // 매출 행
     const revRows = await db
       .select({
         projectId:   projectRevenues.projectId,
@@ -84,7 +86,7 @@ export async function GET(req: NextRequest) {
       .where(
         and(
           inArray(projectRevenues.projectId, projectIds),
-          // 통장: 입금 확인일(paymentDate) 기간 내 = 입금 승인된 행 / 계산서: 발행일(invoiceDate) 기간 내 = 발행된 행 / 그 외: 입금확인요청(반려 제외)
+          // 통장: 입금 확인일(paymentDate) 기간 내 = 입금 승인된 행 / 계산서: 발행일(invoiceDate) 기간 내 = 발행된 행
           useBank
             ? and(
                 isNotNull(projectRevenues.paymentDate),
@@ -131,11 +133,13 @@ export async function GET(req: NextRequest) {
     const startsInRange = (d: string | null) => Boolean(d && d >= from && d <= to);
 
     /** 프로젝트 매출액(공급가). 수주 기준은 계약 공급가, 실적 기준은 실제 매출 행 공급가 합. */
-    const revenueOf = (p: { startDate: string | null; kpiSupply: number | null; id: string }) => {
+    const revenueOf = (p: { startDate: string | null; kpiSupply: number | null; id: string; confirmed: boolean }) => {
       const revs = revByProject[p.id] ?? [];
       if (!useContract) return sum(revs, r => r.supplyPrice ?? 0);
       // 기간 내 매입 때문에 포함된, 시작월이 지난 프로젝트는 이 달의 매출이 아니다
       if (!startsInRange(p.startDate)) return 0;
+      // 입금확인요청이 확인완료되지 않은(대기·반려·요청 없음) 프로젝트는 매출이 아니다
+      if (!p.confirmed) return 0;
       return p.kpiSupply ?? sum(revs, r => r.supplyPrice ?? 0);
     };
 

@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { projects, projectRevenues, projectCosts, clients, annualCosts, internalExpenseRequests } from "@/db/schema";
 import { eq, and, gte, lte, isNotNull, sql } from "drizzle-orm";
 import { monthRange } from "@/lib/month-range";
+import { isRevenueConfirmed } from "@/lib/revenue-stats";
 
 const REV_FIELDS = {
   assignedTeam:   projects.assignedTeam,
@@ -47,7 +48,7 @@ export async function GET(req: NextRequest) {
 
     // 3 쿼리 병렬 (월간매출 + 월간매입 + 연간SGA)
     const [revData, costData, sgaData] = await Promise.all([
-      // 수주 기준: 그 달에 시작한 모든 프로젝트 (매출 행이 아직 없어도 포함) → LEFT JOIN
+      // 수주 기준: 그 달에 시작해 입금확인요청이 확인완료된 프로젝트 (매출 행이 아직 없어도 포함) → LEFT JOIN
       // 실적 기준: 그 달 날짜가 기록된 매출 행이 있는 프로젝트만          → INNER JOIN
       (useContract
         ? db.select(REV_FIELDS)
@@ -58,6 +59,7 @@ export async function GET(req: NextRequest) {
               isNotNull(revDateField),
               gte(revDateField, from),
               lte(revDateField, to),
+              isRevenueConfirmed(projects.id),
             ))
             .groupBy(...REV_GROUP_BY)
         : db.select(REV_FIELDS)

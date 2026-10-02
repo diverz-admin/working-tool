@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { projects, projectRevenues, projectCosts, kpiTargets } from "@/db/schema";
 import { and, eq, ne, or, gte, lt, lte, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { monthRange } from "@/lib/month-range";
+import { isRevenueConfirmed } from "@/lib/revenue-stats";
 
 /**
  * 회의록 "매출현황" 축에 붙는 브리핑 수치.
@@ -59,6 +60,7 @@ export async function GET(req: NextRequest) {
         contractAmount: projects.contractAmount, projectType: projects.projectType,
         isExtended: projects.isExtended, status: projects.status,
         clientId: projects.clientId, advertiser: projects.advertiser,
+        confirmed: isRevenueConfirmed(projects.id),
       })
       .from(projects)
       .where(and(
@@ -101,8 +103,9 @@ export async function GET(req: NextRequest) {
     let monthRevenue = 0;   // 당월 전체 기간에 이미 잡힌 매출 (기준일 이후 포함)
 
     if (useContract) {
-      // 수주 기준: 캠페인 시작일이 곧 매출 귀속일
+      // 수주 기준: 캠페인 시작일이 곧 매출 귀속일. 입금확인요청이 확인완료된 프로젝트만 매출로 잡는다
       for (const p of monthProjects) {
+        if (!p.confirmed) continue;
         const amount = supplyOf(p);
         monthRevenue += amount;
         if (p.startDate && p.startDate <= asOf) asOfRevenue += amount;

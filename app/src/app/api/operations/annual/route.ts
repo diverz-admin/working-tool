@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { projects, projectRevenues, annualCosts, projectCosts, internalExpenseRequests } from "@/db/schema";
 import { eq, and, isNotNull, sql } from "drizzle-orm";
 import { TEAM_ORDER } from "@/lib/teams";
+import { isRevenueConfirmed } from "@/lib/revenue-stats";
 
 export async function GET(req: NextRequest) {
   try {
@@ -23,7 +24,7 @@ export async function GET(req: NextRequest) {
       })
       .from(projects)
       .leftJoin(projectRevenues, eq(projectRevenues.projectId, projects.id))
-      .where(sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`)
+      .where(and(sql`EXTRACT(YEAR FROM ${projects.startDate}) = ${year}`, isRevenueConfirmed(projects.id)))
       .groupBy(projects.id, projects.assignedTeam, projects.assignedPerson, projects.startDate, projects.kpiSupply),
 
       db.select().from(annualCosts).where(eq(annualCosts.year, year)),
@@ -70,7 +71,7 @@ export async function GET(req: NextRequest) {
 
     // 금액은 항상 공급가 기준.
     // 통장·계산서(실적 기준): 실제 매출 행 공급가를 입금 확인일·발행일 월에 귀속
-    // 캠페인 시작일(수주 기준): 프로젝트 계약 공급가를 시작일 월에 귀속
+    // 캠페인 시작일(수주 기준): 입금확인요청이 확인완료된 프로젝트의 계약 공급가를 시작일 월에 귀속
     const revEntries = useBank
       ? bankRevRows.map(r => ({
           month:  r.paymentDate ? parseInt(r.paymentDate.substring(5, 7)) - 1 : -1,

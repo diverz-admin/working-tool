@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { projects, projectRevenues, projectCosts } from "@/db/schema";
-import { eq, and, sql, isNotNull } from "drizzle-orm";
+import { eq, and, sql, isNotNull, type AnyColumn, type SQL } from "drizzle-orm";
 
 /**
  * 대시보드와 프로젝트관리(매출 통계)가 동일한 숫자를 보여주도록,
@@ -12,13 +12,21 @@ import { eq, and, sql, isNotNull } from "drizzle-orm";
  *   통장            → 매출: revenues.payment_date      / 매입: project_costs.purchase_date
  *
  * 금액은 항상 공급가(VAT 제외) 기준이며, 매출 금액의 출처는 기준에 따라 다르다.
- *   캠페인 시작날짜 → 수주 기준: 프로젝트의 계약 공급가(projects.kpi_supply)
+ *   캠페인 시작날짜 → 수주 기준: 입금확인요청이 확인완료된 프로젝트의 계약 공급가(projects.kpi_supply)
  *   계산서날짜·통장 → 실적 기준: 실제 매출 행(project_revenues.supply_price)
  */
 export type StatsCriteria = "캠페인 시작날짜" | "계산서날짜" | "통장";
 
 export function parseCriteria(raw: string | null): StatsCriteria {
   return raw === "계산서날짜" || raw === "통장" ? raw : "캠페인 시작날짜";
+}
+
+/**
+ * 캠페인 시작날짜(수주) 기준에서 매출로 인정되는 프로젝트 — 입금확인요청이 확인완료된 것만.
+ * 대기·반려 중이거나 요청이 없는(반려 후 삭제해 재요청 전인 경우 포함) 프로젝트는 매출에서 뺀다.
+ */
+export function isRevenueConfirmed(projectId: AnyColumn | SQL) {
+  return sql<boolean>`EXISTS (SELECT 1 FROM confirm_requests cr WHERE cr.project_id = ${projectId} AND cr.status = '확인완료')`;
 }
 
 export interface RevenueStatRow {
@@ -40,9 +48,8 @@ export interface CostStatRow {
 
 /**
  * 캠페인 시작날짜 기준 = 수주 기준.
- * 해당 월에 시작한 모든 프로젝트를 계약 공급가(kpi_supply)로 집계한다.
- * 매출 행이 아직 입력되지 않았거나 입금확인요청이 없는 프로젝트도 빠짐없이 포함하며,
- * 계약 금액이 비어 있는 프로젝트만 실제 매출 행 합계로 대체한다.
+ * 해당 월에 시작한 프로젝트 중 입금확인요청이 확인완료된 것을 계약 공급가(kpi_supply)로 집계한다.
+ * 매출 행이 아직 입력되지 않은 프로젝트도 포함하며, 계약 금액이 비어 있는 프로젝트만 실제 매출 행 합계로 대체한다.
  */
 async function fetchContractRevenueStats(
   year: number,
@@ -73,6 +80,7 @@ async function fetchContractRevenueStats(
     ) rv ON rv.project_id = p.id
     WHERE p.start_date IS NOT NULL
       AND EXTRACT(YEAR FROM p.start_date) = ${year}
+      AND ${isRevenueConfirmed(sql`p.id`)}
       ${team ? sql`AND p.assigned_team = ${team}` : sql``}
     GROUP BY 1, p.assigned_team
   `);
