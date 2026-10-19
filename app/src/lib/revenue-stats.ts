@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { projects, projectRevenues, projectCosts } from "@/db/schema";
-import { eq, and, sql, isNotNull, type AnyColumn, type SQL } from "drizzle-orm";
+import { eq, and, sql, isNotNull, is, Column, getTableName, type AnyColumn, type SQL } from "drizzle-orm";
 
 /**
  * 대시보드와 프로젝트관리(매출 통계)가 동일한 숫자를 보여주도록,
@@ -26,7 +26,12 @@ export function parseCriteria(raw: string | null): StatsCriteria {
  * 대기·반려 중이거나 요청이 없는(반려 후 삭제해 재요청 전인 경우 포함) 프로젝트는 매출에서 뺀다.
  */
 export function isRevenueConfirmed(projectId: AnyColumn | SQL) {
-  return sql<boolean>`EXISTS (SELECT 1 FROM confirm_requests cr WHERE cr.project_id = ${projectId} AND cr.status = '확인완료')`;
+  // 단일 테이블 select 목록에서는 drizzle이 컬럼을 테이블명 없이 "id"로 찍는데,
+  // 서브쿼리 안에서는 그게 cr.id로 해석돼 항상 false가 된다 — 테이블명을 직접 붙인다.
+  const ref = is(projectId, Column)
+    ? sql`${sql.identifier(getTableName(projectId.table))}.${sql.identifier(projectId.name)}`
+    : projectId;
+  return sql<boolean>`EXISTS (SELECT 1 FROM confirm_requests cr WHERE cr.project_id = ${ref} AND cr.status = '확인완료')`;
 }
 
 export interface RevenueStatRow {
