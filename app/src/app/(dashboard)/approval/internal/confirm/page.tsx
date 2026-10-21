@@ -3,13 +3,14 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { resolveFileSrc, useFileSrc, isImageValue } from "@/lib/storage";
 import { fetchJson } from "@/lib/fetch-json";
+import { type DepositFields, DepositInfoCard, DeadlineBadge } from "@/components/approvals/ExpenseDeposit";
 import CalendarPeriodFilter, { pickDefaultMonth, matchesPeriod } from "@/components/filters/CalendarPeriodFilter";
 
 type Status = "대기" | "승인" | "반려";
 
 interface Attachment { url: string; name: string; }
 
-interface ExpenseItem {
+interface ExpenseItem extends DepositFields {
   id:           string;
   title:        string;
   assignedTeam: string | null;
@@ -170,6 +171,8 @@ function DetailModal({ item, onClose, onAction }: {
                 </div>
               )}
             </div>
+
+            <DepositInfoCard item={item} amount={item.amount} />
 
             {item.content && (
               <div className="px-4 py-3 rounded-xl text-sm whitespace-pre-wrap" style={{ background: "#F8FAFC", color: "#475569" }}>
@@ -390,6 +393,7 @@ export default function InternalConfirmPage() {
                   <td className="px-5 py-3.5 text-xs" style={{ color: "#191F28" }}>
                     <div className="flex items-center gap-2">
                       <span className="font-semibold">{item.title}</span>
+                      {item.status === "대기" && <DeadlineBadge deadline={item.depositDeadline} />}
                       {attCount > 0 && (
                         <span className="text-xs px-1.5 py-0.5 rounded-md font-medium" style={{ background: "#F1F5F9", color: "#94A3B8" }}>
                           📎 {attCount}

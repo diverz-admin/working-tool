@@ -5,7 +5,14 @@ import { desc } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 
 async function ensureExpenseCategoryColumn() {
-  await db.execute(sql`ALTER TABLE internal_expense_requests ADD COLUMN IF NOT EXISTS expense_category TEXT`);
+  await db.execute(sql`
+    ALTER TABLE internal_expense_requests
+    ADD COLUMN IF NOT EXISTS expense_category TEXT,
+    ADD COLUMN IF NOT EXISTS deposit_bank     TEXT,
+    ADD COLUMN IF NOT EXISTS deposit_holder   TEXT,
+    ADD COLUMN IF NOT EXISTS deposit_account  TEXT,
+    ADD COLUMN IF NOT EXISTS deposit_deadline TEXT
+  `);
 }
 
 export async function GET() {
@@ -32,6 +39,10 @@ export async function POST(req: NextRequest) {
       content:         body.content         || null,
       attachments:     body.attachments     || null,
       expenseCategory: body.expenseCategory || null,
+      depositBank:     body.depositBank     || null,
+      depositHolder:   body.depositHolder   || null,
+      depositAccount:  body.depositAccount  || null,
+      depositDeadline: body.depositDeadline || null,
       status:          "대기",
     })
     .returning();

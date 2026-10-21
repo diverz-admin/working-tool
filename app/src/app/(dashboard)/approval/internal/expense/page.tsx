@@ -5,13 +5,14 @@ import { useUser } from "@/lib/UserContext";
 import { uploadAttachment, resolveFileSrc, useFileSrc, isImageValue } from "@/lib/storage";
 import { fetchJson } from "@/lib/fetch-json";
 import { TEAMS_WITH_ETC } from "@/lib/teams";
+import { type DepositFields, parseDepositText, DepositInfoCard, DeadlineBadge } from "@/components/approvals/ExpenseDeposit";
 import CalendarPeriodFilter, { pickDefaultMonth, matchesPeriod } from "@/components/filters/CalendarPeriodFilter";
 
 type Status = "대기" | "승인" | "반려";
 
 interface Attachment { url: string; name: string; }
 
-interface ExpenseItem {
+interface ExpenseItem extends DepositFields {
   id:              string;
   title:           string;
   assignedTeam:    string | null;
@@ -123,6 +124,10 @@ interface RequestForm {
   content:         string;
   attachments:     Attachment[];
   expenseCategory: string;
+  depositBank:     string;
+  depositHolder:   string;
+  depositAccount:  string;
+  depositDeadline: string;
 }
 
 function RequestModal({ defaultRequester, initial, onClose, onSubmit }: {
@@ -142,7 +147,33 @@ function RequestModal({ defaultRequester, initial, onClose, onSubmit }: {
     content:         initial?.content         ?? "",
     attachments:     parseAttachments(initial?.attachments ?? null),
     expenseCategory: initial?.expenseCategory ?? "",
+    depositBank:     initial?.depositBank     ?? "",
+    depositHolder:   initial?.depositHolder   ?? "",
+    depositAccount:  initial?.depositAccount  ?? "",
+    depositDeadline: initial?.depositDeadline ?? "",
   });
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pasteText, setPasteText] = useState("");
+  const [pasteMsg, setPasteMsg]   = useState<string | null>(null);
+
+  // 입금 안내 문구를 붙여넣으면 항목별로 채운다 — 알아본 값만 덮어쓴다
+  function applyPaste() {
+    const p = parseDepositText(pasteText);
+    const filled = [p.title, p.amount, p.bank, p.holder, p.account, p.deadline].filter(Boolean).length;
+    if (!filled) { setPasteMsg("알아볼 수 있는 항목이 없습니다. \"은행명 : 신한은행\"처럼 한 줄에 하나씩 적어주세요."); return; }
+    setForm((f) => ({
+      ...f,
+      title:           p.title    ?? f.title,
+      amount:          p.amount   ?? f.amount,
+      depositBank:     p.bank     ?? f.depositBank,
+      depositHolder:   p.holder   ?? f.depositHolder,
+      depositAccount:  p.account  ?? f.depositAccount,
+      depositDeadline: p.deadline ?? f.depositDeadline,
+    }));
+    setPasteMsg(null);
+    setPasteText("");
+    setPasteOpen(false);
+  }
   const [saving, setSaving] = useState(false);
   const [allUsers, setAllUsers] = useState<{ name: string; team: string | null }[]>([]);
 
@@ -184,6 +215,33 @@ function RequestModal({ defaultRequester, initial, onClose, onSubmit }: {
         </div>
 
         <form id="expense-form" onSubmit={handleSubmit} className="px-6 py-5 space-y-4 max-h-[70vh] overflow-y-auto">
+          {/* 입금 안내 붙여넣기 → 자동 채우기 */}
+          <div className="rounded-xl" style={{ background: "rgba(49,130,246,0.05)", border: "1px dashed rgba(49,130,246,0.35)" }}>
+            <button type="button" onClick={() => setPasteOpen((v) => !v)}
+              className="w-full flex items-center justify-between px-3 py-2.5 text-xs font-semibold" style={{ color: "#3182F6" }}>
+              <span>입금 안내 문구 붙여넣고 자동 채우기</span>
+              <span>{pasteOpen ? "닫기" : "열기"}</span>
+            </button>
+            {pasteOpen && (
+              <div className="px-3 pb-3 space-y-2">
+                <textarea
+                  value={pasteText}
+                  onChange={(e) => setPasteText(e.target.value)}
+                  placeholder={"상품명 : …\n은행명 : 신한은행\n예금주 : 쿠팡\n입금계좌 : 56207489997178\n금액 : 11,990\n입금기한 : 10월 21일 오후 6시 20분"}
+                  rows={6}
+                  className="w-full px-3 py-2.5 rounded-xl text-xs outline-none resize-none"
+                  style={{ background: "#fff", border: "1px solid #E9EBEF", color: "#191F28" }}
+                />
+                {pasteMsg && <p className="text-xs" style={{ color: "#DC2626" }}>{pasteMsg}</p>}
+                <button type="button" onClick={applyPaste} disabled={!pasteText.trim()}
+                  className="w-full py-2 rounded-xl text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
+                  style={{ background: "#3182F6" }}>
+                  채우기
+                </button>
+              </div>
+            )}
+          </div>
+
           <div>
             <label className="block text-xs font-semibold mb-1.5" style={{ color: "#64748B" }}>제목 <span style={{ color: "#EF4444" }}>*</span></label>
             <input
@@ -258,6 +316,38 @@ function RequestModal({ defaultRequester, initial, onClose, onSubmit }: {
               <option value="">선택 (선택사항)</option>
               {EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
+          </div>
+
+          {/* 입금 정보 */}
+          <div className="space-y-3 pt-1">
+            <p className="text-xs font-bold" style={{ color: "#191F28" }}>입금 정보</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold mb-1.5" style={{ color: "#64748B" }}>은행명</label>
+                <input value={form.depositBank} onChange={(e) => set("depositBank", e.target.value)} placeholder="예: 신한은행"
+                  className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
+                  style={{ background: "#F8FAFC", border: "1px solid #E9EBEF", color: "#191F28" }} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1.5" style={{ color: "#64748B" }}>예금주</label>
+                <input value={form.depositHolder} onChange={(e) => set("depositHolder", e.target.value)} placeholder="예: 쿠팡"
+                  className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
+                  style={{ background: "#F8FAFC", border: "1px solid #E9EBEF", color: "#191F28" }} />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: "#64748B" }}>입금계좌</label>
+              <input value={form.depositAccount} onChange={(e) => set("depositAccount", e.target.value.replace(/[^0-9-]/g, ""))}
+                placeholder="숫자만 입력" inputMode="numeric"
+                className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
+                style={{ background: "#F8FAFC", border: "1px solid #E9EBEF", color: "#191F28" }} />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: "#64748B" }}>입금기한</label>
+              <input type="datetime-local" value={form.depositDeadline} onChange={(e) => set("depositDeadline", e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
+                style={{ background: "#F8FAFC", border: "1px solid #E9EBEF", color: "#191F28" }} />
+            </div>
           </div>
 
           <div>
@@ -379,6 +469,8 @@ function DetailModal({ item, onClose, onDelete, onEdit }: {
               </div>
             )}
           </div>
+
+          <DepositInfoCard item={item} amount={item.amount} />
 
           {item.content && (
             <div className="px-4 py-3 rounded-xl text-sm whitespace-pre-wrap" style={{ background: "#F8FAFC", color: "#475569" }}>
@@ -513,6 +605,10 @@ export default function ExpensePage() {
         content:         form.content || null,
         attachments:     form.attachments.length ? JSON.stringify(form.attachments) : null,
         expenseCategory: form.expenseCategory || null,
+        depositBank:     form.depositBank.trim()     || null,
+        depositHolder:   form.depositHolder.trim()   || null,
+        depositAccount:  form.depositAccount.trim()  || null,
+        depositDeadline: form.depositDeadline        || null,
       }),
     });
     // 실패 시 undefined 항목이 목록에 삽입되지 않도록 막는다
@@ -537,6 +633,10 @@ export default function ExpensePage() {
         content:         form.content || null,
         attachments:     form.attachments.length ? JSON.stringify(form.attachments) : null,
         expenseCategory: form.expenseCategory || null,
+        depositBank:     form.depositBank.trim()     || null,
+        depositHolder:   form.depositHolder.trim()   || null,
+        depositAccount:  form.depositAccount.trim()  || null,
+        depositDeadline: form.depositDeadline        || null,
         status:          "대기",
         rejectReason:    null,
       }),
@@ -629,6 +729,7 @@ export default function ExpensePage() {
                   <td className="px-5 py-3.5 text-xs" style={{ color: "#191F28" }}>
                     <div className="flex items-center gap-2">
                       <span className="font-semibold">{item.title}</span>
+                      {item.status === "대기" && <DeadlineBadge deadline={item.depositDeadline} />}
                       {attCount > 0 && (
                         <span className="text-xs px-1.5 py-0.5 rounded-md font-medium" style={{ background: "#F1F5F9", color: "#94A3B8" }}>
                           📎 {attCount}

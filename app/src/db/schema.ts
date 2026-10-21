@@ -523,6 +523,10 @@ export const internalExpenseRequests = pgTable("internal_expense_requests", {
   content:      text("content"),
   attachments:  text("attachments"), // JSON: [{url: string, name: string}]
   expenseCategory: text("expense_category"), // 소모품비 | 외주용역비 | 기타 영업비용
+  depositBank:     text("deposit_bank"),
+  depositHolder:   text("deposit_holder"),
+  depositAccount:  text("deposit_account"),
+  depositDeadline: text("deposit_deadline"), // "yyyy-mm-ddThh:mm" — 적힌 시각 그대로(시간대 변환 없음)
   status:       text("status").notNull().default("대기"), // 대기 | 승인 | 반려
   rejectReason: text("reject_reason"),
   createdAt:    timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

@@ -7,7 +7,11 @@ import { sql } from "drizzle-orm";
 async function ensureExpenseCategoryColumn() {
   await db.execute(sql`
     ALTER TABLE internal_expense_requests
-    ADD COLUMN IF NOT EXISTS expense_category TEXT
+    ADD COLUMN IF NOT EXISTS expense_category TEXT,
+    ADD COLUMN IF NOT EXISTS deposit_bank     TEXT,
+    ADD COLUMN IF NOT EXISTS deposit_holder   TEXT,
+    ADD COLUMN IF NOT EXISTS deposit_account  TEXT,
+    ADD COLUMN IF NOT EXISTS deposit_deadline TEXT
   `);
 }
 
@@ -45,6 +49,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       ...(body.content         !== undefined && { content:         body.content }),
       ...(body.attachments     !== undefined && { attachments:     body.attachments }),
       ...(body.expenseCategory !== undefined && { expenseCategory: body.expenseCategory }),
+      ...(body.depositBank     !== undefined && { depositBank:     body.depositBank }),
+      ...(body.depositHolder   !== undefined && { depositHolder:   body.depositHolder }),
+      ...(body.depositAccount  !== undefined && { depositAccount:  body.depositAccount }),
+      ...(body.depositDeadline !== undefined && { depositDeadline: body.depositDeadline }),
       updatedAt: new Date(),
     })
     .where(eq(internalExpenseRequests.id, id))
