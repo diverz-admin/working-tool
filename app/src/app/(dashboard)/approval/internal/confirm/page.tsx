@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { resolveFileSrc, useFileSrc, isImageValue } from "@/lib/storage";
 import { fetchJson } from "@/lib/fetch-json";
-import PeriodFilter, { pickDefaultMonth } from "@/components/filters/PeriodFilter";
+import CalendarPeriodFilter, { pickDefaultMonth, matchesPeriod } from "@/components/filters/CalendarPeriodFilter";
 
 type Status = "대기" | "승인" | "반려";
 
@@ -252,8 +252,7 @@ export default function InternalConfirmPage() {
   const [selected, setSelected]   = useState<ExpenseItem | null>(null);
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState<string | null>(null);
-  const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
-  const [selectedDate, setSelectedDate]   = useState<string | null>(null);
+  const [period, setPeriod]       = useState<string | null>(null);
   const monthInitialized = useRef(false);
 
   async function loadItems() {
@@ -266,7 +265,7 @@ export default function InternalConfirmPage() {
       // 처음 열 때는 한 달치만 보여준다 — 전체를 한 번에 띄우면 목록이 너무 길어진다
       if (!monthInitialized.current) {
         monthInitialized.current = true;
-        setSelectedMonth(pickDefaultMonth(list.map((i) => i.requestedAt ?? "")));
+        setPeriod(pickDefaultMonth(list.map((i) => i.requestedAt ?? "")));
       }
     } catch (e) {
       // 실패를 빈 목록으로 렌더하지 않는다 — "요청 없음"으로 오인되면 안 되므로 오류를 표시
@@ -282,11 +281,7 @@ export default function InternalConfirmPage() {
 
   const filterDates = useMemo(() => items.map((i) => (i.requestedAt ?? "").slice(0, 10)), [items]);
 
-  const scopedItems = useMemo(() => items.filter((i) => {
-    const d = (i.requestedAt ?? "").slice(0, 10);
-    return (selectedMonth === null || d.startsWith(selectedMonth)) &&
-      (selectedDate === null || d === selectedDate);
-  }), [items, selectedMonth, selectedDate]);
+  const scopedItems = useMemo(() => items.filter((i) => matchesPeriod(i.requestedAt, period)), [items, period]);
 
   const counts = {
     전체: scopedItems.length,
@@ -332,12 +327,11 @@ export default function InternalConfirmPage() {
         </button>
       </div>
 
-      {/* 년·월·날짜 필터 */}
-      <PeriodFilter
+      {/* 년·월·일 캘린더 필터 */}
+      <CalendarPeriodFilter
         dates={filterDates}
-        month={selectedMonth}
-        date={selectedDate}
-        onChange={({ month, date }) => { setSelectedMonth(month); setSelectedDate(date); }}
+        value={period}
+        onChange={setPeriod}
       />
 
       <div className="flex items-center gap-1 p-0.5 rounded-xl self-start" style={{ background: "#F1F5F9" }}>

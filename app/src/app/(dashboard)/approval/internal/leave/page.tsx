@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useUser } from "@/lib/UserContext";
 import { fetchJson } from "@/lib/fetch-json";
-import PeriodFilter, { pickDefaultMonth } from "@/components/filters/PeriodFilter";
+import CalendarPeriodFilter, { pickDefaultMonth, matchesPeriod } from "@/components/filters/CalendarPeriodFilter";
 import {
   LEAVE_TYPES, calcLeaveDays, fmtDays, fmtPeriod,
   type LeaveBalance, type LeaveItem, type LeaveStatus, type LeaveType,
@@ -335,8 +335,7 @@ export default function LeavePage() {
   const [showForm, setShowForm]   = useState(false);
   const [loading, setLoading]     = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
-  const [selectedDate, setSelectedDate]   = useState<string | null>(null);
+  const [period, setPeriod]       = useState<string | null>(null);
   const monthInitialized = useRef(false);
 
   async function loadItems() {
@@ -350,7 +349,7 @@ export default function LeavePage() {
       // 처음 열 때는 한 달치만 보여준다 — 전체를 한 번에 띄우면 목록이 너무 길어진다
       if (!monthInitialized.current) {
         monthInitialized.current = true;
-        setSelectedMonth(pickDefaultMonth(mine.map((i) => i.startDate ?? "")));
+        setPeriod(pickDefaultMonth(mine.map((i) => i.startDate ?? "")));
       }
       setBalance(res.balances?.[currentUser] ?? null);
     } catch (e) {
@@ -368,11 +367,7 @@ export default function LeavePage() {
 
   const filterDates = useMemo(() => items.map((i) => (i.startDate ?? "").slice(0, 10)), [items]);
 
-  const scopedItems = useMemo(() => items.filter((i) => {
-    const d = (i.startDate ?? "").slice(0, 10);
-    return (selectedMonth === null || d.startsWith(selectedMonth)) &&
-      (selectedDate === null || d === selectedDate);
-  }), [items, selectedMonth, selectedDate]);
+  const scopedItems = useMemo(() => items.filter((i) => matchesPeriod(i.startDate, period)), [items, period]);
 
   const counts = {
     전체: scopedItems.length,
@@ -451,12 +446,11 @@ export default function LeavePage() {
       {/* 로드 실패 시 연차 0일로 잘못 보이지 않도록 카드 자체를 감춘다 */}
       {!loadError && <BalanceCard balance={balance} />}
 
-      {/* 년·월·날짜 필터 */}
-      <PeriodFilter
+      {/* 년·월·일 캘린더 필터 */}
+      <CalendarPeriodFilter
         dates={filterDates}
-        month={selectedMonth}
-        date={selectedDate}
-        onChange={({ month, date }) => { setSelectedMonth(month); setSelectedDate(date); }}
+        value={period}
+        onChange={setPeriod}
         accent="#8B5CF6"
       />
 

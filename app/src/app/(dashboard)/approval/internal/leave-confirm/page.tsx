@@ -6,7 +6,7 @@ import {
   type LeaveBalance, type LeaveItem, type LeaveStatus, type LeaveType,
 } from "@/lib/leave";
 import { fetchJson } from "@/lib/fetch-json";
-import PeriodFilter, { pickDefaultMonth } from "@/components/filters/PeriodFilter";
+import CalendarPeriodFilter, { pickDefaultMonth, matchesPeriod, periodLabel } from "@/components/filters/CalendarPeriodFilter";
 
 const STATUS_STYLE: Record<LeaveStatus, { bg: string; color: string; border: string }> = {
   대기: { bg: "rgba(234,179,8,0.1)",  color: "#CA8A04", border: "rgba(234,179,8,0.25)" },
@@ -204,8 +204,7 @@ export default function LeaveConfirmPage() {
   const [selected, setSelected]   = useState<LeaveItem | null>(null);
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState<string | null>(null);
-  const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
-  const [selectedDate, setSelectedDate]   = useState<string | null>(null);
+  const [period, setPeriod]       = useState<string | null>(null);
   const monthInitialized = useRef(false);
 
   async function loadItems() {
@@ -218,7 +217,7 @@ export default function LeaveConfirmPage() {
       // 처음 열 때는 한 달치만 보여준다 — 전체를 한 번에 띄우면 목록이 너무 길어진다
       if (!monthInitialized.current) {
         monthInitialized.current = true;
-        setSelectedMonth(pickDefaultMonth(list.map((i) => i.startDate ?? "")));
+        setPeriod(pickDefaultMonth(list.map((i) => i.startDate ?? "")));
       }
       setBalances(res.balances ?? {});
     } catch (e) {
@@ -239,8 +238,7 @@ export default function LeaveConfirmPage() {
   // 담당자를 바꾸면 그 사람의 기간으로 다시 맞춘다 — 선택된 월에 그 사람 건이 없으면 빈 목록만 보이므로
   function changeUser(user: string) {
     setUser(user);
-    setSelectedDate(null);
-    setSelectedMonth(pickDefaultMonth(items.filter((i) => user === "전체" || i.requester === user).map((i) => i.startDate)));
+    setPeriod(pickDefaultMonth(items.filter((i) => user === "전체" || i.requester === user).map((i) => i.startDate)));
   }
 
   // 담당자로 범위를 좁힌 뒤 기간 필터용 날짜를 뽑는다 — 드롭다운 건수가 담당자 기준으로 맞도록
@@ -248,15 +246,9 @@ export default function LeaveConfirmPage() {
   const filterDates = byUser.map((i) => i.startDate);
 
   // 기간·담당자로 먼저 범위를 좁히고, 그 안에서 상태 탭 건수를 센다
-  const scoped = byUser.filter((i) =>
-    (selectedMonth === null || i.startDate.startsWith(selectedMonth)) &&
-    (selectedDate === null || i.startDate.slice(0, 10) === selectedDate)
-  );
+  const scoped = byUser.filter((i) => matchesPeriod(i.startDate, period));
   // 헤더의 대기 건수는 기간과 무관하게 전체 기준 — 다른 달 대기 건을 놓치지 않도록
   const pendingTotal = items.filter((i) => i.status === "대기").length;
-  const periodLabel = selectedDate
-    ? selectedDate.replaceAll("-", ".")
-    : selectedMonth ? `${selectedMonth.slice(0, 4)}년 ${parseInt(selectedMonth.slice(5))}월` : null;
 
   const counts = {
     전체: scoped.length,
@@ -305,12 +297,11 @@ export default function LeaveConfirmPage() {
         </button>
       </div>
 
-      {/* 년·월·날짜 필터 */}
-      <PeriodFilter
+      {/* 년·월·일 캘린더 필터 */}
+      <CalendarPeriodFilter
         dates={filterDates}
-        month={selectedMonth}
-        date={selectedDate}
-        onChange={({ month, date }) => { setSelectedMonth(month); setSelectedDate(date); }}
+        value={period}
+        onChange={setPeriod}
         accent="#8B5CF6"
       />
 
@@ -368,7 +359,7 @@ export default function LeaveConfirmPage() {
           <div className="w-px h-8" style={{ background: "#F1F5F9" }} />
           <div>
             <p className="text-xs mb-1" style={{ color: "#94A3B8" }}>
-              {periodLabel ? `${periodLabel} 사용` : "승인 차감 합계"}
+              {period ? `${periodLabel(period)} 사용` : "승인 차감 합계"}
             </p>
             <p className="text-lg font-bold" style={{ color: "#64748B" }}>
               {fmtDays(usedInScope)}<span className="text-xs ml-0.5" style={{ color: "#94A3B8" }}>일</span>
