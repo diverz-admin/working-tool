@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useUser } from "@/lib/UserContext";
 import { uploadAttachment, resolveFileSrc, useFileSrc, isImageValue } from "@/lib/storage";
 import { fetchJson } from "@/lib/fetch-json";
 import { TEAMS_WITH_ETC } from "@/lib/teams";
+import PeriodFilter from "@/components/filters/PeriodFilter";
 
 type Status = "대기" | "승인" | "반려";
 
@@ -459,13 +460,23 @@ export default function ExpensePage() {
   const [showForm, setShowForm]   = useState(false);
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState<string | null>(null);
+  const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate]   = useState<string | null>(null);
+  const monthInitialized = useRef(false);
 
   async function loadItems() {
     setLoading(true);
     setError(null);
     try {
       const res = await fetchJson<{ items?: ExpenseItem[] }>("/api/approvals/expense");
-      setItems(res.items ?? []);
+      const list = res.items ?? [];
+      setItems(list);
+      // 처음 열 때는 가장 최근 월만 보여준다 — 전체를 한 번에 띄우면 목록이 너무 길어진다
+      if (!monthInitialized.current) {
+        monthInitialized.current = true;
+        const latest = list.map((i) => (i.requestedAt ?? "").slice(0, 7)).filter(Boolean).sort().at(-1);
+        setSelectedMonth(latest ?? null);
+      }
     } catch (e) {
       // 실패를 빈 목록으로 렌더하지 않는다 — "요청 없음"으로 오인되면 안 되므로 오류를 표시
       setError((e as Error).message);
@@ -478,14 +489,22 @@ export default function ExpensePage() {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadItems(); }, []);
 
+  const filterDates = useMemo(() => items.map((i) => (i.requestedAt ?? "").slice(0, 10)), [items]);
+
+  const scopedItems = useMemo(() => items.filter((i) => {
+    const d = (i.requestedAt ?? "").slice(0, 10);
+    return (selectedMonth === null || d.startsWith(selectedMonth)) &&
+      (selectedDate === null || d === selectedDate);
+  }), [items, selectedMonth, selectedDate]);
+
   const counts = {
-    전체: items.length,
-    대기: items.filter((i) => i.status === "대기").length,
-    승인: items.filter((i) => i.status === "승인").length,
-    반려: items.filter((i) => i.status === "반려").length,
+    전체: scopedItems.length,
+    대기: scopedItems.filter((i) => i.status === "대기").length,
+    승인: scopedItems.filter((i) => i.status === "승인").length,
+    반려: scopedItems.filter((i) => i.status === "반려").length,
   };
 
-  const filtered = filterStatus === "전체" ? items : items.filter((i) => i.status === filterStatus);
+  const filtered = filterStatus === "전체" ? scopedItems : scopedItems.filter((i) => i.status === filterStatus);
 
   async function handleSubmit(form: RequestForm) {
     const res = await fetch("/api/approvals/expense", {
@@ -558,6 +577,14 @@ export default function ExpensePage() {
           결재 요청
         </button>
       </div>
+
+      {/* 년·월·날짜 필터 */}
+      <PeriodFilter
+        dates={filterDates}
+        month={selectedMonth}
+        date={selectedDate}
+        onChange={({ month, date }) => { setSelectedMonth(month); setSelectedDate(date); }}
+      />
 
       <div className="flex items-center gap-1 p-0.5 rounded-xl self-start" style={{ background: "#F1F5F9" }}>
         {(["전체", "대기", "승인", "반려"] as const).map((s) => {
