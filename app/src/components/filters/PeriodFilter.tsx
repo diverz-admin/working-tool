@@ -20,6 +20,18 @@ const dayLabel = (d: string) => {
   return `${y}.${m}.${day} (${w})`;
 };
 
+/**
+ * 처음 열 때 보여줄 월(yyyy-mm). 이번 달에 항목이 있으면 이번 달,
+ * 없으면 오늘 이전 가장 최근 월, 그것도 없으면 가장 가까운 미래 월.
+ */
+export function pickDefaultMonth(dates: string[]): string | null {
+  const months = Array.from(new Set(dates.filter(Boolean).map((d) => d.slice(0, 7)))).sort();
+  if (!months.length) return null;
+  const cur = todayStr().slice(0, 7);
+  if (months.includes(cur)) return cur;
+  return months.filter((m) => m < cur).at(-1) ?? months[0];
+}
+
 type Option = { value: string | null; label: string; count: number; hint?: string };
 
 function Dropdown({

@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   fmtDays, fmtPeriod,
   type LeaveBalance, type LeaveItem, type LeaveStatus, type LeaveType,
 } from "@/lib/leave";
 import { fetchJson } from "@/lib/fetch-json";
+import PeriodFilter, { pickDefaultMonth } from "@/components/filters/PeriodFilter";
 
 const STATUS_STYLE: Record<LeaveStatus, { bg: string; color: string; border: string }> = {
   대기: { bg: "rgba(234,179,8,0.1)",  color: "#CA8A04", border: "rgba(234,179,8,0.25)" },
@@ -199,18 +200,26 @@ export default function LeaveConfirmPage() {
   const [items, setItems]         = useState<LeaveItem[]>([]);
   const [balances, setBalances]   = useState<Record<string, LeaveBalance>>({});
   const [filterStatus, setStatus] = useState<LeaveStatus | "전체">("대기");
-  const [filterYear, setYear]     = useState<string>("전체");
   const [filterUser, setUser]     = useState<string>("전체");
   const [selected, setSelected]   = useState<LeaveItem | null>(null);
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState<string | null>(null);
+  const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate]   = useState<string | null>(null);
+  const monthInitialized = useRef(false);
 
   async function loadItems() {
     setLoading(true);
     setError(null);
     try {
       const res = await fetchJson<{ items?: LeaveItem[]; balances?: Record<string, LeaveBalance> }>("/api/approvals/leave");
-      setItems(res.items ?? []);
+      const list = res.items ?? [];
+      setItems(list);
+      // 처음 열 때는 한 달치만 보여준다 — 전체를 한 번에 띄우면 목록이 너무 길어진다
+      if (!monthInitialized.current) {
+        monthInitialized.current = true;
+        setSelectedMonth(pickDefaultMonth(list.map((i) => i.startDate ?? "")));
+      }
       setBalances(res.balances ?? {});
     } catch (e) {
       // 실패를 빈 목록·잔여연차 0으로 렌더하지 않는다 — 오류를 그대로 표시
@@ -222,16 +231,32 @@ export default function LeaveConfirmPage() {
     }
   }
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadItems(); }, []);
 
-  const years = Array.from(new Set(items.map((i) => i.startDate.slice(0, 4)))).sort().reverse();
   const requesters = Array.from(new Set(items.map((i) => i.requester))).sort();
 
-  // 연도·담당자로 먼저 범위를 좁히고, 그 안에서 상태 탭 건수를 센다
-  const scoped = items.filter((i) =>
-    (filterYear === "전체" || i.startDate.startsWith(filterYear)) &&
-    (filterUser === "전체" || i.requester === filterUser)
+  // 담당자를 바꾸면 그 사람의 기간으로 다시 맞춘다 — 선택된 월에 그 사람 건이 없으면 빈 목록만 보이므로
+  function changeUser(user: string) {
+    setUser(user);
+    setSelectedDate(null);
+    setSelectedMonth(pickDefaultMonth(items.filter((i) => user === "전체" || i.requester === user).map((i) => i.startDate)));
+  }
+
+  // 담당자로 범위를 좁힌 뒤 기간 필터용 날짜를 뽑는다 — 드롭다운 건수가 담당자 기준으로 맞도록
+  const byUser = items.filter((i) => filterUser === "전체" || i.requester === filterUser);
+  const filterDates = byUser.map((i) => i.startDate);
+
+  // 기간·담당자로 먼저 범위를 좁히고, 그 안에서 상태 탭 건수를 센다
+  const scoped = byUser.filter((i) =>
+    (selectedMonth === null || i.startDate.startsWith(selectedMonth)) &&
+    (selectedDate === null || i.startDate.slice(0, 10) === selectedDate)
   );
+  // 헤더의 대기 건수는 기간과 무관하게 전체 기준 — 다른 달 대기 건을 놓치지 않도록
+  const pendingTotal = items.filter((i) => i.status === "대기").length;
+  const periodLabel = selectedDate
+    ? selectedDate.replaceAll("-", ".")
+    : selectedMonth ? `${selectedMonth.slice(0, 4)}년 ${parseInt(selectedMonth.slice(5))}월` : null;
 
   const counts = {
     전체: scoped.length,
@@ -265,7 +290,7 @@ export default function LeaveConfirmPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold" style={{ color: "#191F28" }}>휴가</h1>
-          <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>휴가 결재 요청을 검토하고 승인 또는 반려합니다. 대기 {counts["대기"]}건</p>
+          <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>휴가 결재 요청을 검토하고 승인 또는 반려합니다. 대기 {pendingTotal}건</p>
         </div>
         <button
           type="button"
@@ -279,6 +304,15 @@ export default function LeaveConfirmPage() {
           새로고침
         </button>
       </div>
+
+      {/* 년·월·날짜 필터 */}
+      <PeriodFilter
+        dates={filterDates}
+        month={selectedMonth}
+        date={selectedDate}
+        onChange={({ month, date }) => { setSelectedMonth(month); setSelectedDate(date); }}
+        accent="#8B5CF6"
+      />
 
       <div className="flex items-center gap-3 flex-wrap">
         <div className="flex items-center gap-1 p-0.5 rounded-xl" style={{ background: "#F1F5F9" }}>
@@ -302,22 +336,15 @@ export default function LeaveConfirmPage() {
         })}
         </div>
 
-        <select value={filterYear} onChange={(e) => setYear(e.target.value)}
-          className="px-3 py-2 text-xs font-semibold rounded-xl border outline-none"
-          style={{ background: "#F8FAFC", borderColor: "#E9EBEF", color: "#64748B" }}>
-          <option value="전체">연도 전체</option>
-          {years.map((y) => <option key={y} value={y}>{y}년</option>)}
-        </select>
-
-        <select value={filterUser} onChange={(e) => setUser(e.target.value)}
+        <select value={filterUser} onChange={(e) => changeUser(e.target.value)}
           className="px-3 py-2 text-xs font-semibold rounded-xl border outline-none"
           style={{ background: "#F8FAFC", borderColor: "#E9EBEF", color: "#64748B" }}>
           <option value="전체">담당자 전체</option>
           {requesters.map((r) => <option key={r} value={r}>{r}</option>)}
         </select>
 
-        {(filterYear !== "전체" || filterUser !== "전체") && (
-          <button onClick={() => { setYear("전체"); setUser("전체"); }}
+        {filterUser !== "전체" && (
+          <button onClick={() => changeUser("전체")}
             className="text-xs font-semibold px-3 py-2 rounded-xl hover:opacity-80"
             style={{ color: "#8B5CF6" }}>
             필터 초기화
@@ -341,7 +368,7 @@ export default function LeaveConfirmPage() {
           <div className="w-px h-8" style={{ background: "#F1F5F9" }} />
           <div>
             <p className="text-xs mb-1" style={{ color: "#94A3B8" }}>
-              {filterYear === "전체" ? "승인 차감 합계" : `${filterYear}년 사용`}
+              {periodLabel ? `${periodLabel} 사용` : "승인 차감 합계"}
             </p>
             <p className="text-lg font-bold" style={{ color: "#64748B" }}>
               {fmtDays(usedInScope)}<span className="text-xs ml-0.5" style={{ color: "#94A3B8" }}>일</span>

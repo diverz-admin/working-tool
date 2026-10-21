@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { resolveFileSrc, useFileSrc, isImageValue } from "@/lib/storage";
 import { fetchJson } from "@/lib/fetch-json";
+import PeriodFilter, { pickDefaultMonth } from "@/components/filters/PeriodFilter";
 
 type Status = "대기" | "승인" | "반려";
 
@@ -251,13 +252,22 @@ export default function InternalConfirmPage() {
   const [selected, setSelected]   = useState<ExpenseItem | null>(null);
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState<string | null>(null);
+  const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate]   = useState<string | null>(null);
+  const monthInitialized = useRef(false);
 
   async function loadItems() {
     setLoading(true);
     setError(null);
     try {
       const res = await fetchJson<{ items?: ExpenseItem[] }>("/api/approvals/expense");
-      setItems(res.items ?? []);
+      const list = res.items ?? [];
+      setItems(list);
+      // 처음 열 때는 한 달치만 보여준다 — 전체를 한 번에 띄우면 목록이 너무 길어진다
+      if (!monthInitialized.current) {
+        monthInitialized.current = true;
+        setSelectedMonth(pickDefaultMonth(list.map((i) => i.requestedAt ?? "")));
+      }
     } catch (e) {
       // 실패를 빈 목록으로 렌더하지 않는다 — "요청 없음"으로 오인되면 안 되므로 오류를 표시
       setError((e as Error).message);
@@ -267,16 +277,27 @@ export default function InternalConfirmPage() {
     }
   }
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadItems(); }, []);
 
-  const counts = {
-    전체: items.length,
-    대기: items.filter((i) => i.status === "대기").length,
-    승인: items.filter((i) => i.status === "승인").length,
-    반려: items.filter((i) => i.status === "반려").length,
-  };
+  const filterDates = useMemo(() => items.map((i) => (i.requestedAt ?? "").slice(0, 10)), [items]);
 
-  const filtered = filterStatus === "전체" ? items : items.filter((i) => i.status === filterStatus);
+  const scopedItems = useMemo(() => items.filter((i) => {
+    const d = (i.requestedAt ?? "").slice(0, 10);
+    return (selectedMonth === null || d.startsWith(selectedMonth)) &&
+      (selectedDate === null || d === selectedDate);
+  }), [items, selectedMonth, selectedDate]);
+
+  const counts = {
+    전체: scopedItems.length,
+    대기: scopedItems.filter((i) => i.status === "대기").length,
+    승인: scopedItems.filter((i) => i.status === "승인").length,
+    반려: scopedItems.filter((i) => i.status === "반려").length,
+  };
+  // 헤더의 대기 건수는 기간과 무관하게 전체 기준 — 다른 달 대기 건을 놓치지 않도록
+  const pendingTotal = items.filter((i) => i.status === "대기").length;
+
+  const filtered = filterStatus === "전체" ? scopedItems : scopedItems.filter((i) => i.status === filterStatus);
 
   async function handleAction(id: string, status: Status, rejectReason?: string) {
     const res = await fetch(`/api/approvals/expense/${id}`, {
@@ -296,7 +317,7 @@ export default function InternalConfirmPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold" style={{ color: "#191F28" }}>내부지출</h1>
-          <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>내부지출 결재 요청을 검토하고 승인 또는 반려합니다. 대기 {counts["대기"]}건</p>
+          <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>내부지출 결재 요청을 검토하고 승인 또는 반려합니다. 대기 {pendingTotal}건</p>
         </div>
         <button
           type="button"
@@ -310,6 +331,14 @@ export default function InternalConfirmPage() {
           새로고침
         </button>
       </div>
+
+      {/* 년·월·날짜 필터 */}
+      <PeriodFilter
+        dates={filterDates}
+        month={selectedMonth}
+        date={selectedDate}
+        onChange={({ month, date }) => { setSelectedMonth(month); setSelectedDate(date); }}
+      />
 
       <div className="flex items-center gap-1 p-0.5 rounded-xl self-start" style={{ background: "#F1F5F9" }}>
         {(["대기", "승인", "반려", "전체"] as const).map((s) => {

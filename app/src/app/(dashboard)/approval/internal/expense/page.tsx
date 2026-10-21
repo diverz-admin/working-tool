@@ -5,7 +5,7 @@ import { useUser } from "@/lib/UserContext";
 import { uploadAttachment, resolveFileSrc, useFileSrc, isImageValue } from "@/lib/storage";
 import { fetchJson } from "@/lib/fetch-json";
 import { TEAMS_WITH_ETC } from "@/lib/teams";
-import PeriodFilter from "@/components/filters/PeriodFilter";
+import PeriodFilter, { pickDefaultMonth } from "@/components/filters/PeriodFilter";
 
 type Status = "대기" | "승인" | "반려";
 
@@ -471,11 +471,10 @@ export default function ExpensePage() {
       const res = await fetchJson<{ items?: ExpenseItem[] }>("/api/approvals/expense");
       const list = res.items ?? [];
       setItems(list);
-      // 처음 열 때는 가장 최근 월만 보여준다 — 전체를 한 번에 띄우면 목록이 너무 길어진다
+      // 처음 열 때는 한 달치만 보여준다 — 전체를 한 번에 띄우면 목록이 너무 길어진다
       if (!monthInitialized.current) {
         monthInitialized.current = true;
-        const latest = list.map((i) => (i.requestedAt ?? "").slice(0, 7)).filter(Boolean).sort().at(-1);
-        setSelectedMonth(latest ?? null);
+        setSelectedMonth(pickDefaultMonth(list.map((i) => i.requestedAt ?? "")));
       }
     } catch (e) {
       // 실패를 빈 목록으로 렌더하지 않는다 — "요청 없음"으로 오인되면 안 되므로 오류를 표시

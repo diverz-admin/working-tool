@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useUser } from "@/lib/UserContext";
 import { fetchJson } from "@/lib/fetch-json";
+import PeriodFilter, { pickDefaultMonth } from "@/components/filters/PeriodFilter";
 import {
   LEAVE_TYPES, calcLeaveDays, fmtDays, fmtPeriod,
   type LeaveBalance, type LeaveItem, type LeaveStatus, type LeaveType,
@@ -334,6 +335,9 @@ export default function LeavePage() {
   const [showForm, setShowForm]   = useState(false);
   const [loading, setLoading]     = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate]   = useState<string | null>(null);
+  const monthInitialized = useRef(false);
 
   async function loadItems() {
     setLoading(true);
@@ -341,7 +345,13 @@ export default function LeavePage() {
     try {
       const res = await fetchJson<{ items?: LeaveItem[]; balances?: Record<string, LeaveBalance> }>("/api/approvals/leave");
       const all: LeaveItem[] = res.items ?? [];
-      setItems(all.filter((i) => i.requester === currentUser));
+      const mine = all.filter((i) => i.requester === currentUser);
+      setItems(mine);
+      // 처음 열 때는 한 달치만 보여준다 — 전체를 한 번에 띄우면 목록이 너무 길어진다
+      if (!monthInitialized.current) {
+        monthInitialized.current = true;
+        setSelectedMonth(pickDefaultMonth(mine.map((i) => i.startDate ?? "")));
+      }
       setBalance(res.balances?.[currentUser] ?? null);
     } catch (e) {
       // 실패를 빈 목록·잔여연차 0으로 렌더하지 않는다 — 오류를 그대로 표시
@@ -356,14 +366,24 @@ export default function LeavePage() {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadItems(); }, [currentUser]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const counts = {
-    전체: items.length,
-    대기: items.filter((i) => i.status === "대기").length,
-    승인: items.filter((i) => i.status === "승인").length,
-    반려: items.filter((i) => i.status === "반려").length,
-  };
+  const filterDates = useMemo(() => items.map((i) => (i.startDate ?? "").slice(0, 10)), [items]);
 
-  const filtered = filterStatus === "전체" ? items : items.filter((i) => i.status === filterStatus);
+  const scopedItems = useMemo(() => items.filter((i) => {
+    const d = (i.startDate ?? "").slice(0, 10);
+    return (selectedMonth === null || d.startsWith(selectedMonth)) &&
+      (selectedDate === null || d === selectedDate);
+  }), [items, selectedMonth, selectedDate]);
+
+  const counts = {
+    전체: scopedItems.length,
+    대기: scopedItems.filter((i) => i.status === "대기").length,
+    승인: scopedItems.filter((i) => i.status === "승인").length,
+    반려: scopedItems.filter((i) => i.status === "반려").length,
+  };
+  // 헤더의 대기 건수는 기간과 무관하게 전체 기준 — 다른 달 대기 건을 놓치지 않도록
+  const pendingTotal = items.filter((i) => i.status === "대기").length;
+
+  const filtered = filterStatus === "전체" ? scopedItems : scopedItems.filter((i) => i.status === filterStatus);
 
   async function submitForm(form: RequestForm, id?: string) {
     const payload = {
@@ -414,7 +434,7 @@ export default function LeavePage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold" style={{ color: "#191F28" }}>휴가</h1>
-          <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>휴가·반차 결재를 요청합니다. 대기 {counts["대기"]}건</p>
+          <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>휴가·반차 결재를 요청합니다. 대기 {pendingTotal}건</p>
         </div>
         <button
           type="button"
@@ -430,6 +450,15 @@ export default function LeavePage() {
 
       {/* 로드 실패 시 연차 0일로 잘못 보이지 않도록 카드 자체를 감춘다 */}
       {!loadError && <BalanceCard balance={balance} />}
+
+      {/* 년·월·날짜 필터 */}
+      <PeriodFilter
+        dates={filterDates}
+        month={selectedMonth}
+        date={selectedDate}
+        onChange={({ month, date }) => { setSelectedMonth(month); setSelectedDate(date); }}
+        accent="#8B5CF6"
+      />
 
       <div className="flex items-center gap-1 p-0.5 rounded-xl self-start" style={{ background: "#F1F5F9" }}>
         {(["전체", "대기", "승인", "반려"] as const).map((s) => {
