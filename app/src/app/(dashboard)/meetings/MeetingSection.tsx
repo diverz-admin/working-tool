@@ -694,7 +694,7 @@ export default function MeetingSection({ year, month, onMonthChange, criteria, c
         <>
           <div className="fixed inset-0 z-40" style={{ background: "rgba(0,0,0,.18)" }} onClick={closePeek} />
           <aside className="fixed top-0 right-0 bottom-0 z-50 flex flex-col"
-            style={{ width: "min(760px, 100vw)", background: "#fff", boxShadow: "-8px 0 24px rgba(0,0,0,.08)" }}
+            style={{ width: "min(1280px, 94vw)", background: "#fff", boxShadow: "-8px 0 24px rgba(0,0,0,.08)" }}
             onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === "s") { e.preventDefault(); handleSave(); } }}>
 
             {/* 머리말 */}
