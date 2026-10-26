@@ -163,7 +163,7 @@ export async function GET(req: NextRequest) {
      * 어느 회의록을 열어도 그 기준일의 운영 현황이 나온다. 아직 계약 전인 리드는 뺀다.
      */
     const activeProjects = await db
-      .select({ projectType: projects.projectType })
+      .select({ projectType: projects.projectType, campaignName: projects.campaignName })
       .from(projects)
       .where(and(
         team ? eq(projects.assignedTeam, team) : undefined,
@@ -173,6 +173,11 @@ export async function GET(req: NextRequest) {
         or(isNull(projects.endDate), gte(projects.endDate, asOf)),
       ));
     const activeOfType = (t: string) => activeProjects.filter(p => p.projectType === t).length;
+    // 회의에서 "그 N건이 뭐냐"를 바로 읽을 수 있게 이름도 함께 준다
+    const activeNamesOf = (t: string) => activeProjects
+      .filter(p => p.projectType === t)
+      .map(p => p.campaignName)
+      .sort((a, b) => a.localeCompare(b, "ko"));
 
     // ── 5. 당월 시작 프로젝트 현황 ──
     const countType = (t: string) => monthProjects.filter(p => p.projectType === t).length;
@@ -209,6 +214,8 @@ export async function GET(req: NextRequest) {
         active:           activeProjects.length,
         activeGuaranteed: activeOfType("보장형"),
         activeManaged:    activeOfType("관리형"),
+        activeGuaranteedNames: activeNamesOf("보장형"),
+        activeManagedNames:    activeNamesOf("관리형"),
 
         total:      monthProjects.length,
         guaranteed,

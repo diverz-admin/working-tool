@@ -974,6 +974,46 @@ function ActiveProjects({ brief }: { brief: RevenueBriefData }) {
           {brief.asOfDay}일 기준 진행중인 캠페인
         </span>
       </div>
+      <div className="mt-2.5 space-y-1.5">
+        <CampaignNames label="보장형" names={brief.projects.activeGuaranteedNames} tone={K.actual} />
+        <CampaignNames label="관리형" names={brief.projects.activeManagedNames}    tone={K.target} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 운영중 캠페인 이름 목록.
+ * 건수가 많은 팀은 수십 건이라 처음엔 일부만 펼치고, 나머지는 눌러서 본다.
+ */
+const NAMES_FOLD = 12;
+function CampaignNames({ label, names, tone }: {
+  label: string; names?: string[]; tone: { fg: string; bg: string };
+}) {
+  const [all, setAll] = useState(false);
+  if (!names) return null;
+  const shown = all ? names : names.slice(0, NAMES_FOLD);
+  return (
+    <div className="flex items-start gap-2">
+      <span className="text-xs font-bold shrink-0 pt-0.5" style={{ color: tone.fg, minWidth: 52 }}>{label}</span>
+      {names.length === 0 ? (
+        <span className="text-xs pt-0.5" style={{ color: C.faint }}>없음</span>
+      ) : (
+        <div className="flex flex-wrap gap-1 min-w-0">
+          {shown.map((n, i) => (
+            <span key={`${n}-${i}`} className="text-xs px-1.5 py-0.5 rounded"
+              style={{ background: C.soft, color: C.body, border: `1px solid ${C.line}` }}>
+              {n}
+            </span>
+          ))}
+          {names.length > NAMES_FOLD && (
+            <button onClick={() => setAll(v => !v)}
+              className="text-xs font-bold px-1.5 py-0.5 rounded" style={{ color: C.accent }}>
+              {all ? "접기" : `+${names.length - NAMES_FOLD}건 더 보기`}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

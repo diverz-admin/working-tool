@@ -15,6 +15,8 @@ export interface RevenueBriefData {
   projects: {
     /** 기준일 현재 운영 중 — 지난달 시작해 이번 달에도 도는 캠페인을 포함한다 */
     active: number; activeGuaranteed: number; activeManaged: number;
+    /** 운영중 캠페인 이름 — 가나다순. 배포 전 응답에는 없을 수 있다 */
+    activeGuaranteedNames?: string[]; activeManagedNames?: string[];
     /** 당월 시작분 */
     total: number; guaranteed: number; managed: number; etc: number; fresh: number; extended: number;
   };
@@ -133,6 +135,8 @@ export function briefActiveProjects(b: RevenueBriefData): BriefCount[] {
   ];
 }
 
+const namesSuffix = (names?: string[]) => (names?.length ? `: ${names.join(", ")}` : "");
+
 /** 브리핑을 메신저·메일에 그대로 붙일 수 있는 텍스트로 만든다. */
 export function briefText(b: RevenueBriefData, isMonthly: boolean) {
   const lines = ["[매출 현황]"];
@@ -143,7 +147,9 @@ export function briefText(b: RevenueBriefData, isMonthly: boolean) {
   const p = b.projects;
   lines.push(
     `${stats.length + 1}. 운영중 프로젝트 (${b.asOfDay}일 기준)`,
-    ` - 전체 ${p.active}건`, ` - 보장형 ${p.activeGuaranteed}건`, ` - 관리형 ${p.activeManaged}건`,
+    ` - 전체 ${p.active}건`,
+    ` - 보장형 ${p.activeGuaranteed}건${namesSuffix(p.activeGuaranteedNames)}`,
+    ` - 관리형 ${p.activeManaged}건${namesSuffix(p.activeManagedNames)}`,
   );
   if (isMonthly) {
     lines.push(
