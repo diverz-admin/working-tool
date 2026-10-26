@@ -1034,17 +1034,12 @@ function ActiveProjects({ brief }: { brief: RevenueBriefData }) {
  *
  * 이름을 칩으로 흘려 놓으면 길이가 제각각이라 줄이 들쭉날쭉해지고 눈이 따라갈 수가 없다.
  * 같은 폭의 칸에 목록으로 세우면 위아래로 훑을 수 있다.
- * 연장 등으로 같은 이름이 여러 건이면 한 줄로 합치고 ×N을 붙인다 — 같은 이름이 두 번 보이면 오류처럼 읽힌다.
- * 건수가 많은 팀은 수십 건이라 처음엔 일부만 펼친다.
+ * 같은 이름도 건별로 따로 적고, 접지 않고 전부 보여준다 — 회의에서 한 건씩 짚어 가며 읽는다.
  */
-const NAMES_FOLD = 12;
 function CampaignList({ label, names, tone }: {
   label: string; names?: string[]; tone: { fg: string; bg: string };
 }) {
-  const [all, setAll] = useState(false);
   if (!names) return null;
-  const grouped = [...names.reduce((m, n) => m.set(n, (m.get(n) ?? 0) + 1), new Map<string, number>())];
-  const shown = all ? grouped : grouped.slice(0, NAMES_FOLD);
   return (
     <div className="rounded-lg overflow-hidden min-w-0" style={{ border: `1px solid ${C.line}` }}>
       <div className="flex items-baseline gap-1.5 px-3 py-2" style={{ background: tone.bg }}>
@@ -1054,24 +1049,14 @@ function CampaignList({ label, names, tone }: {
       {names.length === 0 ? (
         <p className="px-3 py-2.5 text-xs" style={{ color: C.faint }}>운영중인 캠페인이 없습니다</p>
       ) : (
-        <>
-          <ul className="grid gap-x-4 px-3 py-2" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}>
-            {shown.map(([n, cnt]) => (
-              <li key={n} className="flex items-center gap-1.5 py-1 min-w-0 text-[13px]" style={{ color: C.body }} title={n}>
-                <span className="rounded-full shrink-0" style={{ width: 4, height: 4, background: tone.fg }} />
-                <span className="truncate">{n}</span>
-                {cnt > 1 && <span className="text-xs shrink-0 tabular-nums" style={{ color: C.faint }}>×{cnt}</span>}
-              </li>
-            ))}
-          </ul>
-          {grouped.length > NAMES_FOLD && (
-            <button onClick={() => setAll(v => !v)}
-              className="w-full py-2 text-xs font-bold transition-colors hover:bg-slate-50"
-              style={{ color: C.accent, borderTop: `1px solid ${C.line}` }}>
-              {all ? "접기" : `${grouped.length - NAMES_FOLD}개 더 보기`}
-            </button>
-          )}
-        </>
+        <ul className="grid gap-x-4 px-3 py-2" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}>
+          {names.map((n, i) => (
+            <li key={`${n}-${i}`} className="flex items-start gap-1.5 py-1 min-w-0 text-[13px] break-keep" style={{ color: C.body }}>
+              <span className="rounded-full shrink-0 mt-[7px]" style={{ width: 4, height: 4, background: tone.fg }} />
+              <span className="min-w-0">{n}</span>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );
