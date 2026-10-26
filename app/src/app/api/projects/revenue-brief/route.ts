@@ -163,7 +163,7 @@ export async function GET(req: NextRequest) {
      * 어느 회의록을 열어도 그 기준일의 운영 현황이 나온다. 아직 계약 전인 리드는 뺀다.
      */
     const activeProjects = await db
-      .select({ projectType: projects.projectType, campaignName: projects.campaignName })
+      .select({ id: projects.id, clientId: projects.clientId, projectType: projects.projectType, campaignName: projects.campaignName })
       .from(projects)
       .where(and(
         team ? eq(projects.assignedTeam, team) : undefined,
@@ -178,6 +178,44 @@ export async function GET(req: NextRequest) {
       .filter(p => p.projectType === t)
       .map(p => p.campaignName)
       .sort((a, b) => a.localeCompare(b, "ko"));
+
+    /**
+     * ── 4-2. 보장형 현재 순위 ──
+     * 보장형은 "5위 이내"여야 보장일로 센다(ProjectReportSection의 25일 계산과 같은 기준).
+     * 회의에서는 지금 그 안에 들어와 있는 업체와 아닌 업체를 갈라 본다.
+     *
+     * 순위 추적기는 같은 광고주의 이전 프로젝트에 붙어 있는 경우가 많아 광고주(client)로도 잇는다.
+     * 추적기마다 기준일까지의 마지막 조회를 보고, 그중 가장 좋은 순위를 그 캠페인의 현재 순위로 본다.
+     * 기준일 3일 전보다 오래된 조회는 "현재"가 아니므로 미확인으로 둔다.
+     */
+    const guaranteed0 = activeProjects.filter(p => p.projectType === "보장형");
+    const gProjectIds = guaranteed0.map(p => p.id);
+    const gClientIds  = [...new Set(guaranteed0.map(p => p.clientId).filter((v): v is string => !!v))];
+    type LatestRank = { project_id: string | null; client_id: string | null; keyword: string; rank: number | null };
+    const latestRanks: LatestRank[] = gProjectIds.length
+      ? Array.from(await db.execute<LatestRank>(sql`
+          SELECT DISTINCT ON (t.id) t.project_id, t.client_id, t.keyword, r.rank
+          FROM keyword_trackers t
+          JOIN keyword_rankings r ON r.tracker_id = t.id
+          WHERE (t.project_id IN ${gProjectIds}
+                 ${gClientIds.length ? sql`OR t.client_id IN ${gClientIds}` : sql``})
+            AND r.checked_at <  ((${asOf}::date + 1)::timestamp AT TIME ZONE 'Asia/Seoul')
+            AND r.checked_at >= ((${asOf}::date - 2)::timestamp AT TIME ZONE 'Asia/Seoul')
+          ORDER BY t.id, r.checked_at DESC
+        `))
+      : [];
+    const guaranteedRanks = guaranteed0
+      .map(p => {
+        const mine = latestRanks.filter(r => r.project_id === p.id || (!!p.clientId && r.client_id === p.clientId));
+        const ranked = mine.filter(r => r.rank !== null).sort((a, b) => a.rank! - b.rank!);
+        return {
+          name:    p.campaignName,
+          rank:    ranked[0]?.rank ?? null,
+          keyword: (ranked[0] ?? mine[0])?.keyword ?? null,
+          checked: mine.length > 0,
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name, "ko"));
 
     // ── 5. 당월 시작 프로젝트 현황 ──
     const countType = (t: string) => monthProjects.filter(p => p.projectType === t).length;
@@ -216,6 +254,7 @@ export async function GET(req: NextRequest) {
         activeManaged:    activeOfType("관리형"),
         activeGuaranteedNames: activeNamesOf("보장형"),
         activeManagedNames:    activeNamesOf("관리형"),
+        guaranteedRanks,
 
         total:      monthProjects.length,
         guaranteed,

@@ -9,25 +9,70 @@ function decodeNaverName(raw: string): string {
   return unescaped.replace(/<[^>]+>/g, "").trim();
 }
 
-function extractPlaceList(html: string): { id: string; name: string }[] {
-  // 가장 큰 <script> 블록에 place 데이터가 포함됨
-  const scriptBlocks = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].map(
-    (m) => m[1]
-  );
-  const bigScript = scriptBlocks
-    .filter((s) => s.length > 10000)
-    .sort((a, b) => b.length - a.length)[0] ?? "";
-
-  const results: { id: string; name: string }[] = [];
-  const pattern = /"id":"(\d{7,})"[^}]{0,400}?"name":"(.*?)"/g;
-  let m: RegExpExecArray | null;
-
-  while ((m = pattern.exec(bigScript)) !== null) {
-    const name = decodeNaverName(m[2]);
-    if (name) results.push({ id: m[1], name });
+/** `start`가 가리키는 `{`부터 짝이 맞는 `}`까지 잘라 JSON으로 읽는다. 문자열 안의 괄호는 세지 않는다. */
+function readJsonObject(text: string, start: number): unknown {
+  let depth = 0;
+  let inStr = false;
+  for (let i = start; i < text.length; i++) {
+    const c = text[i];
+    if (inStr) {
+      if (c === "\\") i++;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') inStr = true;
+    else if (c === "{") depth++;
+    else if (c === "}" && --depth === 0) {
+      try { return JSON.parse(text.slice(start, i + 1)); } catch { return null; }
+    }
   }
+  return null;
+}
 
-  return results;
+type ApolloEntry = { __typename?: string; id?: unknown; name?: unknown };
+
+/**
+ * 검색 결과 플레이스 목록(광고 제외)을 화면 순서대로 꺼낸다.
+ *
+ * 페이지에 박힌 Apollo 상태(__APOLLO_STATE__)를 JSON으로 읽고, ROOT_QUERY 안에서
+ * `items: [{__ref}]` 꼴 목록 중 업체(숫자 id + 이름)로 이뤄진 가장 긴 것을 고른다.
+ * 그 배열 순서가 곧 검색 노출 순서다.
+ *
+ * 예전에는 "가장 큰 <script>"를 정규식으로 훑었는데 두 가지로 깨졌다.
+ *   - 2026-10-16 무렵부터 이와 무관한 더 큰 스크립트가 붙어 목록을 0건으로 읽었다(이후 순위가 전부 "순위 밖").
+ *   - 업체 항목 안에 쿠폰 같은 중첩 객체가 있으면 id와 name 사이에 `}`가 끼어 그 업체를 건너뛰었다.
+ * 광고(…AdSummary, adBusinesses)는 순위가 아니므로 뺀다. 업종마다 항목 타입이 달라(일반·음식점·숙박)
+ * 타입 이름을 고정하지 않는다.
+ */
+function extractPlaceList(html: string): { id: string; name: string }[] {
+  let best: { id: string; name: string }[] = [];
+
+  const collect = (node: unknown, state: Record<string, ApolloEntry>) => {
+    if (Array.isArray(node)) { node.forEach(n => collect(n, state)); return; }
+    if (!node || typeof node !== "object") return;
+    const items = (node as { items?: unknown }).items;
+    if (Array.isArray(items) && items.length && items.every(x => x && typeof x === "object" && "__ref" in x)) {
+      const list = items
+        .map(x => state[(x as { __ref: string }).__ref])
+        .filter((e): e is ApolloEntry =>
+          !!e && typeof e.id === "string" && /^\d{5,}$/.test(e.id) && typeof e.name === "string"
+          && !(e.__typename ?? "").includes("Ad"))
+        .map(e => ({ id: e.id as string, name: decodeNaverName(e.name as string) }));
+      if (list.length > best.length) best = list;
+    }
+    Object.values(node).forEach(v => collect(v, state));
+  };
+
+  for (const m of html.matchAll(/__APOLLO_STATE__\s*=\s*/g)) {
+    const state = readJsonObject(html, m.index + m[0].length) as Record<string, ApolloEntry> | null;
+    const root = state?.ROOT_QUERY as Record<string, unknown> | undefined;
+    if (!state || !root) continue;
+    for (const [key, value] of Object.entries(root)) {
+      if (key.startsWith("adBusinesses")) continue;
+      collect(value, state);
+    }
+  }
+  return best;
 }
 
 function matchesTarget(

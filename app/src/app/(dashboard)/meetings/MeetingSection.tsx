@@ -41,7 +41,10 @@ import { TEAM_FILTERS } from "@/lib/teams";
 import {
   normalizeMeetingSections, meetingSectionsAreEmpty, axisHasText, MEETING_WRITABLE_AXIS_KEYS,
 } from "@/lib/meeting-sections";
-import { briefStats, briefText, briefProgress, briefActiveProjects, wonExact, BRIEF_TONE, type RevenueBriefData } from "@/lib/meeting-brief";
+import {
+  briefStats, briefText, briefProgress, briefActiveProjects, wonExact, splitGuaranteed, GUARANTEE_RANK, BRIEF_TONE,
+  type RevenueBriefData, type GuaranteedRank,
+} from "@/lib/meeting-brief";
 import { renderMeetingImage } from "@/lib/meeting-image";
 import type { MeetingAxisKey, MeetingSections } from "@/db/schema";
 
@@ -1022,7 +1025,9 @@ function ActiveProjects({ brief }: { brief: RevenueBriefData }) {
         </span>
       </div>
       <div className="grid gap-2.5 mt-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}>
-        <CampaignList label="보장형" names={brief.projects.activeGuaranteedNames} tone={K.actual} />
+        {brief.projects.guaranteedRanks
+          ? <GuaranteedList ranks={brief.projects.guaranteedRanks} tone={K.actual} />
+          : <CampaignList label="보장형" names={brief.projects.activeGuaranteedNames} tone={K.actual} />}
         <CampaignList label="관리형" names={brief.projects.activeManagedNames}    tone={K.target} />
       </div>
     </div>
@@ -1058,6 +1063,59 @@ function CampaignList({ label, names, tone }: {
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+/**
+ * 보장형 — 순위 보장 기준(5위) 안에 든 업체와 아닌 업체를 갈라 보여준다.
+ * 회의에서 보장형은 "지금 보장일이 쌓이고 있나"가 먼저라, 이름만 늘어놓으면 그걸 다시 찾아봐야 한다.
+ * 순위 밖은 빨강으로 눈에 띄게 하고, 추적기가 없거나 최근 조회가 없는 건은 따로 모은다.
+ */
+function GuaranteedList({ ranks, tone }: { ranks: GuaranteedRank[]; tone: { fg: string; bg: string } }) {
+  const { inside, outside, unchecked } = splitGuaranteed(ranks);
+  const groups = [
+    { key: "in",  title: `${GUARANTEE_RANK}위 이내`, items: inside,    color: "#2B8A3E", bg: "#EBFBEE" },
+    { key: "out", title: `${GUARANTEE_RANK}위 밖`,   items: outside,   color: "#C92A2A", bg: "#FFF5F5" },
+    { key: "na",  title: "순위 미확인",               items: unchecked, color: C.muted,   bg: C.soft },
+  ].filter(g => g.key !== "na" || g.items.length > 0);
+
+  return (
+    <div className="rounded-lg overflow-hidden min-w-0" style={{ border: `1px solid ${C.line}` }}>
+      <div className="flex items-baseline gap-1.5 px-3 py-2" style={{ background: tone.bg }}>
+        <span className="text-[13px] font-bold" style={{ color: tone.fg }}>보장형</span>
+        <span className="text-[13px] font-bold tabular-nums" style={{ color: C.ink }}>{ranks.length}건</span>
+      </div>
+      {ranks.length === 0 ? (
+        <p className="px-3 py-2.5 text-xs" style={{ color: C.faint }}>운영중인 캠페인이 없습니다</p>
+      ) : groups.map(g => (
+        <div key={g.key} className="px-3 py-2" style={{ borderTop: `1px solid ${C.line}` }}>
+          <p className="flex items-center gap-1.5 mb-1">
+            <span className="text-xs font-bold px-1.5 py-0.5 rounded" style={{ color: g.color, background: g.bg }}>{g.title}</span>
+            <span className="text-xs font-bold tabular-nums" style={{ color: C.ink }}>{g.items.length}건</span>
+          </p>
+          {g.items.length === 0 ? (
+            <p className="text-xs py-1" style={{ color: C.faint }}>없음</p>
+          ) : (
+            <ul className="grid gap-x-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}>
+              {g.items.map((r, i) => (
+                <li key={`${r.name}-${i}`} className="flex items-start gap-1.5 py-1 min-w-0 text-[13px] break-keep" style={{ color: C.body }}
+                  title={r.keyword ? `키워드: ${r.keyword}` : undefined}>
+                  <span className="rounded-full shrink-0 mt-[7px]" style={{ width: 4, height: 4, background: g.color }} />
+                  <span className="min-w-0">
+                    {r.name}
+                    {r.checked && (
+                      <span className="ml-1 text-xs font-bold tabular-nums" style={{ color: g.color }}>
+                        {r.rank !== null ? `${r.rank}위` : "순위 없음"}
+                      </span>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ))}
     </div>
   );
 }

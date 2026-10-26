@@ -17,8 +17,24 @@ export interface RevenueBriefData {
     active: number; activeGuaranteed: number; activeManaged: number;
     /** 운영중 캠페인 이름 — 가나다순. 배포 전 응답에는 없을 수 있다 */
     activeGuaranteedNames?: string[]; activeManagedNames?: string[];
+    /** 운영중 보장형의 기준일 현재 순위. rank null + checked = 조회됐지만 목록에 없음 */
+    guaranteedRanks?: GuaranteedRank[];
     /** 당월 시작분 */
     total: number; guaranteed: number; managed: number; etc: number; fresh: number; extended: number;
+  };
+}
+
+export interface GuaranteedRank { name: string; rank: number | null; keyword: string | null; checked: boolean }
+
+/** 보장형 순위 보장 기준 — 이 순위 이내여야 보장일로 센다 */
+export const GUARANTEE_RANK = 5;
+
+/** 보장형을 순위 안 / 순위 밖 / 미확인으로 가른다 */
+export function splitGuaranteed(ranks: GuaranteedRank[]) {
+  return {
+    inside:    ranks.filter(r => r.rank !== null && r.rank <= GUARANTEE_RANK),
+    outside:   ranks.filter(r => r.checked && (r.rank === null || r.rank > GUARANTEE_RANK)),
+    unchecked: ranks.filter(r => !r.checked),
   };
 }
 
@@ -135,6 +151,18 @@ export function briefActiveProjects(b: RevenueBriefData): BriefCount[] {
   ];
 }
 
+/** 복사 텍스트의 보장형 줄 — 순위 정보가 있으면 5위 이내/밖으로 나눠 적는다 */
+function guaranteedLines(p: RevenueBriefData["projects"]): string[] {
+  if (!p.guaranteedRanks) return [` - 보장형 ${p.activeGuaranteed}건${namesSuffix(p.activeGuaranteedNames)}`];
+  const { inside, outside, unchecked } = splitGuaranteed(p.guaranteedRanks);
+  const fmt = (r: GuaranteedRank) => r.rank !== null ? `${r.name}(${r.rank}위)` : r.name;
+  const lines = [` - 보장형 ${p.activeGuaranteed}건`];
+  lines.push(`   · ${GUARANTEE_RANK}위 이내 ${inside.length}건${inside.length ? `: ${inside.map(fmt).join(", ")}` : ""}`);
+  lines.push(`   · ${GUARANTEE_RANK}위 밖 ${outside.length}건${outside.length ? `: ${outside.map(fmt).join(", ")}` : ""}`);
+  if (unchecked.length) lines.push(`   · 순위 미확인 ${unchecked.length}건: ${unchecked.map(fmt).join(", ")}`);
+  return lines;
+}
+
 const namesSuffix = (names?: string[]) => (names?.length ? `: ${names.join(", ")}` : "");
 
 /** 브리핑을 메신저·메일에 그대로 붙일 수 있는 텍스트로 만든다. */
@@ -148,7 +176,7 @@ export function briefText(b: RevenueBriefData, isMonthly: boolean) {
   lines.push(
     `${stats.length + 1}. 운영중 프로젝트 (${b.asOfDay}일 기준)`,
     ` - 전체 ${p.active}건`,
-    ` - 보장형 ${p.activeGuaranteed}건${namesSuffix(p.activeGuaranteedNames)}`,
+    ...guaranteedLines(p),
     ` - 관리형 ${p.activeManaged}건${namesSuffix(p.activeManagedNames)}`,
   );
   if (isMonthly) {
