@@ -1021,45 +1021,57 @@ function ActiveProjects({ brief }: { brief: RevenueBriefData }) {
           {brief.asOfDay}일 기준 진행중인 캠페인
         </span>
       </div>
-      <div className="mt-2.5 space-y-1.5">
-        <CampaignNames label="보장형" names={brief.projects.activeGuaranteedNames} tone={K.actual} />
-        <CampaignNames label="관리형" names={brief.projects.activeManagedNames}    tone={K.target} />
+      <div className="grid gap-2.5 mt-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}>
+        <CampaignList label="보장형" names={brief.projects.activeGuaranteedNames} tone={K.actual} />
+        <CampaignList label="관리형" names={brief.projects.activeManagedNames}    tone={K.target} />
       </div>
     </div>
   );
 }
 
 /**
- * 운영중 캠페인 이름 목록.
- * 건수가 많은 팀은 수십 건이라 처음엔 일부만 펼치고, 나머지는 눌러서 본다.
+ * 운영중 캠페인 이름 — 유형별로 한 상자씩.
+ *
+ * 이름을 칩으로 흘려 놓으면 길이가 제각각이라 줄이 들쭉날쭉해지고 눈이 따라갈 수가 없다.
+ * 같은 폭의 칸에 목록으로 세우면 위아래로 훑을 수 있다.
+ * 연장 등으로 같은 이름이 여러 건이면 한 줄로 합치고 ×N을 붙인다 — 같은 이름이 두 번 보이면 오류처럼 읽힌다.
+ * 건수가 많은 팀은 수십 건이라 처음엔 일부만 펼친다.
  */
 const NAMES_FOLD = 12;
-function CampaignNames({ label, names, tone }: {
+function CampaignList({ label, names, tone }: {
   label: string; names?: string[]; tone: { fg: string; bg: string };
 }) {
   const [all, setAll] = useState(false);
   if (!names) return null;
-  const shown = all ? names : names.slice(0, NAMES_FOLD);
+  const grouped = [...names.reduce((m, n) => m.set(n, (m.get(n) ?? 0) + 1), new Map<string, number>())];
+  const shown = all ? grouped : grouped.slice(0, NAMES_FOLD);
   return (
-    <div className="flex items-start gap-2">
-      <span className="text-xs font-bold shrink-0 pt-0.5" style={{ color: tone.fg, minWidth: 52 }}>{label}</span>
+    <div className="rounded-lg overflow-hidden min-w-0" style={{ border: `1px solid ${C.line}` }}>
+      <div className="flex items-baseline gap-1.5 px-3 py-2" style={{ background: tone.bg }}>
+        <span className="text-[13px] font-bold" style={{ color: tone.fg }}>{label}</span>
+        <span className="text-[13px] font-bold tabular-nums" style={{ color: C.ink }}>{names.length}건</span>
+      </div>
       {names.length === 0 ? (
-        <span className="text-xs pt-0.5" style={{ color: C.faint }}>없음</span>
+        <p className="px-3 py-2.5 text-xs" style={{ color: C.faint }}>운영중인 캠페인이 없습니다</p>
       ) : (
-        <div className="flex flex-wrap gap-1 min-w-0">
-          {shown.map((n, i) => (
-            <span key={`${n}-${i}`} className="text-xs px-1.5 py-0.5 rounded"
-              style={{ background: C.soft, color: C.body, border: `1px solid ${C.line}` }}>
-              {n}
-            </span>
-          ))}
-          {names.length > NAMES_FOLD && (
+        <>
+          <ul className="grid gap-x-4 px-3 py-2" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}>
+            {shown.map(([n, cnt]) => (
+              <li key={n} className="flex items-center gap-1.5 py-1 min-w-0 text-[13px]" style={{ color: C.body }} title={n}>
+                <span className="rounded-full shrink-0" style={{ width: 4, height: 4, background: tone.fg }} />
+                <span className="truncate">{n}</span>
+                {cnt > 1 && <span className="text-xs shrink-0 tabular-nums" style={{ color: C.faint }}>×{cnt}</span>}
+              </li>
+            ))}
+          </ul>
+          {grouped.length > NAMES_FOLD && (
             <button onClick={() => setAll(v => !v)}
-              className="text-xs font-bold px-1.5 py-0.5 rounded" style={{ color: C.accent }}>
-              {all ? "접기" : `+${names.length - NAMES_FOLD}건 더 보기`}
+              className="w-full py-2 text-xs font-bold transition-colors hover:bg-slate-50"
+              style={{ color: C.accent, borderTop: `1px solid ${C.line}` }}>
+              {all ? "접기" : `${grouped.length - NAMES_FOLD}개 더 보기`}
             </button>
           )}
-        </div>
+        </>
       )}
     </div>
   );
