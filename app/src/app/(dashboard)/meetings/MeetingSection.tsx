@@ -1070,45 +1070,76 @@ function CampaignList({ label, names, tone }: {
 /**
  * 보장형 — 순위 보장 기준(5위) 안에 든 업체와 아닌 업체를 갈라 보여준다.
  * 회의에서 보장형은 "지금 보장일이 쌓이고 있나"가 먼저라, 이름만 늘어놓으면 그걸 다시 찾아봐야 한다.
- * 순위 밖은 빨강으로 눈에 띄게 하고, 추적기가 없거나 최근 조회가 없는 건은 따로 모은다.
+ *
+ * 머리에 비율 막대를 두어 몇 건이 안에 들었는지 한눈에 보이게 하고,
+ * 아래는 순위 배지를 왼쪽에 세운 한 줄 목록으로 둔다 — 순위가 이름보다 먼저 읽혀야 한다.
+ * 순위 밖은 빨강, 추적기가 없거나 최근 조회가 없는 건은 회색으로 따로 모은다.
  */
+const RANK_GROUPS = [
+  { key: "inside",    title: `${GUARANTEE_RANK}위 이내`, fg: "#2B8A3E", bg: "#EBFBEE", bar: "#40C057" },
+  { key: "outside",   title: `${GUARANTEE_RANK}위 밖`,   fg: "#C92A2A", bg: "#FFF5F5", bar: "#FA5252" },
+  { key: "unchecked", title: "순위 미확인",               fg: "#6B7684", bg: "#F2F4F6", bar: "#D1D6DB" },
+] as const;
+
 function GuaranteedList({ ranks, tone }: { ranks: GuaranteedRank[]; tone: { fg: string; bg: string } }) {
-  const { inside, outside, unchecked } = splitGuaranteed(ranks);
-  const groups = [
-    { key: "in",  title: `${GUARANTEE_RANK}위 이내`, items: inside,    color: "#2B8A3E", bg: "#EBFBEE" },
-    { key: "out", title: `${GUARANTEE_RANK}위 밖`,   items: outside,   color: "#C92A2A", bg: "#FFF5F5" },
-    { key: "na",  title: "순위 미확인",               items: unchecked, color: C.muted,   bg: C.soft },
-  ].filter(g => g.key !== "na" || g.items.length > 0);
+  const split = splitGuaranteed(ranks);
+  // 같은 묶음 안에서는 순위가 좋은 순 — 순위가 없는 건은 뒤로
+  const byRank = (a: GuaranteedRank, b: GuaranteedRank) => (a.rank ?? 999) - (b.rank ?? 999) || a.name.localeCompare(b.name, "ko");
+  const groups = RANK_GROUPS
+    .map(g => ({ ...g, items: [...split[g.key]].sort(byRank) }))
+    .filter(g => g.key !== "unchecked" || g.items.length > 0);
 
   return (
     <div className="rounded-lg overflow-hidden min-w-0" style={{ border: `1px solid ${C.line}` }}>
-      <div className="flex items-baseline gap-1.5 px-3 py-2" style={{ background: tone.bg }}>
-        <span className="text-[13px] font-bold" style={{ color: tone.fg }}>보장형</span>
-        <span className="text-[13px] font-bold tabular-nums" style={{ color: C.ink }}>{ranks.length}건</span>
+      {/* 머리 — 건수와 구성 비율 */}
+      <div className="px-3 pt-2 pb-2.5" style={{ background: tone.bg }}>
+        <div className="flex items-baseline gap-1.5">
+          <span className="text-[13px] font-bold" style={{ color: tone.fg }}>보장형</span>
+          <span className="text-[13px] font-bold tabular-nums" style={{ color: C.ink }}>{ranks.length}건</span>
+          <span className="ml-auto text-xs" style={{ color: C.muted }}>보장 기준 {GUARANTEE_RANK}위 이내</span>
+        </div>
+        {ranks.length > 0 && (
+          <>
+            <div className="flex h-1.5 rounded-full overflow-hidden mt-2" style={{ background: "#fff" }}>
+              {groups.map(g => g.items.length > 0 && (
+                <span key={g.key} style={{ width: `${(g.items.length / ranks.length) * 100}%`, background: g.bar }} />
+              ))}
+            </div>
+            <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+              {groups.map(g => (
+                <span key={g.key} className="flex items-center gap-1 text-xs" style={{ color: C.muted }}>
+                  <span className="rounded-full" style={{ width: 6, height: 6, background: g.bar }} />
+                  {g.title} <b className="tabular-nums" style={{ color: g.items.length ? g.fg : C.faint }}>{g.items.length}</b>
+                </span>
+              ))}
+            </div>
+          </>
+        )}
       </div>
+
       {ranks.length === 0 ? (
         <p className="px-3 py-2.5 text-xs" style={{ color: C.faint }}>운영중인 캠페인이 없습니다</p>
       ) : groups.map(g => (
-        <div key={g.key} className="px-3 py-2" style={{ borderTop: `1px solid ${C.line}` }}>
-          <p className="flex items-center gap-1.5 mb-1">
-            <span className="text-xs font-bold px-1.5 py-0.5 rounded" style={{ color: g.color, background: g.bg }}>{g.title}</span>
-            <span className="text-xs font-bold tabular-nums" style={{ color: C.ink }}>{g.items.length}건</span>
+        <div key={g.key} style={{ borderTop: `1px solid ${C.line}` }}>
+          <p className="px-3 pt-2 pb-1 text-xs font-bold" style={{ color: g.fg }}>
+            {g.title} <span className="tabular-nums">{g.items.length}</span>
           </p>
           {g.items.length === 0 ? (
-            <p className="text-xs py-1" style={{ color: C.faint }}>없음</p>
+            <p className="px-3 pb-2.5 text-xs" style={{ color: C.faint }}>
+              {g.key === "inside" ? `지금 ${GUARANTEE_RANK}위 안에 든 업체가 없습니다` : "없음"}
+            </p>
           ) : (
-            <ul className="grid gap-x-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}>
+            <ul className="pb-1.5">
               {g.items.map((r, i) => (
-                <li key={`${r.name}-${i}`} className="flex items-start gap-1.5 py-1 min-w-0 text-[13px] break-keep" style={{ color: C.body }}
-                  title={r.keyword ? `키워드: ${r.keyword}` : undefined}>
-                  <span className="rounded-full shrink-0 mt-[7px]" style={{ width: 4, height: 4, background: g.color }} />
-                  <span className="min-w-0">
-                    {r.name}
-                    {r.checked && (
-                      <span className="ml-1 text-xs font-bold tabular-nums" style={{ color: g.color }}>
-                        {r.rank !== null ? `${r.rank}위` : "순위 없음"}
-                      </span>
-                    )}
+                <li key={`${r.name}-${i}`} className="flex items-center gap-2.5 px-3 py-1.5 min-w-0">
+                  <span className="shrink-0 text-center text-xs font-bold tabular-nums rounded-md py-0.5"
+                    style={{ width: 44, color: g.fg, background: g.bg }}>
+                    {r.rank !== null ? `${r.rank}위` : r.checked ? "순위 밖" : "–"}
+                  </span>
+                  <span className="text-[13px] font-semibold break-keep min-w-0 flex-1" style={{ color: C.ink }}>{r.name}</span>
+                  <span className="text-xs shrink-0 truncate max-w-[45%]" style={{ color: C.faint }}
+                    title={r.keyword ?? undefined}>
+                    {r.keyword ?? (r.checked ? "" : "추적 키워드 없음")}
                   </span>
                 </li>
               ))}
