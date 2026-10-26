@@ -21,6 +21,11 @@
  *   N주차 회의 → 같은 달 N-1주차 (미작성이면 그 앞 주차로 내려가며 탐색)
  *   1주차 회의 → 전월 마지막 주차 (달이 바뀌어도 주간 흐름이 끊기지 않게)
  *
+ * 화면 구성: 매출현황(자동 집계)을 맨 위에 두고, 그 아래 달력에 회의록을 카드로 놓는다.
+ *   주간회의 카드 — 그 주(달력 한 줄)의 월요일 칸. 월요일이 다른 달이면 그 주의 이번 달 첫날 칸.
+ *   월간회의 카드 — 1일 칸.
+ * 카드를 누르면 오른쪽에 작성 패널이 열린다. 달력을 덮지 않아 다른 주를 바로 옮겨 탈 수 있다.
+ *
  * 표현 원칙: 사람이 쓰는 영역에는 색을 쓰지 않는다.
  * 축마다 색을 주면 네 색이 서로 경쟁해서 정작 읽어야 할 본문이 묻힌다.
  * 축 구분은 여백과 굵기로 하고, 파랑은 "지금 선택된 것"과 "저장"에만 쓴다.
@@ -139,15 +144,15 @@ function delta(cur: number, prev: number) {
 }
 
 // ─── 메인 ─────────────────────────────────────────────────────
-export default function MeetingSection({ year, month, criteria, criteriaLabel }: {
-  year: number; month: number; criteria: string; criteriaLabel: string;
+export default function MeetingSection({ year, month, onMonthChange, criteria, criteriaLabel }: {
+  year: number; month: number; onMonthChange: (y: number, m: number) => void;
+  criteria: string; criteriaLabel: string;
 }) {
   const [noteTeam,  setNoteTeam]  = useState("전체");
   const [notes,     setNotes]     = useState<ReportNote[]>([]);
   const [prevNotes, setPrevNotes] = useState<ReportNote[]>([]);
   const [selected,  setSelected]  = useState<number | null>(null); // null = 월간회의, 1~N = 주차
-  const [showCal,   setShowCal]   = useState(false);
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [peek,      setPeek]      = useState(false);               // 작성 패널 열림
 
   const [draftSections, setDraftSections] = useState<MeetingSections>(emptySections);
   const [draftContent,  setDraftContent]  = useState("");
@@ -484,40 +489,63 @@ export default function MeetingSection({ year, month, criteria, criteriaLabel }:
   const axisFilled = (k: MeetingAxisKey) => axisHasText(draftSections[k]);
   const filledCount = WRITABLE.filter(a => axisFilled(a.key)).length;
 
-  // 달력의 회의록 작성일 점
-  const writtenDays = useMemo(() => {
-    const map = new Map<number, string[]>();
-    notes
-      .filter(n => n.team === noteTeam && noteHasContent(n) && n.updatedAt)
-      .forEach(n => {
-        const d = new Date(n.updatedAt!);
-        if (isNaN(d.getTime()) || d.getFullYear() !== year || d.getMonth() + 1 !== month) return;
-        const day = d.getDate();
-        const arr = map.get(day) ?? [];
-        arr.push(n.week === null ? "월간회의" : `${n.week}주차`);
-        map.set(day, arr);
-      });
-    return map;
-  }, [notes, noteTeam, year, month]);
-
   const firstDay    = new Date(year, month - 1, 1).getDay();
   const daysInMonth = new Date(year, month, 0).getDate();
+  const today = new Date();
+  const isThisMonth = today.getFullYear() === year && today.getMonth() + 1 === month;
+
+  /** 월 이동 — 연말·연초를 넘어가도 연도가 같이 따라간다 */
+  function shiftMonth(d: number) {
+    const m = month + d;
+    switchTo(() => {
+      if (m < 1)       onMonthChange(year - 1, 12);
+      else if (m > 12) onMonthChange(year + 1, 1);
+      else             onMonthChange(year, m);
+    });
+  }
+
+  function openMeeting(w: number | null) {
+    switchTo(() => { setSelected(w); setPeek(true); });
+  }
+  function closePeek() {
+    switchTo(() => setPeek(false));
+  }
+
+  // 패널은 Esc로 닫는다 — 저장 안 된 내용이 있으면 확인을 거친다
+  const closeRef = useRef(closePeek);
+  closeRef.current = closePeek;
+  useEffect(() => {
+    if (!peek) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") closeRef.current(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [peek]);
+
+  /** 회의록 한 건의 카드 표시용 요약 */
+  const cardOf = (w: number | null) => {
+    const n = notes.find(x => x.team === noteTeam && (w === null ? x.week === null : x.week === w));
+    const filled = noteHasContent(n);
+    const axes = n?.sections ? WRITABLE.filter(a => axisHasText(normalize(n.sections)[a.key])).length : 0;
+    return { filled, axes, author: n?.authorName ?? "" };
+  };
+  const weeklyDone = weekNums.filter(w => meetingFilled(w)).length;
 
   // ── 렌더 ──
   return (
-    <div className="rounded-2xl" style={{ background: "#fff", border: `1px solid ${C.line}` }}>
+    <div className="space-y-4">
 
-      {/* 팀 선택 */}
-      <div className="flex items-center gap-1 px-5 py-3 flex-wrap" style={{ borderBottom: `1px solid ${C.line}` }}>
+      {/* 팀 선택 — 매출현황·달력이 모두 이 팀 기준으로 바뀐다 */}
+      <div className="flex items-center gap-1 flex-wrap">
         {TEAMS.map(t => {
           const on = noteTeam === t;
           return (
             <button key={t} onClick={() => switchTo(() => setNoteTeam(t))}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] transition-colors"
               style={{
-                background: on ? C.accentSoft : "transparent",
+                background: on ? C.accentSoft : "#fff",
                 color:      on ? C.accent : C.muted,
                 fontWeight: on ? 700 : 500,
+                border:     `1px solid ${on ? C.accentSoft : C.line}`,
               }}>
               {t}
               {teamHasAny(t) && <Dot on />}
@@ -526,147 +554,178 @@ export default function MeetingSection({ year, month, criteria, criteriaLabel }:
         })}
       </div>
 
-      {/* 회의 선택 — 앱의 탭 방식(밑줄)을 그대로 쓴다 */}
-      <div className="flex items-center px-5 gap-1 flex-wrap" style={{ borderBottom: `1px solid ${C.line}` }}>
-        <MeetingTab label="월간회의" active={isMonthly} filled={meetingFilled(null)}
-          onClick={() => switchTo(() => setSelected(null))} />
-        {weekNums.map(w => (
-          <MeetingTab key={w} label={`${w}주차`} active={week === w} filled={meetingFilled(w)}
-            onClick={() => switchTo(() => setSelected(w))} />
-        ))}
-        <button onClick={() => setShowCal(v => !v)}
-          className="ml-auto text-xs py-2.5 transition-colors hover:opacity-70"
-          style={{ color: C.faint }}>
-          {showCal ? "달력 닫기" : "달력"}
-        </button>
-      </div>
+      {/* 매출현황 — 맨 위 고정. 선택한 회의(월간/주간)에 맞춰 집계 범위가 바뀐다 */}
+      <section className="rounded-2xl p-5" style={{ background: "#fff", border: `1px solid ${C.line}` }}>
+        <div className="flex items-baseline gap-2 mb-3 flex-wrap">
+          <h2 className="text-[15px] font-bold" style={{ color: C.ink }}>매출현황</h2>
+          <span className="text-xs" style={{ color: C.faint }}>{noteTeam} · {fullLabel} 기준 자동 집계</span>
+        </div>
+        <RevenueBrief brief={brief} month={month} prevMonth={figPrevMonth}
+          isMonthly={isMonthly} cur={curFigure} prevFig={prevFigure} />
+      </section>
 
-      {/* 달력 — 회의록 작성일 확인용 */}
-      {showCal && (
-        <div className="px-5 py-4" style={{ borderBottom: `1px solid ${C.line}` }}>
-          <div className="max-w-[420px]">
-            <div className="grid" style={{ gridTemplateColumns: "36px repeat(7, 1fr)" }}>
-              <div />
-              {DOW.map(d => (
-                <div key={d} className="text-center text-xs py-1" style={{ color: C.faint }}>{d}</div>
+      {/* 달력 */}
+      <section className="rounded-2xl" style={{ background: "#fff", border: `1px solid ${C.line}` }}>
+        <div className="flex items-center gap-3 px-5 py-3.5 flex-wrap">
+          <h2 className="text-[17px] font-bold tabular-nums" style={{ color: C.ink }}>{year}년 {month}월</h2>
+          <span className="text-xs" style={{ color: C.faint }}>
+            월간 {meetingFilled(null) ? "작성" : "미작성"} · 주간 {weeklyDone}/{weekRows} 작성
+          </span>
+          <div className="ml-auto flex items-center gap-1">
+            <IconButton label="이전 달" onClick={() => shiftMonth(-1)}><polyline points="15 18 9 12 15 6" /></IconButton>
+            <button onClick={() => switchTo(() => onMonthChange(today.getFullYear(), today.getMonth() + 1))}
+              disabled={isThisMonth}
+              className="h-8 px-2.5 rounded-lg text-[13px] font-semibold transition-colors hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
+              style={{ color: C.body }}>
+              오늘
+            </button>
+            <IconButton label="다음 달" onClick={() => shiftMonth(1)}><polyline points="9 18 15 12 9 6" /></IconButton>
+            <button onClick={() => openMeeting(null)}
+              className="ml-2 h-8 px-3 rounded-lg text-[13px] font-bold text-white transition-opacity hover:opacity-90"
+              style={{ background: C.accent }}>
+              월간회의 작성
+            </button>
+          </div>
+        </div>
+
+        {/* 좁은 화면에서는 가로로 밀어서 본다 — 7칸을 억지로 줄이면 카드 제목이 다 잘린다 */}
+        <div className="overflow-x-auto">
+          <div style={{ minWidth: 720 }}>
+            <div className="grid" style={{ gridTemplateColumns: "repeat(7, 1fr)", borderTop: `1px solid ${C.line}` }}>
+              {DOW.map((d, i) => (
+                <div key={d} className="text-center text-xs py-2"
+                  style={{ color: i === 0 ? "#E03131" : C.faint }}>{d}</div>
               ))}
             </div>
+
             {weekNums.map(w => {
-              const isSel = week === w;
+              const startCol = w === 1 ? firstDay : 0;
+              const endCol   = Math.min(6, daysInMonth - ((w - 1) * 7 - firstDay + 1));
+              // 주간회의 카드 자리 — 월요일. 그 주의 월요일이 다른 달이면 이번 달 안쪽 끝으로 붙인다.
+              const weekCol  = Math.min(Math.max(1, startCol), endCol);
               return (
-                <button key={w} onClick={() => switchTo(() => setSelected(w))}
-                  className="w-full grid items-center rounded-lg transition-colors hover:bg-slate-50"
-                  style={{ gridTemplateColumns: "36px repeat(7, 1fr)", background: isSel ? C.accentSoft : "transparent" }}>
-                  <span className="text-xs py-1.5" style={{ color: isSel ? C.accent : C.faint, fontWeight: isSel ? 700 : 400 }}>{w}주</span>
+                <div key={w} className="grid" style={{ gridTemplateColumns: "repeat(7, 1fr)", borderTop: `1px solid ${C.line}` }}>
                   {Array.from({ length: 7 }, (_, dow) => {
                     const day = (w - 1) * 7 + dow - firstDay + 1;
                     const inMonth = day >= 1 && day <= daysInMonth;
-                    const written = inMonth ? writtenDays.get(day) : undefined;
+                    // 다른 달 날짜도 숫자는 보여준다 — 주가 어디서 끊기는지 알 수 있게
+                    const shown = new Date(year, month - 1, day).getDate();
+                    const isToday = isThisMonth && inMonth && day === today.getDate();
+                    const weekend = dow === 0 || dow === 6;
                     return (
-                      <span key={dow} className="flex flex-col items-center justify-center py-1.5" style={{ minHeight: 28 }}
-                        title={written ? `${written.join(", ")} 작성일` : undefined}>
-                        {inMonth && (
-                          <>
-                            <span style={{ fontSize: 12, color: written ? C.accent : C.body, fontWeight: written ? 700 : 400 }}>{day}</span>
-                            {written && <Dot on />}
-                          </>
+                      <div key={dow} className="flex flex-col gap-1.5 p-1.5 min-w-0"
+                        style={{
+                          minHeight: 118,
+                          background: !inMonth || weekend ? C.soft : "#fff",
+                          borderLeft: dow ? `1px solid ${C.line}` : undefined,
+                        }}>
+                        <div className="flex justify-end px-1 pt-0.5">
+                          <span className="text-[13px] tabular-nums leading-6 text-center rounded-full"
+                            style={{
+                              minWidth: 24,
+                              color: isToday ? "#fff" : inMonth ? C.body : "#B0B8C1",
+                              background: isToday ? "#E03131" : "transparent",
+                              fontWeight: isToday ? 700 : 400,
+                            }}>
+                            {day === 1 || (dow === 0 && w === 1) ? `${new Date(year, month - 1, day).getMonth() + 1}월 ${shown}일` : shown}
+                          </span>
+                        </div>
+                        {inMonth && day === 1 && (
+                          <MeetingCard title="월간회의" {...cardOf(null)}
+                            active={peek && isMonthly} onClick={() => openMeeting(null)} />
                         )}
-                      </span>
+                        {dow === weekCol && (
+                          <MeetingCard title={`${w}주차 주간회의`} {...cardOf(w)}
+                            active={peek && week === w} onClick={() => openMeeting(w)} />
+                        )}
+                      </div>
                     );
                   })}
-                </button>
+                </div>
               );
             })}
-            <p className="text-xs mt-2" style={{ color: C.faint }}>점 = 회의록 작성일</p>
           </div>
         </div>
-      )}
+      </section>
 
-      {/* 선택된 회의 */}
-      <div className="px-5 py-4 flex items-start justify-between gap-3 flex-wrap" style={{ borderBottom: `1px solid ${C.line}` }}>
-        <div className="min-w-0">
-          <p className="text-[17px] font-bold" style={{ color: C.ink }}>
-            {noteTeam} · {fullLabel}
-          </p>
-          <p className="text-[13px] mt-1" style={{ color: C.muted }}>
-            {filledCount}/{WRITABLE.length} 축 작성 · 비교 대상 {prev.label}{!prev.note && " (기록 없음)"}
-            {currentNote?.updatedAt && ` · 저장 ${fmtNoteDate(currentNote.updatedAt)}`}
-            {dirty && <span style={{ color: "#E8590C", fontWeight: 700 }}> · 저장 안 됨</span>}
-          </p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <input value={draftAuthor} onChange={e => setDraftAuthor(e.target.value)} placeholder="작성자"
-            className="px-3 py-2 text-[13px] rounded-lg outline-none border transition-colors focus:border-[#3182F6] placeholder:text-[#8B95A1]"
-            style={{ borderColor: C.line, color: C.ink, width: 92 }} />
-          <TextButton onClick={handleCopy}>{copied ? "복사됨" : "복사"}</TextButton>
-          <TextButton onClick={() => handleImage("download")} disabled={imaging}>
-            {imaging ? "만드는 중" : "이미지 저장"}
-          </TextButton>
-          {canShareFile && (
-            <TextButton onClick={() => handleImage("share")} disabled={imaging}>공유</TextButton>
-          )}
-          {currentNote && <TextButton onClick={handleDelete} disabled={deleting || saving} danger>{deleting ? "삭제 중" : "삭제"}</TextButton>}
-          <button onClick={handleSave} disabled={saving || deleting}
-            className="px-4 py-2 rounded-lg text-[13px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
-            style={{ background: C.accent }}>
-            {saving ? "저장 중" : saved ? "저장됨" : "저장"}
-          </button>
-        </div>
-      </div>
+      {/* 작성 패널 — 오른쪽에서 열린다 */}
+      {peek && (
+        <>
+          <div className="fixed inset-0 z-40" style={{ background: "rgba(0,0,0,.18)" }} onClick={closePeek} />
+          <aside className="fixed top-0 right-0 bottom-0 z-50 flex flex-col"
+            style={{ width: "min(760px, 100vw)", background: "#fff", boxShadow: "-8px 0 24px rgba(0,0,0,.08)" }}
+            onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === "s") { e.preventDefault(); handleSave(); } }}>
 
-      {error && (
-        <div className="px-5 py-2.5 text-[13px]" style={{ background: "#FFF5F5", color: "#E03131", borderBottom: `1px solid ${C.line}` }}>
-          {error}
-        </div>
-      )}
-
-      {/* 4개 축 + 기타 메모 */}
-      <div onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === "s") { e.preventDefault(); handleSave(); } }}>
-        {AXES.map(axis => {
-          const open     = !collapsed[axis.key];
-          const writable = axis.key !== "revenue";
-          const entry    = draftSections[axis.key];
-          // 직전 회의에 적은 그 기간의 현황 — 이번 회의의 전전주(전전월) 칸이 가리키는 바로 그 기간이다
-          const carry = prevSections[axis.key].current.trim();
-          const set = (field: keyof typeof entry, v: string) =>
-            setDraftSections(p => ({ ...p, [axis.key]: { ...p[axis.key], [field]: v } }));
-          // 다시 가져올 때 이미 쓴 내용을 덮지 않도록 아래에 잇는다
-          const pullCarry = () => set("prev", entry.prev.trim() ? `${entry.prev.trimEnd()}\n\n${carry}` : carry);
-
-          return (
-            <section key={axis.key} style={{ borderBottom: `1px solid ${C.line}` }}>
-              <button onClick={() => setCollapsed(p => ({ ...p, [axis.key]: !p[axis.key] }))}
-                className="w-full flex items-center gap-2 px-5 py-3.5 text-left transition-colors hover:bg-slate-50">
-                <Chevron open={open} />
-                <span className="text-[15px] font-bold" style={{ color: C.ink }}>{axis.label}</span>
-                <span className="text-xs truncate" style={{ color: C.faint }}>{axis.hint}</span>
-                {writable ? (
-                  <span className="ml-auto flex items-center gap-1.5 text-xs shrink-0"
-                    style={{ color: axisFilled(axis.key) ? C.accent : C.faint }}>
-                    <Dot on={axisFilled(axis.key)} />
-                    {axisFilled(axis.key) ? "작성됨" : "미작성"}
-                  </span>
-                ) : (
-                  // 쓸 칸이 없는 축에 "미작성"을 띄우면 빠뜨린 것처럼 읽힌다
-                  <span className="ml-auto text-xs shrink-0" style={{ color: C.faint }}>자동 집계</span>
+            {/* 머리말 */}
+            <div className="px-6 pt-5 pb-4" style={{ borderBottom: `1px solid ${C.line}` }}>
+              <div className="flex items-start gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-semibold" style={{ color: C.faint }}>{noteTeam} · {year}년</p>
+                  <p className="text-[20px] font-bold mt-0.5" style={{ color: C.ink }}>{fullLabel}</p>
+                  <p className="text-[13px] mt-1" style={{ color: C.muted }}>
+                    {filledCount}/{WRITABLE.length} 축 작성 · 비교 대상 {prev.label}{!prev.note && " (기록 없음)"}
+                    {currentNote?.updatedAt && ` · 저장 ${fmtNoteDate(currentNote.updatedAt)}`}
+                    {dirty && <span style={{ color: "#E8590C", fontWeight: 700 }}> · 저장 안 됨</span>}
+                  </p>
+                </div>
+                <IconButton label="닫기" onClick={closePeek}><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></IconButton>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap mt-3">
+                <input value={draftAuthor} onChange={e => setDraftAuthor(e.target.value)} placeholder="작성자"
+                  className="px-3 py-2 text-[13px] rounded-lg outline-none border transition-colors focus:border-[#3182F6] placeholder:text-[#8B95A1]"
+                  style={{ borderColor: C.line, color: C.ink, width: 92 }} />
+                <TextButton onClick={handleCopy}>{copied ? "복사됨" : "복사"}</TextButton>
+                <TextButton onClick={() => handleImage("download")} disabled={imaging}>
+                  {imaging ? "만드는 중" : "이미지 저장"}
+                </TextButton>
+                {canShareFile && (
+                  <TextButton onClick={() => handleImage("share")} disabled={imaging}>공유</TextButton>
                 )}
-              </button>
+                {currentNote && <TextButton onClick={handleDelete} disabled={deleting || saving} danger>{deleting ? "삭제 중" : "삭제"}</TextButton>}
+                <button onClick={handleSave} disabled={saving || deleting}
+                  className="ml-auto px-4 py-2 rounded-lg text-[13px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+                  style={{ background: C.accent }}>
+                  {saving ? "저장 중" : saved ? "저장됨" : "저장"}
+                </button>
+              </div>
+            </div>
 
-              {open && (
-                <div className="px-5 pb-5">
-                  {/* 매출현황은 자동 집계만 본다 — 손으로 옮겨 적을 칸을 두지 않는다 */}
-                  {!writable ? (
-                    <RevenueBrief brief={brief} month={month} prevMonth={figPrevMonth}
-                      isMonthly={isMonthly} cur={curFigure} prevFig={prevFigure} />
-                  ) : (
-                    /* 지난 기간 · 이번 기간 · 다음 기간을 시간 순으로 가로 배치 */
-                    <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))" }}>
+            {error && (
+              <div className="px-6 py-2.5 text-[13px]" style={{ background: "#FFF5F5", color: "#E03131", borderBottom: `1px solid ${C.line}` }}>
+                {error}
+              </div>
+            )}
+
+            {/* 3개 축 + 기타 메모 — 매출현황은 화면 맨 위 자동 집계가 맡는다 */}
+            <div className="flex-1 overflow-y-auto">
+              {WRITABLE.map(axis => {
+                const entry = draftSections[axis.key];
+                // 직전 회의에 적은 그 기간의 현황 — 이번 회의의 전전주(전전월) 칸이 가리키는 바로 그 기간이다
+                const carry = prevSections[axis.key].current.trim();
+                const set = (field: keyof typeof entry, v: string) =>
+                  setDraftSections(p => ({ ...p, [axis.key]: { ...p[axis.key], [field]: v } }));
+                // 다시 가져올 때 이미 쓴 내용을 덮지 않도록 아래에 잇는다
+                const pullCarry = () => set("prev", entry.prev.trim() ? `${entry.prev.trimEnd()}\n\n${carry}` : carry);
+
+                return (
+                  <section key={axis.key} className="px-6 py-5" style={{ borderBottom: `1px solid ${C.line}` }}>
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-[15px] font-bold" style={{ color: C.ink }}>{axis.label}</span>
+                      <span className="text-xs truncate" style={{ color: C.faint }}>{axis.hint}</span>
+                      <span className="ml-auto flex items-center gap-1.5 text-xs shrink-0"
+                        style={{ color: axisFilled(axis.key) ? C.accent : C.faint }}>
+                        <Dot on={axisFilled(axis.key)} />
+                        {axisFilled(axis.key) ? "작성됨" : "미작성"}
+                      </span>
+                    </div>
+                    {/* 지난 기간 · 이번 기간 · 다음 기간을 시간 순으로 가로 배치 */}
+                    <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
                       <Field label={prevLabel} note="지난 기간"
                         placeholder={`${prev.label}에 적은 현황이 넘어옵니다\n그 뒤로 어떻게 됐는지 덧붙이세요`}
                         value={entry.prev} onChange={v => set("prev", v)}
                         action={carry
-                          ? <MiniButton onClick={pullCarry}>{prev.label}에서 가져오기</MiniButton>
-                          : <span className="text-xs" style={{ color: C.faint }}>가져올 내용 없음</span>} />
+                          ? <MiniButton onClick={pullCarry}>가져오기</MiniButton>
+                          : undefined} />
                       <Field label={nowLabel} note="현황"
                         placeholder={"현재 상태\n예) 수치, 진행 건, 이슈"}
                         value={entry.current} onChange={v => set("current", v)} />
@@ -674,24 +733,24 @@ export default function MeetingSection({ year, month, criteria, criteriaLabel }:
                         placeholder={`${isMonthly ? "다음 달" : "다음 주"}까지 할 일\n예) 담당 · 기한 · 목표 수치`}
                         value={entry.next} onChange={v => set("next", v)} />
                     </div>
-                  )}
-                </div>
-              )}
-            </section>
-          );
-        })}
+                  </section>
+                );
+              })}
 
-        {/* 기타 논의·메모 */}
-        <section className="px-5 py-4">
-          <p className="text-[15px] font-bold mb-1" style={{ color: C.ink }}>기타 논의 · 메모</p>
-          <p className="text-xs mb-2.5" style={{ color: C.faint }}>4개 축에 들어가지 않는 안건</p>
-          <textarea value={draftContent} onChange={e => setDraftContent(e.target.value)} rows={3}
-            placeholder="공지, 인사, 일정 등"
-            className="w-full px-3.5 py-2.5 text-sm rounded-lg outline-none border leading-relaxed transition-colors focus:border-[#3182F6] placeholder:text-[#8B95A1]"
-            style={{ borderColor: C.line, color: C.ink, resize: "vertical" }} />
-          <p className="text-xs mt-2" style={{ color: C.faint }}>⌘S / Ctrl+S 로 저장</p>
-        </section>
-      </div>
+              {/* 기타 논의·메모 */}
+              <section className="px-6 py-5">
+                <p className="text-[15px] font-bold mb-1" style={{ color: C.ink }}>기타 논의 · 메모</p>
+                <p className="text-xs mb-2.5" style={{ color: C.faint }}>3개 축에 들어가지 않는 안건</p>
+                <textarea value={draftContent} onChange={e => setDraftContent(e.target.value)} rows={3}
+                  placeholder="공지, 인사, 일정 등"
+                  className="w-full px-3.5 py-2.5 text-sm rounded-lg outline-none border leading-relaxed transition-colors focus:border-[#3182F6] placeholder:text-[#8B95A1]"
+                  style={{ borderColor: C.line, color: C.ink, resize: "vertical" }} />
+                <p className="text-xs mt-2" style={{ color: C.faint }}>⌘S / Ctrl+S 저장 · Esc 닫기</p>
+              </section>
+            </div>
+          </aside>
+        </>
+      )}
     </div>
   );
 }
@@ -701,29 +760,47 @@ function Dot({ on }: { on: boolean }) {
   return <span className="rounded-full shrink-0" style={{ width: 5, height: 5, background: on ? "#3182F6" : "#D1D6DB" }} />;
 }
 
-function Chevron({ open }: { open: boolean }) {
+function IconButton({ label, onClick, children }: { label: string; onClick: () => void; children: React.ReactNode }) {
   return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8B95A1" strokeWidth="2.5" strokeLinecap="round"
-      style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform .15s", flexShrink: 0 }}>
-      <polyline points="9 18 15 12 9 6" />
-    </svg>
+    <button onClick={onClick} aria-label={label} title={label}
+      className="w-8 h-8 flex items-center justify-center rounded-lg transition-colors hover:bg-slate-100 shrink-0">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6B7684" strokeWidth="2.5" strokeLinecap="round">{children}</svg>
+    </button>
   );
 }
 
-function MeetingTab({ label, active, filled, onClick }: {
-  label: string; active: boolean; filled: boolean; onClick: () => void;
+/**
+ * 달력 칸 안의 회의록 카드.
+ * 작성 전 회의도 점선 카드로 자리를 잡아 둔다 — 빈 칸이면 "이번 주 회의록을 어디서 쓰나"부터 찾게 된다.
+ */
+function MeetingCard({ title, filled, axes, author, active, onClick }: {
+  title: string; filled: boolean; axes: number; author: string; active: boolean; onClick: () => void;
 }) {
   return (
     <button onClick={onClick}
-      className="flex items-center gap-1.5 px-3 py-2.5 text-[13px] transition-colors"
+      className="w-full text-left rounded-lg px-2 py-1.5 transition-shadow hover:shadow-md min-w-0"
       style={{
-        color: active ? C.ink : C.muted,
-        fontWeight: active ? 700 : 500,
-        borderBottom: `2px solid ${active ? C.accent : "transparent"}`,
-        marginBottom: -1,
+        background: filled ? "#fff" : "transparent",
+        border: `1px ${filled || active ? "solid" : "dashed"} ${active ? C.accent : filled ? C.line : "#D1D6DB"}`,
+        boxShadow: active ? `0 0 0 2px ${C.accentSoft}` : filled ? "0 1px 2px rgba(0,0,0,.04)" : "none",
       }}>
-      {label}
-      <Dot on={filled} />
+      <p className="flex items-center gap-1 text-[13px] font-bold truncate" style={{ color: filled ? C.ink : C.faint }}>
+        {filled ? (
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8B95A1" strokeWidth="2" className="shrink-0">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
+          </svg>
+        ) : <span className="shrink-0">+</span>}
+        <span className="truncate">{title}</span>
+      </p>
+      {filled && (
+        <div className="flex items-center gap-1.5 mt-1 text-xs min-w-0" style={{ color: C.muted }}>
+          <span className="px-1.5 rounded shrink-0"
+            style={{ background: axes === WRITABLE.length ? C.accentSoft : C.soft, color: axes === WRITABLE.length ? C.accent : C.muted }}>
+            {axes}/{WRITABLE.length} 축
+          </span>
+          {author && <span className="truncate">{author}</span>}
+        </div>
+      )}
     </button>
   );
 }
