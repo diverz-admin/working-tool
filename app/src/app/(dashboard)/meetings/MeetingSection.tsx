@@ -24,6 +24,8 @@
  * 화면 구성: 매출현황(자동 집계)을 맨 위에 두고, 그 아래 달력에 회의록을 카드로 놓는다.
  *   주간회의 카드 — 그 주(달력 한 줄)의 월요일 칸. 월요일이 다른 달이면 그 주의 이번 달 첫날 칸.
  *   월간회의 카드 — 1일 칸.
+ *   회의일(meetingDate)을 적어 두면 그 날짜 칸으로 옮긴다 — 5주차 회의를 19일에 하는 식으로
+ *   달력 줄과 실제 회의일이 어긋나는 일이 잦아서다. 주차 이름은 그대로 둔다.
  * 카드를 누르면 오른쪽에 작성 패널이 열린다. 달력을 덮지 않아 다른 주를 바로 옮겨 탈 수 있다.
  *
  * 표현 원칙: 사람이 쓰는 영역에는 색을 쓰지 않는다.
@@ -46,6 +48,7 @@ import type { MeetingAxisKey, MeetingSections } from "@/db/schema";
 // ─── 타입 ─────────────────────────────────────────────────────
 export interface ReportNote {
   id: string; year: number; month: number; week: number | null; team: string;
+  meetingDate: string | null;
   content: string; sections: MeetingSections | null;
   authorName: string | null; createdAt?: string; updatedAt?: string;
 }
@@ -105,6 +108,23 @@ function weekRowsOf(y: number, m: number) {
   return Math.max(1, Math.ceil((firstDay + days) / 7));
 }
 
+const ymd = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+/**
+ * 회의일을 따로 적지 않았을 때 카드가 놓이는 날.
+ * 주간은 그 줄의 월요일 — 월요일이 다른 달이면 그 줄의 이번 달 안쪽 끝. 월간은 1일.
+ */
+function defaultMeetingDay(y: number, m: number, w: number | null) {
+  if (w === null) return 1;
+  const firstDay = new Date(y, m - 1, 1).getDay();
+  const days     = new Date(y, m, 0).getDate();
+  const startCol = w === 1 ? firstDay : 0;
+  const endCol   = Math.min(6, days - ((w - 1) * 7 - firstDay + 1));
+  const col      = Math.min(Math.max(1, startCol), endCol);
+  return (w - 1) * 7 + col - firstDay + 1;
+}
+
 function noteHasContent(n?: ReportNote | null) {
   if (!n) return false;
   if (n.content.trim()) return true;
@@ -157,6 +177,7 @@ export default function MeetingSection({ year, month, onMonthChange, criteria, c
   const [draftSections, setDraftSections] = useState<MeetingSections>(emptySections);
   const [draftContent,  setDraftContent]  = useState("");
   const [draftAuthor,   setDraftAuthor]   = useState("");
+  const [draftDate,     setDraftDate]     = useState("");
 
   const [saving,   setSaving]   = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -247,9 +268,10 @@ export default function MeetingSection({ year, month, onMonthChange, criteria, c
     setDraftSections(normalize(currentNote?.sections));
     setDraftContent(currentNote?.content ?? "");
     setDraftAuthor(currentNote?.authorName ?? "");
+    setDraftDate(currentNote?.meetingDate ?? ymd(new Date(year, month - 1, defaultMeetingDay(year, month, week))));
     setError(null);
     setSaved(false);
-  }, [loadKey, currentNote]);
+  }, [loadKey, currentNote, year, month, week]);
 
   /**
    * 직전 회의의 "전주(전월) 현황"을 이번 회의의 "전전주(전전월)" 칸으로 넘겨받는다.
@@ -280,12 +302,14 @@ export default function MeetingSection({ year, month, onMonthChange, criteria, c
     const saved0 = normalize(currentNote?.sections);
     if ((currentNote?.content ?? "") !== draftContent) return true;
     if ((currentNote?.authorName ?? "") !== draftAuthor) return true;
+    const savedDate = currentNote?.meetingDate ?? ymd(new Date(year, month - 1, defaultMeetingDay(year, month, week)));
+    if (savedDate !== draftDate) return true;
     return WRITABLE.some(a =>
       saved0[a.key].prev    !== draftSections[a.key].prev ||
       saved0[a.key].current !== draftSections[a.key].current ||
       saved0[a.key].next    !== draftSections[a.key].next
     );
-  }, [currentNote, draftSections, draftContent, draftAuthor]);
+  }, [currentNote, draftSections, draftContent, draftAuthor, draftDate, year, month, week]);
 
   /** 저장 안 된 내용이 있으면 확인 후 이동 */
   function switchTo(next: () => void) {
@@ -310,6 +334,7 @@ export default function MeetingSection({ year, month, onMonthChange, criteria, c
       body: JSON.stringify({
         year, month, week, team: noteTeam,
         sections: draftSections, content: draftContent, authorName: draftAuthor || null,
+        meetingDate: draftDate || null,
       }),
     });
     if (!res.ok) {
@@ -355,6 +380,7 @@ export default function MeetingSection({ year, month, onMonthChange, criteria, c
   /** 회의록 전문을 텍스트로 복사 — 메신저·메일 공유용 */
   async function handleCopy() {
     const lines: string[] = [`[${noteTeam}] ${year}년 ${fullLabel}`];
+    if (draftDate) lines.push(`회의일: ${draftDate.replaceAll("-", ".")}`);
     if (draftAuthor) lines.push(`작성자: ${draftAuthor}`);
     lines.push(`비교 기준: ${prev.label}`, "");
     for (const a of WRITABLE) {
@@ -530,6 +556,29 @@ export default function MeetingSection({ year, month, onMonthChange, criteria, c
   };
   const weeklyDone = weekNums.filter(w => meetingFilled(w)).length;
 
+  /**
+   * 달력 칸(줄·요일) → 그 칸에 놓을 회의 목록.
+   * 회의일이 보이는 달력 범위 밖이면(지난달 초 등) 기본 자리에 둔다 — 카드가 사라지면 안 된다.
+   */
+  const placements = useMemo(() => {
+    const gridStart = new Date(year, month - 1, 1 - firstDay).getTime();
+    const cells = weekRows * 7;
+    const map = new Map<number, (number | null)[]>();
+    const put = (w: number | null) => {
+      const n = notes.find(x => x.team === noteTeam && (w === null ? x.week === null : x.week === w));
+      let idx = -1;
+      if (n?.meetingDate) {
+        const [y, m, d] = n.meetingDate.split("-").map(Number);
+        idx = Math.round((new Date(y, m - 1, d).getTime() - gridStart) / 86_400_000);
+      }
+      if (idx < 0 || idx >= cells) idx = defaultMeetingDay(year, month, w) + firstDay - 1;
+      map.set(idx, [...(map.get(idx) ?? []), w]);
+    };
+    put(null);
+    weekNums.forEach(put);
+    return map;
+  }, [notes, noteTeam, year, month, firstDay, weekRows, weekNums]);
+
   // ── 렌더 ──
   return (
     <div className="space-y-4">
@@ -599,10 +648,6 @@ export default function MeetingSection({ year, month, onMonthChange, criteria, c
             </div>
 
             {weekNums.map(w => {
-              const startCol = w === 1 ? firstDay : 0;
-              const endCol   = Math.min(6, daysInMonth - ((w - 1) * 7 - firstDay + 1));
-              // 주간회의 카드 자리 — 월요일. 그 주의 월요일이 다른 달이면 이번 달 안쪽 끝으로 붙인다.
-              const weekCol  = Math.min(Math.max(1, startCol), endCol);
               return (
                 <div key={w} className="grid" style={{ gridTemplateColumns: "repeat(7, 1fr)", borderTop: `1px solid ${C.line}` }}>
                   {Array.from({ length: 7 }, (_, dow) => {
@@ -630,14 +675,10 @@ export default function MeetingSection({ year, month, onMonthChange, criteria, c
                             {day === 1 || (dow === 0 && w === 1) ? `${new Date(year, month - 1, day).getMonth() + 1}월 ${shown}일` : shown}
                           </span>
                         </div>
-                        {inMonth && day === 1 && (
-                          <MeetingCard title="월간회의" {...cardOf(null)}
-                            active={peek && isMonthly} onClick={() => openMeeting(null)} />
-                        )}
-                        {dow === weekCol && (
-                          <MeetingCard title={`${w}주차 주간회의`} {...cardOf(w)}
-                            active={peek && week === w} onClick={() => openMeeting(w)} />
-                        )}
+                        {(placements.get((w - 1) * 7 + dow) ?? []).map(mw => (
+                          <MeetingCard key={mw ?? "M"} title={mw === null ? "월간회의" : `${mw}주차 주간회의`} {...cardOf(mw)}
+                            active={peek && (mw === null ? isMonthly : week === mw)} onClick={() => openMeeting(mw)} />
+                        ))}
                       </div>
                     );
                   })}
@@ -671,6 +712,12 @@ export default function MeetingSection({ year, month, onMonthChange, criteria, c
                 <IconButton label="닫기" onClick={closePeek}><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></IconButton>
               </div>
               <div className="flex items-center gap-2 flex-wrap mt-3">
+                <label className="flex items-center gap-1.5 text-[13px]" style={{ color: C.muted }}>
+                  회의일
+                  <input type="date" value={draftDate} onChange={e => setDraftDate(e.target.value)}
+                    className="px-2.5 py-1.5 text-[13px] rounded-lg outline-none border transition-colors focus:border-[#3182F6]"
+                    style={{ borderColor: C.line, color: C.ink }} />
+                </label>
                 <input value={draftAuthor} onChange={e => setDraftAuthor(e.target.value)} placeholder="작성자"
                   className="px-3 py-2 text-[13px] rounded-lg outline-none border transition-colors focus:border-[#3182F6] placeholder:text-[#8B95A1]"
                   style={{ borderColor: C.line, color: C.ink, width: 92 }} />

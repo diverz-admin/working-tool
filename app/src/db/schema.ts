@@ -444,6 +444,7 @@ export const reportMeetings = pgTable("report_meetings", {
   year:       integer("year").notNull(),
   month:      integer("month").notNull(),
   week:       integer("week"),             // null = 월간, 1~5 = 주간
+  meetingDate: date("meeting_date"),       // 실제 회의한 날. null이면 달력에서 그 주 월요일(월간은 1일)에 놓는다
   team:       text("team").notNull().default("전체"),
   content:    text("content").notNull().default(""),   // 기타 논의·메모 (구버전 자유 서술도 여기에 남는다)
   sections:   jsonb("sections").$type<MeetingSections>(),  // 4대 축 기록. null = 구버전 회의록

@@ -44,6 +44,9 @@ export async function POST(req: NextRequest) {
   if (!year || !month || !team) return NextResponse.json({ error: "필수값 누락" }, { status: 400 });
 
   const sections = normalizeSections(body.sections);
+  // 회의일은 YYYY-MM-DD만 받는다. 비우면 달력 기본 자리로 돌아간다
+  const meetingDate = typeof body.meetingDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.meetingDate)
+    ? body.meetingDate : null;
 
   // week NULL/숫자 모두 처리 — UNIQUE(year, month, week, team) upsert
   const weekVal = week ?? null;
@@ -60,7 +63,7 @@ export async function POST(req: NextRequest) {
 
   if (existing.length > 0) {
     const [row] = await db.update(reportMeetings)
-      .set({ content: content ?? "", sections, authorName: authorName || null, updatedAt: new Date() })
+      .set({ content: content ?? "", sections, meetingDate, authorName: authorName || null, updatedAt: new Date() })
       .where(eq(reportMeetings.id, existing[0].id))
       .returning();
     return NextResponse.json({ note: row });
@@ -70,6 +73,7 @@ export async function POST(req: NextRequest) {
     year, month, week: weekVal, team,
     content: content ?? "",
     sections,
+    meetingDate,
     authorName: authorName || null,
   }).returning();
   return NextResponse.json({ note: row }, { status: 201 });
