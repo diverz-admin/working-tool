@@ -448,6 +448,7 @@ export const reportMeetings = pgTable("report_meetings", {
   team:       text("team").notNull().default("전체"),
   content:    text("content").notNull().default(""),   // 기타 논의·메모 (구버전 자유 서술도 여기에 남는다)
   sections:   jsonb("sections").$type<MeetingSections>(),  // 4대 축 기록. null = 구버전 회의록
+  members:    jsonb("members").$type<MeetingMembers>(),    // 멤버별 한 일·할 일·이슈. null = 멤버 기록 없음
   authorName: text("author_name"),
   createdAt:  timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt:  timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -467,6 +468,15 @@ export const chatMentions = pgTable("chat_mentions", {
 
 export type ChatMention = typeof chatMentions.$inferSelect;
 
+/**
+ * 회의록 멤버별 기록 — 이름을 키로 둔다(projects.assigned_person과 같은 값).
+ *   done  — 지난 기간에 한 일. 직전 회의의 todo가 넘어와 그 결과를 덧붙인다
+ *   todo  — 이번 기간에 할 일
+ *   issue — 이슈 · 지원 요청
+ */
+export type MeetingMemberEntry = { done: string; todo: string; issue: string };
+export type MeetingMembers = Record<string, MeetingMemberEntry>;
+
 export const kpiTargets = pgTable("kpi_targets", {
   id:     uuid("id").primaryKey().defaultRandom(),
   year:   integer("year").notNull(),
@@ -478,6 +488,24 @@ export const kpiTargets = pgTable("kpi_targets", {
 });
 
 export type KpiTarget = typeof kpiTargets.$inferSelect;
+
+/**
+ * 멤버별 월 매출 KPI. 팀 KPI(kpi_targets)와 따로 둔다 —
+ * 같은 테이블에 넣으면 "전체" 목표를 팀 행 합으로 구하는 집계에 멤버 목표가 섞여 두 번 더해진다.
+ */
+export const memberKpiTargets = pgTable("member_kpi_targets", {
+  id:         uuid("id").primaryKey().defaultRandom(),
+  year:       integer("year").notNull(),
+  month:      integer("month").notNull(),   // 1-12
+  memberName: text("member_name").notNull(), // users.name = projects.assigned_person
+  target:     integer("target").notNull(),
+  createdAt:  timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:  timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  unique("member_kpi_targets_year_month_member_key").on(table.year, table.month, table.memberName),
+]);
+
+export type MemberKpiTarget = typeof memberKpiTargets.$inferSelect;
 
 export const userTodos = pgTable("user_todos", {
   id:        uuid("id").primaryKey().defaultRandom(),

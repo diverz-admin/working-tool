@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { reportMeetings, type MeetingSections } from "@/db/schema";
 import { eq, and, or, isNull } from "drizzle-orm";
-import { normalizeMeetingSections, meetingSectionsAreEmpty } from "@/lib/meeting-sections";
+import { normalizeMeetingSections, meetingSectionsAreEmpty, normalizeMeetingMembers } from "@/lib/meeting-sections";
 
 /** 클라이언트가 보낸 sections를 4축 × 자유 서술로 정규화한다. 전부 비면 null(구버전과 동일 취급). */
 function normalizeSections(raw: unknown): MeetingSections | null {
@@ -44,6 +44,8 @@ export async function POST(req: NextRequest) {
   if (!year || !month || !team) return NextResponse.json({ error: "필수값 누락" }, { status: 400 });
 
   const sections = normalizeSections(body.sections);
+  const memberMap = normalizeMeetingMembers(body.members);
+  const members = Object.keys(memberMap).length ? memberMap : null;
   // 회의일은 YYYY-MM-DD만 받는다. 비우면 달력 기본 자리로 돌아간다
   const meetingDate = typeof body.meetingDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.meetingDate)
     ? body.meetingDate : null;
@@ -63,7 +65,7 @@ export async function POST(req: NextRequest) {
 
   if (existing.length > 0) {
     const [row] = await db.update(reportMeetings)
-      .set({ content: content ?? "", sections, meetingDate, authorName: authorName || null, updatedAt: new Date() })
+      .set({ content: content ?? "", sections, members, meetingDate, authorName: authorName || null, updatedAt: new Date() })
       .where(eq(reportMeetings.id, existing[0].id))
       .returning();
     return NextResponse.json({ note: row });
@@ -73,6 +75,7 @@ export async function POST(req: NextRequest) {
     year, month, week: weekVal, team,
     content: content ?? "",
     sections,
+    members,
     meetingDate,
     authorName: authorName || null,
   }).returning();

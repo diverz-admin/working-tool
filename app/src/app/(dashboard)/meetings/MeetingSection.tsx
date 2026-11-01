@@ -28,6 +28,10 @@
  *   달력 줄과 실제 회의일이 어긋나는 일이 잦아서다. 주차 이름은 그대로 둔다.
  * 카드를 누르면 오른쪽에 작성 패널이 열린다. 달력을 덮지 않아 다른 주를 바로 옮겨 탈 수 있다.
  *
+ * 멤버별 KPI: 인원이 적은 지금은 팀 숫자보다 "누가 이번 달 얼마를 책임지나"가 회의의 중심이다.
+ *   매출현황 아래 보드 — 멤버별 월 목표(직접 입력) · 실적 · 예상 · 운영중 건수 (자동 집계)
+ *   작성 패널 맨 위   — 멤버별 한 일 · 할 일 · 이슈. 직전 회의의 "할 일"이 이번 회의의 "한 일"로 넘어온다.
+ *
  * 표현 원칙: 사람이 쓰는 영역에는 색을 쓰지 않는다.
  * 축마다 색을 주면 네 색이 서로 경쟁해서 정작 읽어야 할 본문이 묻힌다.
  * 축 구분은 여백과 굵기로 하고, 파랑은 "지금 선택된 것"과 "저장"에만 쓴다.
@@ -40,23 +44,32 @@ import { fetchJson, saveErrorMessage } from "@/lib/fetch-json";
 import { TEAM_FILTERS } from "@/lib/teams";
 import {
   normalizeMeetingSections, meetingSectionsAreEmpty, axisHasText, MEETING_WRITABLE_AXIS_KEYS,
+  normalizeMeetingMembers, memberHasText, emptyMemberEntry,
 } from "@/lib/meeting-sections";
 import {
   briefStats, briefText, briefProgress, briefActiveProjects, wonExact, splitGuaranteed, GUARANTEE_RANK, BRIEF_TONE,
   type RevenueBriefData, type GuaranteedRank,
 } from "@/lib/meeting-brief";
 import { renderMeetingImage } from "@/lib/meeting-image";
-import type { MeetingAxisKey, MeetingSections } from "@/db/schema";
+import type { MeetingAxisKey, MeetingSections, MeetingMembers, MeetingMemberEntry } from "@/db/schema";
 
 // ─── 타입 ─────────────────────────────────────────────────────
 export interface ReportNote {
   id: string; year: number; month: number; week: number | null; team: string;
   meetingDate: string | null;
   content: string; sections: MeetingSections | null;
+  /** 배포 전에 저장된 회의록에는 필드가 없을 수 있다 */
+  members?: MeetingMembers | null;
   authorName: string | null; createdAt?: string; updatedAt?: string;
 }
 
 interface MonthFigure { month: number; revenue: number; cost: number; margin: number; marginRate: number; count: number }
+/** /api/member-kpi 응답의 한 사람 */
+interface MemberKpi {
+  name: string; team: string | null;
+  target: number | null; revenue: number; forecast: number; active: number;
+}
+
 interface FiguresSource { monthly: MonthFigure[]; teams: { team: string; monthly: MonthFigure[] }[] }
 
 // ─── 상수 ─────────────────────────────────────────────────────
@@ -131,6 +144,7 @@ function defaultMeetingDay(y: number, m: number, w: number | null) {
 function noteHasContent(n?: ReportNote | null) {
   if (!n) return false;
   if (n.content.trim()) return true;
+  if (Object.values(normalizeMeetingMembers(n.members)).some(memberHasText)) return true;
   if (!n.sections) return false;
   return !meetingSectionsAreEmpty(normalize(n.sections));
 }
@@ -151,6 +165,19 @@ function findPrevNote(pool: ReportNote[], m: number, w: number | null, team: str
 }
 
 const ZERO_FIGURE: MonthFigure = { month: 0, revenue: 0, cost: 0, margin: 0, marginRate: 0, count: 0 };
+
+/** 목표 대비 달성률(%). 목표가 없으면 null */
+const achieveRate = (m: MemberKpi) => (m.target ? (m.revenue / m.target) * 100 : null);
+
+/** 멤버 KPI 한 줄 — 복사 텍스트·공유 이미지·패널이 같은 문장을 쓴다 */
+function memberSummary(m: MemberKpi | undefined) {
+  if (!m) return "매출 집계 없음";
+  const rate = achieveRate(m);
+  const base = m.target
+    ? `실적 ${wonExact(m.revenue)} / 목표 ${wonExact(m.target)} · ${rate!.toFixed(0)}%`
+    : `실적 ${wonExact(m.revenue)} · 목표 미설정`;
+  return `${base} · 예상 ${wonExact(m.forecast)} · 운영중 ${m.active}건`;
+}
 
 /** 팀별 월 실적. 팀이 집계에 없으면 실적이 없다는 뜻이므로 0으로 본다. */
 function pickFigure(src: FiguresSource | null, team: string, m: number): MonthFigure | null {
@@ -181,6 +208,7 @@ export default function MeetingSection({ year, month, onMonthChange, criteria, c
   const [draftContent,  setDraftContent]  = useState("");
   const [draftAuthor,   setDraftAuthor]   = useState("");
   const [draftDate,     setDraftDate]     = useState("");
+  const [draftMembers,  setDraftMembers]  = useState<MeetingMembers>({});
 
   const [saving,   setSaving]   = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -261,6 +289,8 @@ export default function MeetingSection({ year, month, onMonthChange, criteria, c
   const prev = findPrevNote(prevRef.fromPrevMonth ? prevNotes : notes, prevRef.m, prevRef.w, noteTeam);
 
   const prevSections = normalize(prev.note?.sections);
+  const prevMembersRaw = prev.note?.members;
+  const prevMembers = useMemo(() => normalizeMeetingMembers(prevMembersRaw), [prevMembersRaw]);
 
   // ── 선택/팀 변경 시 draft 재적재 ──
   const loadKey = `${noteTeam}|${week ?? "M"}|${currentNote?.id ?? "new"}`;
@@ -270,6 +300,7 @@ export default function MeetingSection({ year, month, onMonthChange, criteria, c
     loadedRef.current = loadKey;
     setDraftSections(normalize(currentNote?.sections));
     setDraftContent(currentNote?.content ?? "");
+    setDraftMembers(normalizeMeetingMembers(currentNote?.members));
     setDraftAuthor(currentNote?.authorName ?? "");
     setDraftDate(currentNote?.meetingDate ?? ymd(new Date(year, month - 1, defaultMeetingDay(year, month, week))));
     setError(null);
@@ -299,7 +330,19 @@ export default function MeetingSection({ year, month, onMonthChange, criteria, c
       }
       return changed ? out : p;
     });
-  }, [loadKey, prev.note, prevSections]);
+    // 멤버는 직전 회의의 "할 일"이 이번 회의의 "한 일"이 된다 — 계획대로 됐는지 점검하는 자리다
+    setDraftMembers(p => {
+      let changed = false;
+      const out = { ...p };
+      for (const [name, e] of Object.entries(prevMembers)) {
+        const carry = e.todo.trim();
+        if (!carry || p[name]?.done.trim()) continue;
+        out[name] = { ...(p[name] ?? emptyMemberEntry()), done: carry };
+        changed = true;
+      }
+      return changed ? out : p;
+    });
+  }, [loadKey, prev.note, prevSections, prevMembers]);
 
   const dirty = useMemo(() => {
     const saved0 = normalize(currentNote?.sections);
@@ -307,12 +350,13 @@ export default function MeetingSection({ year, month, onMonthChange, criteria, c
     if ((currentNote?.authorName ?? "") !== draftAuthor) return true;
     const savedDate = currentNote?.meetingDate ?? ymd(new Date(year, month - 1, defaultMeetingDay(year, month, week)));
     if (savedDate !== draftDate) return true;
+    if (!sameMembers(normalizeMeetingMembers(currentNote?.members), normalizeMeetingMembers(draftMembers))) return true;
     return WRITABLE.some(a =>
       saved0[a.key].prev    !== draftSections[a.key].prev ||
       saved0[a.key].current !== draftSections[a.key].current ||
       saved0[a.key].next    !== draftSections[a.key].next
     );
-  }, [currentNote, draftSections, draftContent, draftAuthor, draftDate, year, month, week]);
+  }, [currentNote, draftSections, draftContent, draftAuthor, draftDate, draftMembers, year, month, week]);
 
   /** 저장 안 된 내용이 있으면 확인 후 이동 */
   function switchTo(next: () => void) {
@@ -326,6 +370,8 @@ export default function MeetingSection({ year, month, onMonthChange, criteria, c
   const prevLabel = isMonthly ? "전전월" : "전전주";
   const nowLabel  = isMonthly ? "전월" : "전주";
   const nextLabel = isMonthly ? "당월" : "금주";
+  const doneLabel = isMonthly ? "전월 한 일" : "전주 한 일";
+  const todoLabel = isMonthly ? "당월 할 일" : "금주 할 일";
 
   // ── 저장 / 삭제 ──
   async function handleSave() {
@@ -336,7 +382,7 @@ export default function MeetingSection({ year, month, onMonthChange, criteria, c
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         year, month, week, team: noteTeam,
-        sections: draftSections, content: draftContent, authorName: draftAuthor || null,
+        sections: draftSections, members: draftMembers, content: draftContent, authorName: draftAuthor || null,
         meetingDate: draftDate || null,
       }),
     });
@@ -373,6 +419,7 @@ export default function MeetingSection({ year, month, onMonthChange, criteria, c
       setNotes(p => p.filter(n => n.id !== delId));
       loadedRef.current = "";
       setDraftSections(emptySections());
+      setDraftMembers({});
       setDraftContent("");
     } else {
       setError("삭제에 실패했습니다.");
@@ -386,6 +433,17 @@ export default function MeetingSection({ year, month, onMonthChange, criteria, c
     if (draftDate) lines.push(`회의일: ${draftDate.replaceAll("-", ".")}`);
     if (draftAuthor) lines.push(`작성자: ${draftAuthor}`);
     lines.push(`비교 기준: ${prev.label}`, "");
+    if (panelMembers.length) {
+      lines.push("■ 멤버별 KPI · 할 일");
+      for (const name of panelMembers) {
+        const e = draftMembers[name];
+        lines.push(`● ${name} — ${memberSummary(memberKpiOf(name))}`);
+        if (e?.done.trim())  lines.push(`  [${doneLabel}]\n${e.done.trim()}`);
+        if (e?.todo.trim())  lines.push(`  [${todoLabel}]\n${e.todo.trim()}`);
+        if (e?.issue.trim()) lines.push(`  [이슈 · 지원 요청]\n${e.issue.trim()}`);
+      }
+      lines.push("");
+    }
     for (const a of WRITABLE) {
       const e = draftSections[a.key];
       if (!axisHasText(e)) continue;
@@ -433,6 +491,16 @@ export default function MeetingSection({ year, month, onMonthChange, criteria, c
         projects: brief ? { counts: briefActiveProjects(brief), asOfDay: brief.asOfDay } : null,
         kpi:   brief ? briefProgress(brief, isMonthly) : null,
         trend: curFig ? { year, values: yearRevenues, highlight: month } : null,
+        members: {
+          doneLabel, todoLabel,
+          // 목표도 기록도 없는 사람(매출과 무관한 멤버)은 이미지에 싣지 않는다
+          list: panelMembers
+            .filter(n => memberHasText(draftMembers[n]) || !!memberKpiOf(n)?.target)
+            .map(n => ({
+              name: n, summary: memberSummary(memberKpiOf(n)),
+              done: draftMembers[n]?.done ?? "", todo: draftMembers[n]?.todo ?? "", issue: draftMembers[n]?.issue ?? "",
+            })),
+        },
         axes:  WRITABLE.map(a => ({
           label:   a.label,
           prev:    draftSections[a.key].prev,
@@ -494,6 +562,30 @@ export default function MeetingSection({ year, month, onMonthChange, criteria, c
     return () => { alive = false; };
   }, [briefKey, year, month, noteTeam, criteria, asOfDate]);
   const brief = briefState?.key === briefKey ? briefState.data : null;
+
+  // ── 멤버별 KPI ── 목표를 고치면 다시 받는다(tick)
+  const [memberTick, setMemberTick] = useState(0);
+  const [memberState, setMemberState] = useState<{ key: string; data: MemberKpi[] } | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const p = new URLSearchParams({ year: String(year), month: String(month), team: noteTeam, criteria, asOf: asOfDate });
+    fetchJson<{ members: MemberKpi[] }>(`/api/member-kpi?${p}`)
+      .then(d => { if (alive) setMemberState({ key: briefKey, data: d.members ?? [] }); })
+      .catch(() => { /* 집계 실패 시 보드만 비운다 */ });
+    return () => { alive = false; };
+  }, [briefKey, year, month, noteTeam, criteria, asOfDate, memberTick]);
+  const memberKpis = memberState?.key === briefKey ? memberState.data : null;
+  const memberKpiOf = (name: string) => memberKpis?.find(m => m.name === name);
+
+  /**
+   * 패널에 칸을 여는 멤버 — 지금 팀의 활성 멤버 + 이 회의록에 이미 기록이 있는 사람.
+   * 퇴사·팀 이동으로 목록에서 빠진 사람의 기록이 화면에서 사라지면 안 된다.
+   */
+  const panelMembers = useMemo(() => {
+    const names = (memberKpis ?? []).map(m => m.name);
+    for (const n of Object.keys(draftMembers)) if (!names.includes(n) && memberHasText(draftMembers[n])) names.push(n);
+    return names;
+  }, [memberKpis, draftMembers]);
 
   // ── 매출 자동 수치 ──
   // 매출 집계는 월 단위밖에 없다. 주간회의에서도 "전주 대비"인 척하지 않고 당월 vs 전월로 고정한다.
@@ -614,6 +706,18 @@ export default function MeetingSection({ year, month, onMonthChange, criteria, c
         </div>
         <RevenueBrief brief={brief} month={month} prevMonth={figPrevMonth}
           isMonthly={isMonthly} cur={curFigure} prevFig={prevFigure} />
+      </section>
+
+      {/* 멤버별 매출 KPI — 목표는 여기서 바로 고친다. 월 단위라 주간회의마다 다시 적지 않는다 */}
+      <section className="rounded-2xl p-5" style={{ background: "#fff", border: `1px solid ${C.line}` }}>
+        <div className="flex items-baseline gap-2 mb-3 flex-wrap">
+          <h2 className="text-[15px] font-bold" style={{ color: C.ink }}>멤버별 매출 KPI</h2>
+          <span className="text-xs" style={{ color: C.faint }}>
+            {noteTeam} · {month}월 전체 · {criteriaLabel} · 프로젝트 담당자 기준
+          </span>
+        </div>
+        <MemberKpiBoard members={memberKpis} year={year} month={month}
+          onSaved={() => setMemberTick(t => t + 1)} />
       </section>
 
       {/* 달력 */}
@@ -748,6 +852,53 @@ export default function MeetingSection({ year, month, onMonthChange, criteria, c
 
             {/* 3개 축 + 기타 메모 — 매출현황은 화면 맨 위 자동 집계가 맡는다 */}
             <div className="flex-1 overflow-y-auto">
+              {/* 멤버별 KPI · 할 일 — 지금은 사람 단위 매출이 회의의 중심이라 축보다 먼저 둔다 */}
+              <section className="px-6 py-5" style={{ borderBottom: `1px solid ${C.line}` }}>
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-[15px] font-bold" style={{ color: C.ink }}>멤버별 KPI · 할 일</span>
+                  <span className="text-xs truncate" style={{ color: C.faint }}>
+                    {prev.label}의 할 일이 {doneLabel} 칸으로 넘어옵니다
+                  </span>
+                </div>
+                {panelMembers.length === 0 ? (
+                  <p className="text-[13px] px-3.5 py-3 rounded-lg" style={{ background: C.soft, color: C.muted }}>
+                    {memberKpis ? `${noteTeam}에 활성 멤버가 없습니다` : "멤버 목록을 불러오는 중입니다"}
+                  </p>
+                ) : (
+                  <div className="space-y-4">
+                    {panelMembers.map(name => {
+                      const e = draftMembers[name] ?? emptyMemberEntry();
+                      const kpi = memberKpiOf(name);
+                      const carry = prevMembers[name]?.todo.trim() ?? "";
+                      const set = (field: keyof MeetingMemberEntry, v: string) =>
+                        setDraftMembers(p => ({ ...p, [name]: { ...(p[name] ?? emptyMemberEntry()), [field]: v } }));
+                      const pullCarry = () => set("done", e.done.trim() ? `${e.done.trimEnd()}\n\n${carry}` : carry);
+                      return (
+                        <div key={name} className="rounded-xl p-4" style={{ border: `1px solid ${C.line}` }}>
+                          <div className="flex items-center gap-3 mb-3 flex-wrap">
+                            <span className="text-[15px] font-bold" style={{ color: C.ink }}>{name}</span>
+                            {kpi?.team && <span className="text-xs" style={{ color: C.faint }}>{kpi.team}</span>}
+                            <MemberProgress m={kpi} />
+                          </div>
+                          <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
+                            <Field label={doneLabel} note="결과 점검" rows={4}
+                              placeholder={`${prev.label}에 적은 할 일이 넘어옵니다\n어떻게 됐는지 덧붙이세요`}
+                              value={e.done} onChange={v => set("done", v)}
+                              action={carry ? <MiniButton onClick={pullCarry}>가져오기</MiniButton> : undefined} />
+                            <Field label={todoLabel} note="계획" rows={4}
+                              placeholder={"KPI를 채우기 위해 할 일\n예) 미팅 2건 · 견적 발송 · 재계약 제안"}
+                              value={e.todo} onChange={v => set("todo", v)} />
+                            <Field label="이슈" note="지원 요청" rows={4}
+                              placeholder={"막힌 일, 도움이 필요한 일"}
+                              value={e.issue} onChange={v => set("issue", v)} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+
               {WRITABLE.map(axis => {
                 const entry = draftSections[axis.key];
                 // 직전 회의에 적은 그 기간의 현황 — 이번 회의의 전전주(전전월) 칸이 가리키는 바로 그 기간이다
@@ -805,7 +956,171 @@ export default function MeetingSection({ year, month, onMonthChange, criteria, c
   );
 }
 
+/** 멤버 기록 두 벌이 같은지 — 빈 칸만 있는 멤버는 normalize 단계에서 빠진다 */
+function sameMembers(a: MeetingMembers, b: MeetingMembers) {
+  const ka = Object.keys(a), kb = Object.keys(b);
+  if (ka.length !== kb.length) return false;
+  return ka.every(k => b[k] && a[k].done === b[k].done && a[k].todo === b[k].todo && a[k].issue === b[k].issue);
+}
+
 // ─── 하위 컴포넌트 ────────────────────────────────────────────
+/** 달성률 막대 — 100%를 넘으면 초록, 목표가 없으면 그리지 않는다 */
+function RateBar({ rate, width = 120 }: { rate: number | null; width?: number }) {
+  if (rate === null) return null;
+  const done = rate >= 100;
+  return (
+    <span className="flex items-center gap-1.5 shrink-0">
+      <span className="h-1.5 rounded-full overflow-hidden" style={{ width, background: "#EEF0F3" }}>
+        <span className="block h-full rounded-full"
+          style={{ width: `${Math.min(100, rate)}%`, background: done ? "#40C057" : K.actual.fg }} />
+      </span>
+      <b className="text-xs tabular-nums" style={{ color: done ? "#2B8A3E" : K.actual.fg }}>{rate.toFixed(0)}%</b>
+    </span>
+  );
+}
+
+/** 패널 멤버 머리말 옆 — 실적/목표와 달성률만 짧게 */
+function MemberProgress({ m }: { m: MemberKpi | undefined }) {
+  if (!m) return null;
+  return (
+    <span className="ml-auto flex items-center gap-3 text-xs flex-wrap" style={{ color: C.muted }}>
+      <span className="tabular-nums">
+        실적 <b style={{ color: C.ink }}>{wonExact(m.revenue)}</b>
+        {" / "}목표 {m.target ? <b style={{ color: K.target.fg }}>{wonExact(m.target)}</b> : <span style={{ color: C.faint }}>미설정</span>}
+      </span>
+      <RateBar rate={achieveRate(m)} width={90} />
+    </span>
+  );
+}
+
+/**
+ * 멤버별 매출 KPI 보드.
+ * 목표만 사람이 적고 나머지는 자동 집계다 — 목표 칸만 입력창 모양을 하고, 나머지는 색 있는 숫자로 둔다.
+ */
+function MemberKpiBoard({ members, year, month, onSaved }: {
+  members: MemberKpi[] | null; year: number; month: number; onSaved: () => void;
+}) {
+  const [error, setError] = useState<string | null>(null);
+
+  if (!members) {
+    return (
+      <div className="rounded-lg px-3.5 py-3 text-[13px]" style={{ background: C.soft, color: C.muted }}>
+        멤버별 집계를 불러오는 중입니다.
+      </div>
+    );
+  }
+  if (members.length === 0) {
+    return (
+      <div className="rounded-lg px-3.5 py-3 text-[13px]" style={{ background: C.soft, color: C.muted }}>
+        이 팀에 활성 멤버가 없습니다.
+      </div>
+    );
+  }
+
+  async function saveTarget(member: string, target: number) {
+    setError(null);
+    const res = await fetch("/api/member-kpi", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ year, month, member, target }),
+    });
+    if (!res.ok) { setError(await saveErrorMessage(res)); return; }
+    onSaved();
+  }
+
+  const sum = (f: (m: MemberKpi) => number) => members.reduce((s, m) => s + f(m), 0);
+  const totalTarget = sum(m => m.target ?? 0);
+  const totalRevenue = sum(m => m.revenue);
+  const head = "text-xs font-semibold px-3 py-2 text-right whitespace-nowrap";
+
+  return (
+    <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${C.line}` }}>
+      <div className="overflow-x-auto">
+        <table className="w-full text-[13px]" style={{ minWidth: 720 }}>
+          <thead style={{ background: C.soft, color: C.muted }}>
+            <tr>
+              <th className={head} style={{ textAlign: "left" }}>멤버</th>
+              <th className={head} style={{ color: K.target.fg }}>{month}월 KPI</th>
+              <th className={head} style={{ color: K.actual.fg }}>실적</th>
+              <th className={head} style={{ textAlign: "left" }}>달성률</th>
+              <th className={head}>남은 금액</th>
+              <th className={head} style={{ color: K.forecast.fg }}>수주 예상</th>
+              <th className={head}>운영중</th>
+            </tr>
+          </thead>
+          <tbody>
+            {members.map(m => (
+              <tr key={m.name} style={{ borderTop: `1px solid ${C.line}` }}>
+                <td className="px-3 py-2.5 whitespace-nowrap">
+                  <b style={{ color: C.ink }}>{m.name}</b>
+                  {m.team && <span className="text-xs ml-1.5" style={{ color: C.faint }}>{m.team}</span>}
+                </td>
+                <td className="px-3 py-1.5 text-right">
+                  <TargetInput key={`${year}-${month}-${m.name}-${m.target ?? 0}`} value={m.target}
+                    onCommit={v => saveTarget(m.name, v)} />
+                </td>
+                <td className="px-3 py-2.5 text-right tabular-nums font-bold" style={{ color: C.ink }}>{wonExact(m.revenue)}</td>
+                <td className="px-3 py-2.5">
+                  {m.target ? <RateBar rate={achieveRate(m)} /> : <span className="text-xs" style={{ color: C.faint }}>목표 미설정</span>}
+                </td>
+                <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: C.muted }}>
+                  {m.target ? wonExact(Math.max(0, m.target - m.revenue)) : "–"}
+                </td>
+                <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: C.body }}>{wonExact(m.forecast)}</td>
+                <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: C.body }}>{m.active}건</td>
+              </tr>
+            ))}
+          </tbody>
+          {members.length > 1 && (
+            <tfoot style={{ background: C.soft, borderTop: `1px solid ${C.line}` }}>
+              <tr>
+                <td className="px-3 py-2.5 text-xs font-bold" style={{ color: C.muted }}>합계</td>
+                <td className="px-3 py-2.5 text-right tabular-nums font-bold" style={{ color: K.target.fg }}>
+                  {totalTarget ? wonExact(totalTarget) : "–"}
+                </td>
+                <td className="px-3 py-2.5 text-right tabular-nums font-bold" style={{ color: C.ink }}>{wonExact(totalRevenue)}</td>
+                <td className="px-3 py-2.5">
+                  {totalTarget > 0 && <RateBar rate={(totalRevenue / totalTarget) * 100} />}
+                </td>
+                <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: C.muted }}>
+                  {totalTarget ? wonExact(Math.max(0, totalTarget - totalRevenue)) : "–"}
+                </td>
+                <td className="px-3 py-2.5 text-right tabular-nums font-bold" style={{ color: C.body }}>{wonExact(sum(m => m.forecast))}</td>
+                <td className="px-3 py-2.5 text-right tabular-nums font-bold" style={{ color: C.body }}>{sum(m => m.active)}건</td>
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
+      {error && <p className="px-3 py-2 text-[13px]" style={{ color: "#E03131", borderTop: `1px solid ${C.line}` }}>{error}</p>}
+    </div>
+  );
+}
+
+/** 목표 금액 입력 — 쉼표를 붙여 보여주고, 칸을 벗어나거나 Enter를 누르면 저장한다 */
+function TargetInput({ value, onCommit }: { value: number | null; onCommit: (v: number) => void }) {
+  const [text, setText] = useState(value ? value.toLocaleString() : "");
+  const commit = () => {
+    const n = parseInt(text.replace(/[^0-9]/g, ""), 10) || 0;
+    if (n === (value ?? 0)) return;
+    onCommit(n);
+  };
+  return (
+    <span className="inline-flex items-center gap-1">
+      <input value={text} inputMode="numeric" placeholder="목표 입력"
+        onChange={e => {
+          const digits = e.target.value.replace(/[^0-9]/g, "");
+          setText(digits ? Number(digits).toLocaleString() : "");
+        }}
+        onBlur={commit}
+        onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+        className="w-32 px-2 py-1 text-right text-[13px] tabular-nums rounded-md outline-none border transition-colors focus:border-[#3182F6] placeholder:text-[#8B95A1]"
+        style={{ borderColor: C.line, color: C.ink }} />
+      <span className="text-xs" style={{ color: C.faint }}>원</span>
+    </span>
+  );
+}
+
 function Dot({ on }: { on: boolean }) {
   return <span className="rounded-full shrink-0" style={{ width: 5, height: 5, background: on ? "#3182F6" : "#D1D6DB" }} />;
 }

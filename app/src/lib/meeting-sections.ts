@@ -1,4 +1,4 @@
-import type { MeetingAxisKey, MeetingAxisEntry, MeetingSections } from "@/db/schema";
+import type { MeetingAxisKey, MeetingAxisEntry, MeetingSections, MeetingMemberEntry, MeetingMembers } from "@/db/schema";
 
 /** 회의록 4대 축. 화면(meetings)의 AXES 목록과 순서를 맞춰 둔다. */
 export const MEETING_AXIS_KEYS: MeetingAxisKey[] = ["revenue", "operation", "sales", "marketing"];
@@ -45,4 +45,25 @@ export function axisHasText(e: MeetingAxisEntry): boolean {
 /** 쓸 수 있는 축이 전부 비었는지 — 비었으면 저장할 때 null로 떨어뜨린다. */
 export function meetingSectionsAreEmpty(s: MeetingSections): boolean {
   return MEETING_WRITABLE_AXIS_KEYS.every(k => !axisHasText(s[k]));
+}
+
+// ─── 멤버별 기록 ──────────────────────────────────────────────
+
+export const emptyMemberEntry = (): MeetingMemberEntry => ({ done: "", todo: "", issue: "" });
+
+export function memberHasText(e?: MeetingMemberEntry | null): boolean {
+  return !!e && !!(e.done.trim() || e.todo.trim() || e.issue.trim());
+}
+
+/** 저장된 멤버 기록을 이름 → 세 칸으로 맞춘다. 내용이 없는 멤버는 뺀다. */
+export function normalizeMeetingMembers(raw: unknown): MeetingMembers {
+  const out: MeetingMembers = {};
+  if (!raw || typeof raw !== "object") return out;
+  for (const [name, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (!name.trim() || !v || typeof v !== "object") continue;
+    const e = v as Record<string, unknown>;
+    const entry = { done: str(e.done), todo: str(e.todo), issue: str(e.issue) };
+    if (memberHasText(entry)) out[name.trim()] = entry;
+  }
+  return out;
 }

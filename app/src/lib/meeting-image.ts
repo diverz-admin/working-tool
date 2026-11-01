@@ -41,6 +41,16 @@ export interface MeetingImageAxis {
   next: string;
 }
 
+/** 멤버 한 사람 — KPI 한 줄 요약과 한 일·할 일·이슈 */
+export interface MeetingImageMember {
+  name: string;
+  /** "실적 1,200,000원 / 목표 3,000,000원 · 40%" */
+  summary: string;
+  done: string;
+  todo: string;
+  issue: string;
+}
+
 /** 올해 월별 매출 추이 */
 export interface MeetingImageTrend {
   year: number;
@@ -73,6 +83,8 @@ export interface MeetingImageInput {
   kpi: BriefProgress | null;
   /** 월별 추이. 집계를 못 받았으면 null */
   trend: MeetingImageTrend | null;
+  /** 멤버별 KPI·할 일. 칸 머리말은 회의 종류(주간·월간)에 따라 달라진다 */
+  members?: { doneLabel: string; todoLabel: string; list: MeetingImageMember[] };
   axes: MeetingImageAxis[];
   memo: string;
 }
@@ -386,6 +398,9 @@ export async function renderMeetingImage(input: MeetingImageInput): Promise<Blob
     ...input.stats.flatMap(s => [s.label, s.value, s.sub ?? ""]),
     input.prevLabel, input.nowLabel, input.nextLabel,
     ...input.axes.flatMap(a => [a.label, a.prev, a.current, a.next]),
+    "멤버별 KPI 할 일 이슈 지원 요청",
+    input.members?.doneLabel ?? "", input.members?.todoLabel ?? "",
+    ...(input.members?.list ?? []).flatMap(m => [m.name, m.summary, m.done, m.todo, m.issue]),
     input.kpi ? `${input.kpi.label}${wonExact(input.kpi.remaining)}` : "",
     input.trend ? String(input.trend.year) + input.trend.values.map(wonExact).join("") : "",
   ].join(" ");
@@ -415,6 +430,29 @@ export async function renderMeetingImage(input: MeetingImageInput): Promise<Blob
     if (input.kpi)          ops.push(kpiOp(input.kpi), gap(20));
     if (trend)              ops.push(trend, gap(8));
     ops.push(gap(12));
+  }
+
+  // 멤버별 — 인원이 적은 지금은 사람 단위 KPI가 회의의 중심이라 축보다 먼저 싣는다
+  if (input.members?.list.length) {
+    ops.push(
+      rule(), gap(24),
+      textOp(measure, "멤버별 KPI · 할 일", font(800, 29), COLOR.ink, 40),
+      gap(14),
+    );
+    for (const m of input.members.list) {
+      ops.push(
+        textOp(measure, m.name, font(800, 25), COLOR.ink, 34),
+        textOp(measure, m.summary, font(600, 20), COLOR.muted, 28),
+        gap(10),
+      );
+      const parts = [
+        partOp(measure, input.members.doneLabel, m.done, "past"),
+        partOp(measure, input.members.todoLabel, m.todo, "plan"),
+        partOp(measure, "이슈 · 지원 요청", m.issue, "present"),
+      ].filter((p): p is Op => p !== null);
+      parts.forEach(p => ops.push(p, gap(12)));
+      ops.push(gap(16));
+    }
   }
 
   for (const axis of input.axes) {
