@@ -34,6 +34,7 @@ export interface OpsClient {
   guaranteed: boolean;        // 보장형 캠페인이 하나라도 있음
   endDate: string | null;     // 가장 가까운 종료일 — 캠페인 종료일과 아직 안 끝난 품목 종료일 중 이른 날. 둘 다 없으면 null
   campaignEnd: string | null; // 가장 먼저 끝나는 캠페인의 종료일
+  campaignOver: boolean;      // 캠페인 기간은 모두 끝났고 품목 작업만 남음(보장형 연장 작업)
   itemEnd: string | null;     // 아직 안 끝난 품목 중 가장 이른 종료일 (패키지 제외)
   rewards: OpsReward[];
   rank: { rank: number | null; keyword: string | null; checked: boolean } | null; // 보장형만
@@ -100,7 +101,11 @@ export async function GET(req: NextRequest) {
           ne(projects.status, "리드"),
           isNotNull(projects.startDate),
           lte(projects.startDate, asOf),
-          or(isNull(projects.endDate), gte(projects.endDate, asOf)),
+          or(
+            isNull(projects.endDate), gte(projects.endDate, asOf),
+            // 보장형은 캠페인 기간이 끝난 뒤에도 작업이 이어진다 — 기준일 이후에 끝나는 품목이 있으면 함께 본다
+            sql`EXISTS (SELECT 1 FROM ${projectCosts} WHERE ${projectCosts.projectId} = ${projects.id} AND ${projectCosts.workEndDate} >= ${asOf})`,
+          ),
         )),
     ]);
 
@@ -201,7 +206,8 @@ export async function GET(req: NextRequest) {
     }
 
     const clientList: OpsClient[] = [...byClient.entries()].map(([cid, ps]) => {
-      const sorted = [...ps].sort((a, b) => (toIso(a.endDate) ?? "9999").localeCompare(toIso(b.endDate) ?? "9999"));
+      const running = ps.filter(p => !p.endDate || toIso(p.endDate)! >= asOf); // 캠페인 기간이 남은 것
+      const sorted = [...(running.length ? running : ps)].sort((a, b) => (toIso(a.endDate) ?? "9999").localeCompare(toIso(b.endDate) ?? "9999"));
       const gs = ps.filter(p => p.type === "보장형");
       let rank: OpsClient["rank"] = null;
       if (gs.length) {
@@ -214,7 +220,7 @@ export async function GET(req: NextRequest) {
         Number(a.done) - Number(b.done) || Number(b.isPackage) - Number(a.isPackage)
         || (b.end ?? "9999").localeCompare(a.end ?? "9999") || a.product.localeCompare(b.product, "ko"));
       // 캠페인은 남았어도 품목이 먼저 끝나면 그날을 종료일로 본다(패키지는 계약 형태라 제외)
-      const campaignEnd = toIso(sorted[0].endDate);
+      const campaignEnd = running.length ? toIso(sorted[0].endDate) : null;
       const itemEnd = rewards
         .filter(r => !r.done && !r.isPackage && r.end)
         .map(r => r.end!)
@@ -231,6 +237,7 @@ export async function GET(req: NextRequest) {
         guaranteed: gs.length > 0,
         endDate,
         campaignEnd,
+        campaignOver: !running.length,
         itemEnd,
         rewards,
         rank,

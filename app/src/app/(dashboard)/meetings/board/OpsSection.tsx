@@ -280,7 +280,8 @@ function ClientTable({ data, onSave }: {
     return [...count.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ko")).map(([o]) => o);
   }, [data.clients]);
 
-  const byOwner = (c: OpsClient) => !owner || c.owners.includes(owner);
+  // 캠페인 기간이 끝나고 품목 작업만 남은 업체(보장형)는 품목 종료 기준에서만 보인다
+  const byOwner = (c: OpsClient) => (!owner || c.owners.includes(owner)) && (basis === "item" || !c.campaignOver);
   const viewFn = VIEWS.find(v => v[0] === view)![2];
   // 고른 종료 기준(캠페인 / 품목)의 종료일 순으로 다시 세운다
   const list = data.clients.filter(c => viewFn(c) && byOwner(c))
@@ -446,6 +447,7 @@ function ClientRow({ c, asOf, basis, satOpen, onSatToggle, onSat, noteOpen, onNo
         )}
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1 text-[12px] leading-normal" style={{ color: C.muted }}>
           <Flag tone={c.guaranteed ? TONE.accent : TONE.muted}>{c.guaranteed ? "보장" : "관리"}</Flag>
+          {c.campaignOver && <Flag tone={TONE.muted}>캠페인 종료</Flag>}
           {c.owner && (
             <span className="inline-flex items-center gap-1">
               <i className="w-1.5 h-1.5 rounded-full" style={{ background: personColor(c.owner) }} />{c.owner}

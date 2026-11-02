@@ -1418,8 +1418,8 @@ function ProjectsInner() {
     return g.activeDaysRemaining === 0;
   }
 
+  // 품목 종료일은 캠페인·프로젝트가 종료된 뒤에도 작업이 이어지는 경우(보장형)가 있어 상태를 보지 않는다
   function matchesWorkDeadline(g: ProjectGroup, f: "WD-7" | "WD-3" | "WD-1" | "WD-0") {
-    if (g.status !== "진행") return false;
     if (f === "WD-7") return withinDays(g.activeWorkDaysRemaining, 7);
     if (f === "WD-3") return withinDays(g.activeWorkDaysRemaining, 3);
     if (f === "WD-1") return withinDays(g.activeWorkDaysRemaining, 1);

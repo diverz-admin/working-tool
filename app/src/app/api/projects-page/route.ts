@@ -48,14 +48,14 @@ export async function GET() {
         sql`MAX(${projects.endDate}) FILTER (WHERE ${projects.status} = '진행') ASC NULLS LAST`,
       ),
 
-      // 2. 작업 만료일 — 완료 체크를 안 한 지난 품목이 남아 있어도 오늘 이후 가장 가까운 종료일을 쓴다
+      // 2. 작업 만료일 — 완료 체크를 안 한 지난 품목이 남아 있어도 오늘 이후 가장 가까운 종료일을 쓴다.
+      //    보장형은 캠페인이 끝난 뒤에도 작업이 이어지므로 캠페인 상태와 상관없이 본다
       db.select({
         groupId:    projects.projectGroupId,
         minWorkEnd: sql<string | null>`MIN(${projectRevenues.workEndDate}) FILTER (WHERE ${projectRevenues.workCompleted} = false AND ${projectRevenues.workEndDate} >= (now() AT TIME ZONE 'Asia/Seoul')::date)`,
       })
       .from(projects)
       .innerJoin(projectRevenues, eq(projectRevenues.projectId, projects.id))
-      .where(eq(projects.status, "진행"))
       .groupBy(projects.projectGroupId),
 
       // 3. 그룹별 매출 총계

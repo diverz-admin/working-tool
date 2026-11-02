@@ -47,9 +47,9 @@ export async function GET() {
           groupId:    projects.projectGroupId,
           minWorkEnd: sql<string | null>`MIN(${projectRevenues.workEndDate}) FILTER (WHERE ${projectRevenues.workCompleted} = false AND ${projectRevenues.workEndDate} >= (now() AT TIME ZONE 'Asia/Seoul')::date)`,
         })
+        // 캠페인이 끝난 뒤에도 이어지는 작업(보장형)까지 보도록 캠페인 상태와 상관없이 본다
         .from(projects)
         .innerJoin(projectRevenues, eq(projectRevenues.projectId, projects.id))
-        .where(eq(projects.status, "진행"))
         .groupBy(projects.projectGroupId),
 
       db.select({ groupId: projects.projectGroupId, total: count(projectRevenues.id) })
