@@ -73,23 +73,11 @@ interface CostRow {
   workStartDate: string | null;
 }
 
-/** 승인된 내부지출 — 요청일이 그 달인 건 */
-interface ExpenseRow {
-  id: string;
-  title: string;
-  assignedTeam: string | null;
-  requester: string;
-  requestedAt: string | null;
-  amount: number | null;
-  expenseCategory: string | null;
-}
-
 // ─── 유틸 ────────────────────────────────────────────────
 
-// 사람 귀속: 매출·매입은 캠페인 담당자, 지출은 신청자
+// 사람 귀속: 매출·매입 모두 캠페인 담당자
 const revOwner  = (r: RevenueRow) => r.assignee;
 const costOwner = (r: CostRow) => r.projectPerson ?? r.assignee;
-const expOwner  = (r: ExpenseRow) => r.requester;
 
 function sumN(arr: (number | null | undefined)[]) {
   return arr.reduce<number>((a, b) => a + (b ?? 0), 0);
@@ -125,40 +113,27 @@ const S = {
 
 // ─── 요약 바 ──────────────────────────────────────────────
 
-function SummaryBar({ revRows, costRows, expenseRows, teamLabel }: {
+function SummaryBar({ revRows, costRows, teamLabel }: {
   revRows: RevenueRow[];
   costRows: CostRow[];
-  expenseRows: ExpenseRow[];
   teamLabel?: string;
 }) {
   const totalSupply  = sumN(revRows.map(r => r.supplyPrice));
   const totalTax     = sumN(revRows.map(r => r.tax));
   const totalCost    = sumN(costRows.map(r => r.supplyPrice));
-  const totalExpense = sumN(expenseRows.map(r => r.amount));
-  // 영업이익 = 매출(공급가) − 매입(공급가) − 승인된 내부지출
-  const profit       = totalSupply - totalCost - totalExpense;
-
-  const byPerson = new Map<string, { supply: number; tax: number }>();
-  for (const r of revRows) {
-    const name = r.assignee || "미지정";
-    const cur  = byPerson.get(name) ?? { supply: 0, tax: 0 };
-    cur.supply += r.supplyPrice ?? 0;
-    cur.tax    += r.tax ?? 0;
-    byPerson.set(name, cur);
-  }
+  const profit       = totalSupply - totalCost;
 
   const prefix = teamLabel ? `${teamLabel} ` : "";
   const metrics = [
     { label: `${prefix}매출`,  value: totalSupply, color: "#3182F6" },
     { label: `${prefix}매입`,  value: totalCost,    color: "#6366F1" },
-    { label: `${prefix}지출`,  value: totalExpense, color: "#8B5CF6", note: "승인된 내부지출" },
-    { label: "영업이익",        value: profit,       color: profit >= 0 ? "#10B981" : "#EF4444", note: "매출 − 매입 − 지출" },
+    { label: "영업이익",        value: profit,       color: profit >= 0 ? "#10B981" : "#EF4444", note: "매출 − 매입" },
     { label: "부가세",          value: totalTax,     color: "#F59E0B" },
   ];
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-5 gap-3">
+      <div className="grid grid-cols-4 gap-3">
         {metrics.map(({ label, value, color, note }) => (
           <div key={label} className="rounded-2xl p-4" style={{ background: "#FFFFFF", border: "1px solid #E9EBEF" }}>
             <p className="text-xs font-semibold mb-1" style={{ color: "#94A3B8" }}>{label}</p>
@@ -167,27 +142,74 @@ function SummaryBar({ revRows, costRows, expenseRows, teamLabel }: {
           </div>
         ))}
       </div>
-      {byPerson.size > 0 && (
-        <div className="rounded-2xl px-5 py-4" style={{ background: "#FFFFFF", border: "1px solid #E9EBEF" }}>
-          <p className="text-xs font-bold mb-3" style={{ color: "#94A3B8" }}>담당자별 매출</p>
-          <div className="flex flex-wrap gap-4">
-            {Array.from(byPerson.entries()).map(([name, { supply, tax }]) => (
-              <div key={name} className="flex items-center gap-3">
-                <div className="w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs font-bold shrink-0"
-                  style={{ background: "#3182F6" }}>{name.slice(0, 1)}</div>
-                <div>
-                  <p className="text-sm font-bold" style={{ color: "#191F28" }}>{name}</p>
-                  <p className="text-xs" style={{ color: "#64748B" }}>
-                    공급가 <span className="font-semibold text-[#3182F6]">₩{supply.toLocaleString()}</span>
-                    <span className="mx-1.5" style={{ color: "#E9EBEF" }}>|</span>
-                    세액 <span className="font-semibold" style={{ color: "#94A3B8" }}>₩{tax.toLocaleString()}</span>
-                  </p>
+      {!teamLabel && <MemberStats revRows={revRows} costRows={costRows} />}
+    </div>
+  );
+}
+
+// ─── 멤버별 통계 (전체에서만) ──────────────────────────────
+
+function MemberStats({ revRows, costRows }: { revRows: RevenueRow[]; costRows: CostRow[] }) {
+  const members = PEOPLE.filter(p => p !== "전체") as string[];
+  const stat = new Map(members.map(m => [m, { rev: 0, cost: 0, projects: new Set<string>(), clients: new Set<string>() }]));
+  for (const r of revRows) {
+    const cur = stat.get(revOwner(r) ?? "");
+    if (!cur) continue;
+    cur.rev += r.supplyPrice ?? 0; cur.projects.add(r.projectId);
+    if (r.clientName) cur.clients.add(r.clientName.trim());
+  }
+  for (const c of costRows) {
+    const cur = stat.get(costOwner(c) ?? "");
+    if (!cur) continue;
+    cur.cost += c.supplyPrice ?? 0; cur.projects.add(c.projectId);
+    if (c.clientName) cur.clients.add(c.clientName.trim());
+  }
+  const keys = members;
+  const totalRev = sumN(keys.map(k => stat.get(k)!.rev));
+
+  return (
+    <div className="rounded-2xl px-5 py-4" style={{ background: "#FFFFFF", border: "1px solid #E9EBEF" }}>
+      <div className="flex items-baseline gap-2 mb-3">
+        <p className="text-xs font-semibold" style={{ color: "#94A3B8" }}>멤버별 매출 · 매입</p>
+        <p className="text-[11px]" style={{ color: "#CBD5E1" }}>공급가 기준 · 캠페인 담당자 기준</p>
+      </div>
+      <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${keys.length}, minmax(0, 1fr))` }}>
+        {keys.map(k => {
+          const v = stat.get(k)!;
+          const profit = v.rev - v.cost;
+          const color = PERSON_COLORS[k] ?? "#94A3B8";
+          const share = totalRev ? (v.rev / totalRev) * 100 : 0;
+          const empty = !v.rev && !v.cost;
+          return (
+            <div key={k} className="rounded-xl p-3.5" style={{ background: "#F8FAFC", border: "1px solid #EEF1F4", opacity: empty ? 0.6 : 1 }}>
+              <div className="flex items-center gap-2 mb-2.5">
+                <div className="w-6 h-6 rounded-lg flex items-center justify-center text-white text-[11px] font-semibold shrink-0"
+                  style={{ background: color }}>{k.slice(0, 1)}</div>
+                <p className="text-sm font-semibold" style={{ color: "#191F28" }}>{k}</p>
+                <p className="ml-auto text-[11px]" style={{ color: "#94A3B8" }}>
+                  {v.clients.size ? `업체 ${v.clients.size} · 캠페인 ${v.projects.size}` : "실적 없음"}
+                </p>
+              </div>
+              <p className="text-[11px]" style={{ color: "#94A3B8" }}>매출</p>
+              <p className="text-lg font-bold tabular-nums" style={{ color: "#3182F6" }}>₩{v.rev.toLocaleString()}</p>
+              <div className="h-1.5 mt-1.5 mb-3 rounded-full overflow-hidden" style={{ background: "#E9EBEF" }}>
+                <div className="h-full rounded-full" style={{ width: `${share}%`, background: color }} />
+              </div>
+              <div className="space-y-1 text-xs tabular-nums">
+                <div className="flex justify-between"><span style={{ color: "#64748B" }}>매출 비중</span><span style={{ color: "#191F28" }}>{totalRev ? `${share.toFixed(1)}%` : "—"}</span></div>
+                <div className="flex justify-between"><span style={{ color: "#64748B" }}>매입</span><span style={{ color: "#191F28" }}>₩{v.cost.toLocaleString()}</span></div>
+                <div className="flex justify-between pt-1.5 mt-1.5" style={{ borderTop: "1px solid #E9EBEF" }}>
+                  <span className="font-semibold" style={{ color: "#475569" }}>영업이익</span>
+                  <span className="font-semibold" style={{ color: profit < 0 ? "#EF4444" : "#10B981" }}>
+                    {profit < 0 ? "−" : ""}₩{Math.abs(profit).toLocaleString()}
+                    {v.rev > 0 && <span className="ml-1 font-normal" style={{ color: "#94A3B8" }}>{pct(profit, v.rev)}</span>}
+                  </span>
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
-      )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -389,116 +411,6 @@ function ClientTable({ revRows, costRows, showPerson }: { revRows: RevenueRow[];
   );
 }
 
-// ─── 지출 통계 ────────────────────────────────────────────
-
-const EXPENSE_COLOR = "#8B5CF6";
-
-function groupExpense(rows: ExpenseRow[], keyOf: (r: ExpenseRow) => string) {
-  const map = new Map<string, { amount: number; count: number; blank: number }>();
-  for (const r of rows) {
-    const k = keyOf(r);
-    const cur = map.get(k) ?? { amount: 0, count: 0, blank: 0 };
-    cur.amount += r.amount ?? 0;
-    cur.count  += 1;
-    if (!r.amount) cur.blank += 1;
-    map.set(k, cur);
-  }
-  return [...map.entries()].sort((a, b) => b[1].amount - a[1].amount || b[1].count - a[1].count);
-}
-
-function StatList({ title, groups, total, colorOf }: {
-  title: string;
-  groups: [string, { amount: number; count: number; blank: number }][];
-  total: number;
-  colorOf?: (k: string) => string;
-}) {
-  return (
-    <div className="rounded-2xl px-5 py-4" style={{ background: "#FFFFFF", border: "1px solid #E9EBEF" }}>
-      <p className="text-xs font-semibold mb-3" style={{ color: "#94A3B8" }}>{title}</p>
-      {groups.length === 0 ? (
-        <p className="text-xs py-2" style={{ color: "#CBD5E1" }}>없음</p>
-      ) : (
-        <div className="space-y-2.5">
-          {groups.map(([k, g]) => {
-            const color = colorOf?.(k) ?? EXPENSE_COLOR;
-            const w = total ? Math.max(2, (g.amount / total) * 100) : 0;
-            return (
-              <div key={k}>
-                <div className="flex items-baseline justify-between gap-2 text-xs">
-                  <span className="font-semibold truncate" style={{ color: "#334155" }}>{k}</span>
-                  <span className="shrink-0" style={{ color: "#64748B" }}>
-                    <span className="font-semibold" style={{ color: "#191F28" }}>₩{g.amount.toLocaleString()}</span>
-                    <span className="ml-1.5">{g.count}건</span>
-                    <span className="ml-1.5" style={{ color: "#94A3B8" }}>{pct(g.amount, total)}</span>
-                  </span>
-                </div>
-                <div className="h-1.5 mt-1 rounded-full overflow-hidden" style={{ background: "#F1F5F9" }}>
-                  <div className="h-full rounded-full" style={{ width: `${w}%`, background: color }} />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ExpensePanel({ rows, showPerson }: { rows: ExpenseRow[]; showPerson: boolean }) {
-  const total = sumN(rows.map(r => r.amount));
-  const blank = rows.filter(r => !r.amount).length;
-  const byCategory  = groupExpense(rows, r => r.expenseCategory || "구분 없음");
-  const byRequester = groupExpense(rows, r => r.requester || "미지정");
-  const heads = ["#", "요청일", ...(showPerson ? ["신청자"] : []), "제목", "구분", "금액"];
-
-  return (
-    <section className="space-y-3">
-      <div className="flex items-baseline gap-2">
-        <h2 className="text-sm font-bold" style={{ color: "#191F28" }}>지출 통계</h2>
-        <p className="text-xs" style={{ color: "#94A3B8" }}>
-          결재에서 승인된 내부지출 · 요청일 기준 · 총 {rows.length}건 ₩{total.toLocaleString()}
-          {blank > 0 && <span style={{ color: "#F59E0B" }}> · 금액 미입력 {blank}건</span>}
-        </p>
-      </div>
-
-      <div className={`grid gap-3 ${showPerson ? "grid-cols-2" : "grid-cols-1"}`}>
-        <StatList title="구분별" groups={byCategory} total={total} />
-        {showPerson && <StatList title="신청자별" groups={byRequester} total={total} colorOf={k => PERSON_COLORS[k] ?? EXPENSE_COLOR} />}
-      </div>
-
-      <div className="overflow-x-auto rounded-xl" style={{ border: "1px solid #E9EBEF" }}>
-        <table className="w-full border-collapse" style={{ minWidth: 720 }}>
-          <thead>
-            <tr>{heads.map(h => <th key={h} style={{ ...S.thDark, background: "#5B4B8A", borderColor: "#6D5CA0" }}>{h}</th>)}</tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 ? (
-              <tr><td colSpan={heads.length} style={{ ...S.tdData, textAlign:"center", padding:"32px", color:"#CBD5E1" }}>
-                이 달에 승인된 지출이 없습니다.
-              </td></tr>
-            ) : rows.map((r, i) => (
-              <tr key={r.id}>
-                <td style={{ ...S.tdLabel, width:36 }}>{i+1}</td>
-                <td style={{ ...S.tdData, textAlign:"center" }}>{dateFmt(r.requestedAt)}</td>
-                {showPerson && <td style={S.tdLabel}>{r.requester || dash}</td>}
-                <td style={{ ...S.tdData, textAlign:"left", maxWidth:280, overflow:"hidden", textOverflow:"ellipsis" }}>{r.title}</td>
-                <td style={{ ...S.tdData, textAlign:"center", color:"#64748B" }}>{r.expenseCategory || dash}</td>
-                <td style={{ ...S.tdData, fontWeight:600 }}>{won(r.amount)}</td>
-              </tr>
-            ))}
-            {rows.length > 0 && (
-              <tr style={S.trTotal}>
-                <td colSpan={heads.length - 1} style={{ ...S.tdTotalLabel, background:"#5B4B8A", borderColor:"#6D5CA0" }}>TOTAL</td>
-                <td style={{ ...S.tdTotal, background:"rgba(139,92,246,0.10)", color:EXPENSE_COLOR, borderColor:"rgba(139,92,246,0.2)" }}>{wonNum(total)}</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  );
-}
-
 // ─── 메인 페이지 ──────────────────────────────────────────
 
 export default function TeamProfitPage() {
@@ -507,11 +419,10 @@ export default function TeamProfitPage() {
   const [month,    setMonth]    = useState(now.getMonth() + 1);
   const [criteria, setCriteria] = useState("캠페인 시작날짜");
   const [person,   setPerson]   = useState<Person>("전체");
-  const [dataTab,  setDataTab]  = useState<"client" | "revenue" | "cost" | "expense">("client");
+  const [dataTab,  setDataTab]  = useState<"client" | "revenue" | "cost">("client");
 
   const [revRows,  setRevRows]  = useState<RevenueRow[]>([]);
   const [costRows, setCostRows] = useState<CostRow[]>([]);
-  const [expRows,  setExpRows]  = useState<ExpenseRow[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [error,    setError]    = useState<string | null>(null);
 
@@ -520,14 +431,13 @@ export default function TeamProfitPage() {
     setLoading(true);
     setError(null);
     const q = `year=${year}&month=${month}&criteria=${encodeURIComponent(criteria)}`;
-    fetchJson<{ revRows?: RevenueRow[]; costRows?: CostRow[]; expenseRows?: ExpenseRow[] }>(`/api/operations/monthly?${q}`)
-      .then(({ revRows: rv, costRows: cs, expenseRows: ex }) => {
+    fetchJson<{ revRows?: RevenueRow[]; costRows?: CostRow[] }>(`/api/operations/monthly?${q}`)
+      .then(({ revRows: rv, costRows: cs }) => {
         setRevRows(rv ?? []);
         setCostRows(cs ?? []);
-        setExpRows(ex ?? []);
       })
       // 실패 시 0원으로 보여주면 안 된다 — 오류를 그대로 노출한다
-      .catch((e: Error) => { setError(e.message); setRevRows([]); setCostRows([]); setExpRows([]); })
+      .catch((e: Error) => { setError(e.message); setRevRows([]); setCostRows([]); })
       .finally(() => setLoading(false));
   }, [year, month, criteria]);
 
@@ -548,7 +458,6 @@ export default function TeamProfitPage() {
   const all = person === "전체";
   const filteredRev  = all ? revRows  : revRows.filter(r => revOwner(r) === person);
   const filteredCost = all ? costRows : costRows.filter(r => costOwner(r) === person);
-  const filteredExp  = all ? expRows  : expRows.filter(r => expOwner(r) === person);
 
   function personSupply(name: string) {
     return revRows.filter(r => revOwner(r) === name).reduce<number>((a, r) => a + (r.supplyPrice ?? 0), 0);
@@ -639,17 +548,15 @@ export default function TeamProfitPage() {
           <SummaryBar
             revRows={filteredRev}
             costRows={filteredCost}
-            expenseRows={filteredExp}
             teamLabel={all ? undefined : person}
           />
 
-          {/* 업체별 / 매출 / 매입 / 지출 탭 */}
+          {/* 업체별 / 매출 / 매입 탭 */}
           <div className="flex items-center gap-1 p-1 rounded-xl w-fit" style={{ background: "#F1F5F9" }}>
             {([
               { key: "client"   as const, label: "업체별",   count: new Set([...filteredRev, ...filteredCost].map(r => r.clientName?.trim() || NO_CLIENT)).size },
               { key: "revenue"  as const, label: "매출",     count: filteredRev.length },
               { key: "cost"     as const, label: "매입",     count: filteredCost.length },
-              { key: "expense"  as const, label: "지출",     count: filteredExp.length },
             ]).map(({ key, label, count }) => {
               const isActive = dataTab === key;
               return (
@@ -676,7 +583,6 @@ export default function TeamProfitPage() {
           {dataTab === "client"   && <ClientTable revRows={filteredRev} costRows={filteredCost} showPerson={all} />}
           {dataTab === "revenue"  && <RevenueTable rows={filteredRev}  criteria={criteria} />}
           {dataTab === "cost"     && <CostTable    rows={filteredCost} criteria={criteria} />}
-          {dataTab === "expense"  && <ExpensePanel rows={filteredExp}  showPerson={all} />}
         </>
       )}
     </div>

@@ -125,26 +125,20 @@ export async function GET(req: NextRequest) {
       tax:         useContract ? (p.kpiTax         ?? Number(p.taxSum    ?? 0)) : Number(p.taxSum    ?? 0),
     }));
 
-    // ── 승인된 내부지출 (그 달 요청분) — 팀별 손익의 지출 통계 + 해당 월 SGA 카테고리별 합산 ──
-    type ExpenseRow = { id: string; title: string; assignedTeam: string | null; requester: string;
-      requestedAt: string | null; amount: number | null; expenseCategory: string | null };
-    let expenseRows: ExpenseRow[] = [];
+    // ── 승인된 내부지출 → 해당 월 SGA 카테고리별 합산 ──
+    let expenseRows: { requestedAt: string | null; amount: number | null; expenseCategory: string | null }[] = [];
     try {
       expenseRows = await db.select({
-        id:              internalExpenseRequests.id,
-        title:           internalExpenseRequests.title,
-        assignedTeam:    internalExpenseRequests.assignedTeam,
-        requester:       internalExpenseRequests.requester,
         requestedAt:     internalExpenseRequests.requestedAt,
         amount:          internalExpenseRequests.amount,
         expenseCategory: internalExpenseRequests.expenseCategory,
       }).from(internalExpenseRequests)
         .where(and(
           eq(internalExpenseRequests.status, "승인"),
+          isNotNull(internalExpenseRequests.expenseCategory),
           gte(internalExpenseRequests.requestedAt, from),
           lte(internalExpenseRequests.requestedAt, to),
-        ))
-        .orderBy(internalExpenseRequests.requestedAt);
+        ));
     } catch { /* expense_category 컬럼 없으면 무시 */ }
 
     const baseSgaRows = sgaData.filter(r => r.category !== "직접매입(상품)");
@@ -162,7 +156,6 @@ export async function GET(req: NextRequest) {
       revRows,
       costRows: costData,
       sgaRows:  Array.from(sgaMap.values()),
-      expenseRows,
     });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
