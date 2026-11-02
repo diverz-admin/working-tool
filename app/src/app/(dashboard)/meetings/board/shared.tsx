@@ -184,9 +184,11 @@ export function Empty({ children }: { children: React.ReactNode }) {
 
 // ─── 입력 칸 ──────────────────────────────────────────────────
 
-export function Field({ label, note, value, onChange, placeholder, rows = 6, action }: {
+export function Field({ label, note, value, onChange, placeholder, rows = 6, action, soft }: {
   label: string; note?: string; value: string; onChange: (v: string) => void;
   placeholder?: string; rows?: number; action?: React.ReactNode;
+  /** 회색 바탕 입력칸 — 카드 안에서 칸이 여러 개 쌓일 때 구분이 쉽다 */
+  soft?: boolean;
 }) {
   return (
     <div className="min-w-0">
@@ -198,8 +200,8 @@ export function Field({ label, note, value, onChange, placeholder, rows = 6, act
         {action && <span className="ml-auto shrink-0">{action}</span>}
       </div>
       <textarea value={value} onChange={e => onChange(e.target.value)} rows={rows} placeholder={placeholder}
-        className="w-full px-3.5 py-2.5 text-sm rounded-lg outline-none border leading-relaxed transition-colors focus:border-[#3182F6] placeholder:text-[#8B95A1]"
-        style={{ borderColor: C.line, color: C.ink, resize: "vertical" }} />
+        className={`w-full text-sm outline-none border leading-relaxed transition-colors focus:border-[#3182F6] focus:bg-white placeholder:text-[#8B95A1] ${soft ? "px-4 py-3 rounded-xl" : "px-3.5 py-2.5 rounded-lg"}`}
+        style={{ borderColor: C.line, color: C.ink, resize: "vertical", background: soft ? C.soft : "#fff" }} />
     </div>
   );
 }
@@ -207,8 +209,8 @@ export function Field({ label, note, value, onChange, placeholder, rows = 6, act
 export function MiniButton({ children, onClick, disabled }: { children: React.ReactNode; onClick: () => void; disabled?: boolean }) {
   return (
     <button type="button" onClick={onClick} disabled={disabled}
-      className="text-[12px] font-medium rounded-md px-2 py-0.5 transition-colors hover:bg-[#F2F4F6] disabled:opacity-40"
-      style={{ color: C.accent }}>{children}</button>
+      className="text-[12px] font-medium rounded-lg px-2.5 py-1 transition-colors hover:brightness-95 disabled:opacity-40"
+      style={{ color: C.accent, background: C.accentSoft }}>{children}</button>
   );
 }
 
@@ -221,9 +223,11 @@ export type EntryLabels = Partial<Record<keyof MeetingMemberEntry, { label: stri
  * 팀·사람 한 명의 기록 칸 묶음.
  * prevTodo가 있으면 "지난 할 일 가져오기"로 직전 회의의 할 일을 한 일 칸에 붙인다.
  */
-export function EntryFields({ value, onChange, labels, prevTodo, keys = ["done", "todo", "issue"] }: {
+export function EntryFields({ value, onChange, labels, prevTodo, keys = ["done", "todo", "issue"], stacked, rows }: {
   value: MeetingMemberEntry; onChange: (v: MeetingMemberEntry) => void;
   labels?: EntryLabels; prevTodo?: string; keys?: (keyof MeetingMemberEntry)[];
+  /** 칸을 위아래로 쌓는다 — 좁은 카드 안에서 쓴다 */
+  stacked?: boolean; rows?: number;
 }) {
   const base: Required<EntryLabels> = {
     done:  { label: "전주 한 일", note: "결과 점검" },
@@ -235,11 +239,12 @@ export function EntryFields({ value, onChange, labels, prevTodo, keys = ["done",
     onChange({ ...value, done: value.done.trim() ? `${value.done.trim()}\n${prevTodo.trim()}` : prevTodo.trim() });
   };
   return (
-    <div className="grid gap-3.5" style={{ gridTemplateColumns: `repeat(auto-fit, minmax(240px, 1fr))` }}>
+    <div className={stacked ? "grid gap-5" : "grid gap-3.5"}
+      style={{ gridTemplateColumns: stacked ? "minmax(0, 1fr)" : `repeat(auto-fit, minmax(240px, 1fr))` }}>
       {keys.map(k => {
         const l = { ...base[k], ...labels?.[k] };
         return (
-          <Field key={k} label={l.label} note={l.note} placeholder={l.placeholder}
+          <Field key={k} label={l.label} note={l.note} placeholder={l.placeholder} soft={stacked} rows={rows}
             value={value[k]} onChange={v => onChange({ ...value, [k]: v })}
             action={k === "done" && prevTodo?.trim() ? <MiniButton onClick={pull}>지난 할 일 가져오기</MiniButton> : undefined} />
         );

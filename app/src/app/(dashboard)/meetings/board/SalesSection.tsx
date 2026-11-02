@@ -31,6 +31,9 @@ const shiftMonth = (y: number, m: number, d: number) => {
   return { y: t.getFullYear(), m: t.getMonth() + 1 };
 };
 
+/** 목표 색 — 자동 집계(BRIEF_TONE.target)와 같은 보라 */
+const TARGET = "#7048E8";
+
 /** 영업관리팀은 따로 섹션이 있다 — 이름에 "영업"이 들어가도 여기서 뺀다 */
 const isSalesTeam = (team: string | null) => !!team && team.startsWith("영업") && team !== "영업관리팀";
 
@@ -115,12 +118,12 @@ export default function SalesSection({ ctx, members, onMembers, prevMembers, onB
 
   return (
     <SectionCard id="s-sales" no={2} title="영업팀"
-      hint="새 계약을 가져오는 팀 · 실적은 프로젝트 담당자 기준 · 지난 회의의 할 일을 한 일로 가져올 수 있습니다">
+      hint="새 계약을 가져오는 팀 · 멤버별 매출은 프로젝트 담당자 기준 · 지난 회의의 '할 일'을 '한 일' 칸으로 가져올 수 있습니다">
       {error && <p className="text-[13px] mb-3" style={{ color: C.bad }}>{error}</p>}
       {!kpi && !error && <Empty>멤버별 집계를 불러오는 중입니다.</Empty>}
       {kpi && shown.length === 0 && <Empty>영업팀 멤버가 없습니다.</Empty>}
 
-      <div className="space-y-4" style={{ wordBreak: "keep-all" }}>
+      <div className="grid gap-4 xl:grid-cols-2 items-start" style={{ wordBreak: "keep-all" }}>
         {shown.map(m => (
           <MemberCard key={m.name} m={m} month={ctx.month} prevMonth={p1.m} prev2Month={p2.m}
             extra={extraOf(m.name)} extraError={extraError}
@@ -158,28 +161,26 @@ function MemberCard({ m, month, prevMonth, prev2Month, extra, extraError, entry,
   const rate = m.target ? (m.revenue / m.target) * 100 : null;
   const dash = extraError ? "–" : "…";
   return (
-    <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${C.line}` }}>
-      <div className="h-[3px]" style={{ background: color }} />
-      <div className="p-4 md:p-5">
+    <div className="rounded-2xl overflow-hidden min-w-0" style={{ border: `1px solid ${C.line}` }}>
+      <div className="h-1" style={{ background: color }} />
+      <div className="p-5">
         <div className="flex items-center gap-4 flex-wrap">
           <Ring rate={rate} color={color} />
           <div className="min-w-0">
-            <p className="text-[16px] font-bold" style={{ color: C.ink }}>
-              {m.name}{m.team && <span className="text-[12px] font-medium ml-1.5" style={{ color: C.faint }}>{m.team}</span>}
+            <p className="text-[20px] font-bold" style={{ color: C.ink }}>
+              {m.name}{m.team && <span className="text-[13px] font-medium ml-1.5" style={{ color: C.faint }}>{m.team}</span>}
             </p>
-            <p className="text-[13px] mt-0.5" style={{ color: C.muted }}>
-              {month}월 실적 <b className="font-semibold tabular-nums" style={{ color: C.ink }}>{won(m.revenue)}</b>
-              {m.target ? <> · 남은 금액 <span className="tabular-nums">{won(Math.max(0, m.target - m.revenue))}</span></> : null}
-              {" "}· 수주 예상 <span className="tabular-nums">{won(m.forecast)}</span>
+            <p className="text-[14px] font-medium mt-0.5" style={{ color: C.muted }}>
+              {month}월 실적 <span className="font-semibold tabular-nums" style={{ color: C.ink }}>{won(m.revenue)}</span>
             </p>
           </div>
-          <div className="flex items-center gap-2 ml-auto text-[13px]" style={{ color: C.muted }}>
-            {month}월 목표
+          <div className="ml-auto text-right">
+            <p className="text-[12px] font-semibold mb-1" style={{ color: TARGET }}>{month}월 목표</p>
             <TargetInput key={`${m.name}-${m.target ?? 0}`} value={m.target} onCommit={onTarget} />
           </div>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-px mt-4 rounded-xl overflow-hidden"
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-px mt-5 rounded-xl overflow-hidden"
           style={{ background: C.line, border: `1px solid ${C.line}` }}>
           <Box label={`${prevMonth}월 마감`} value={extra ? man(extra.prev?.revenue ?? 0) : dash}
             sub={extra ? `${extra.prev?.deals ?? 0}건 · ${prev2Month}월 ${man(extra.prev2?.revenue ?? 0)}` : undefined} />
@@ -187,15 +188,19 @@ function MemberCard({ m, month, prevMonth, prev2Month, extra, extraError, entry,
             sub={extra ? `보장 ${extra.guaranteed} · 관리 ${extra.managed}` : undefined} />
           <Box label="이번 주 종료" value={extra ? `${extra.endCount}건` : dash}
             color={extra && extra.endCount > 0 ? C.warn : undefined}
-            sub={extra && extra.endCount > 0 ? man(extra.endAmount) : undefined} />
+            sub={extra && extra.endCount > 0 ? `${man(extra.endAmount)}원` : undefined} />
           <Box label="지난주 연장" value={extra ? (extra.ended ? `${extra.renewed}/${extra.ended}` : "–") : dash}
             sub="종료 건 중 재계약" />
         </div>
+      </div>
 
-        <div className="mt-4 pt-4" style={{ borderTop: `1px solid ${C.lineSoft}` }}>
-          <EntryFields value={entry} onChange={onEntry} prevTodo={prevTodo}
-            labels={{ issue: { label: "이슈 · 지원 요청" } }} />
-        </div>
+      <div className="p-5" style={{ borderTop: `1px solid ${C.line}` }}>
+        <EntryFields value={entry} onChange={onEntry} prevTodo={prevTodo} stacked rows={7}
+          labels={{
+            done:  { label: "전주 한 일", note: "결과 점검" },
+            todo:  { label: "금주 할 일", note: "목표를 채울 계획" },
+            issue: { label: "이슈 · 지원 요청" },
+          }} />
       </div>
     </div>
   );
@@ -213,17 +218,17 @@ function Box({ label, value, sub, color }: { label: string; value: string; sub?:
 
 /** 목표 달성률 원 — 목표가 없으면 회색 고리에 "목표 없음" */
 function Ring({ rate, color }: { rate: number | null; color: string }) {
-  const r = 24, len = 2 * Math.PI * r, p = Math.min(100, rate ?? 0) / 100;
+  const r = 31, len = 2 * Math.PI * r, p = Math.min(100, rate ?? 0) / 100;
   const done = (rate ?? 0) >= 100;
   return (
-    <svg width="60" height="60" viewBox="0 0 60 60" role="img" aria-label={rate === null ? "목표 없음" : `달성률 ${rate.toFixed(0)}%`}>
-      <circle cx="30" cy="30" r={r} fill="none" stroke={C.track} strokeWidth="6" />
+    <svg width="76" height="76" viewBox="0 0 76 76" className="shrink-0" role="img" aria-label={rate === null ? "목표 없음" : `달성률 ${rate.toFixed(1)}%`}>
+      <circle cx="38" cy="38" r={r} fill="none" stroke={C.track} strokeWidth="7" />
       {rate !== null && (
-        <circle cx="30" cy="30" r={r} fill="none" stroke={done ? C.good : color} strokeWidth="6" strokeLinecap="round"
-          strokeDasharray={`${len * p} ${len}`} transform="rotate(-90 30 30)" />
+        <circle cx="38" cy="38" r={r} fill="none" stroke={done ? C.good : color} strokeWidth="7" strokeLinecap="round"
+          strokeDasharray={`${len * p} ${len}`} transform="rotate(-90 38 38)" />
       )}
-      <text x="30" y="34" textAnchor="middle" fontSize={rate === null ? 10 : 13} fontWeight={600}
-        fill={rate === null ? C.faint : C.ink}>{rate === null ? "목표 없음" : `${rate.toFixed(0)}%`}</text>
+      <text x="38" y="43" textAnchor="middle" fontSize={rate === null ? 11 : 15} fontWeight={600}
+        fill={rate === null ? C.faint : C.ink}>{rate === null ? "목표 없음" : `${rate.toFixed(1)}%`}</text>
     </svg>
   );
 }
@@ -244,9 +249,9 @@ function TargetInput({ value, onCommit }: { value: number | null; onCommit: (v: 
         }}
         onBlur={commit}
         onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-        className="w-32 px-2 py-1 text-right text-[13px] tabular-nums rounded-md outline-none border transition-colors focus:border-[#3182F6] placeholder:text-[#8B95A1]"
-        style={{ borderColor: C.line, color: C.ink }} />
-      <span className="text-[12px]" style={{ color: C.faint }}>원</span>
+        className="w-40 h-11 px-3 text-right text-[17px] font-semibold tabular-nums rounded-xl outline-none border transition-colors focus:border-[#7048E8] placeholder:text-[14px] placeholder:font-normal placeholder:text-[#8B95A1]"
+        style={{ borderColor: C.line, color: C.ink, background: "#F5F2FF" }} />
+      <span className="text-[13px]" style={{ color: C.faint }}>원</span>
     </span>
   );
 }
