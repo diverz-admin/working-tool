@@ -1008,7 +1008,7 @@ function ProjectsInner() {
   const [statsCriteria, setStatsCriteria]   = useState<"캠페인 시작날짜" | "계산서날짜" | "통장">("캠페인 시작날짜");
 
   // 아코디언: 펼쳐진 그룹 ID 셋
-  const [statusFilter, setStatusFilter] = useState<"전체" | "진행중" | "종료" | "D-7" | "D-3" | "D-1" | "WD-7" | "WD-3" | "WD-1">("전체");
+  const [statusFilter, setStatusFilter] = useState<"전체" | "진행중" | "종료" | "D-7" | "D-3" | "D-1" | "D-0" | "WD-7" | "WD-3" | "WD-1" | "WD-0">("전체");
   const [expanded, setExpanded]     = useState<Set<string>>(new Set());
   // 그룹별 캠페인 캐시
   const [campaignMap, setCampaignMap] = useState<Map<string, Campaign[]>>(new Map());
@@ -1399,18 +1399,20 @@ function ProjectsInner() {
     return days !== null && days >= 0 && days <= limit;
   }
 
-  function matchesDeadline(g: ProjectGroup, f: "D-7" | "D-3" | "D-1") {
+  function matchesDeadline(g: ProjectGroup, f: "D-7" | "D-3" | "D-1" | "D-0") {
     if (g.status !== "진행") return false;
     if (f === "D-7") return withinDays(g.activeDaysRemaining, 7);
     if (f === "D-3") return withinDays(g.activeDaysRemaining, 3);
-    return withinDays(g.activeDaysRemaining, 1);
+    if (f === "D-1") return withinDays(g.activeDaysRemaining, 1);
+    return g.activeDaysRemaining === 0;
   }
 
-  function matchesWorkDeadline(g: ProjectGroup, f: "WD-7" | "WD-3" | "WD-1") {
+  function matchesWorkDeadline(g: ProjectGroup, f: "WD-7" | "WD-3" | "WD-1" | "WD-0") {
     if (g.status !== "진행") return false;
     if (f === "WD-7") return withinDays(g.activeWorkDaysRemaining, 7);
     if (f === "WD-3") return withinDays(g.activeWorkDaysRemaining, 3);
-    return withinDays(g.activeWorkDaysRemaining, 1);
+    if (f === "WD-1") return withinDays(g.activeWorkDaysRemaining, 1);
+    return g.activeWorkDaysRemaining === 0;
   }
 
   const filtered = teamFiltered.filter((g) => {
@@ -1418,7 +1420,7 @@ function ProjectsInner() {
     if (statusFilter === "전체")        statusOk = true;
     else if (statusFilter === "진행중") statusOk = g.status === "진행";
     else if (statusFilter === "종료")   statusOk = g.status === "종료";
-    else if (statusFilter === "WD-7" || statusFilter === "WD-3" || statusFilter === "WD-1")
+    else if (statusFilter === "WD-7" || statusFilter === "WD-3" || statusFilter === "WD-1" || statusFilter === "WD-0")
       statusOk = matchesWorkDeadline(g, statusFilter);
     else statusOk = matchesDeadline(g, statusFilter);
     const searchOk = search === "" || g.name.includes(search) || (g.assignedPerson ?? "").includes(search);
@@ -1429,7 +1431,7 @@ function ProjectsInner() {
     if (f === "전체")        return teamFiltered.length;
     if (f === "진행중")      return teamFiltered.filter((g) => g.status === "진행").length;
     if (f === "종료")        return teamFiltered.filter((g) => g.status === "종료").length;
-    if (f === "WD-7" || f === "WD-3" || f === "WD-1")
+    if (f === "WD-7" || f === "WD-3" || f === "WD-1" || f === "WD-0")
       return teamFiltered.filter((g) => matchesWorkDeadline(g, f)).length;
     return teamFiltered.filter((g) => matchesDeadline(g, f)).length;
   }
@@ -1937,11 +1939,13 @@ function ProjectsInner() {
                 { key: "D-7" as const, label: "7일 이내" },
                 { key: "D-3" as const, label: "3일 이내" },
                 { key: "D-1" as const, label: "1일 이내" },
+                { key: "D-0" as const, label: "당일" },
               ]},
               { group: "품목 종료일", items: [
                 { key: "WD-7" as const, label: "7일 이내" },
                 { key: "WD-3" as const, label: "3일 이내" },
                 { key: "WD-1" as const, label: "1일 이내" },
+                { key: "WD-0" as const, label: "당일" },
               ]},
             ].map(({ group, items }, gi) => (
               <div key={group} className="flex items-center gap-1.5">
