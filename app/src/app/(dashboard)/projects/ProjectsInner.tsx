@@ -102,6 +102,16 @@ interface Campaign {
   costApproved: number;
   costPending: number;
   notes: string | null;
+  items?: CampaignItem[];
+}
+
+interface CampaignItem {
+  id: string;
+  productName: string | null;
+  quantity: number | null;
+  workStartDate: string | null;
+  workEndDate: string | null;
+  daysRemaining: number | null;
 }
 
 interface GroupFormData {
@@ -302,8 +312,9 @@ function GroupModal({ initial, onClose, onSaved }: {
 
 // ── 캠페인 행 ──────────────────────────────────────────────────────────────────
 
-function CampaignRow({ c, index, onEdit, onDelete, onCopy, deleting, copying }: {
+function CampaignRow({ c, index, onEdit, onDelete, onCopy, deleting, copying, hideDays }: {
   c: Campaign;
+  hideDays?: boolean;
   index: number;
   onEdit: (c: Campaign) => void;
   onDelete: (id: string) => void;
@@ -362,7 +373,7 @@ function CampaignRow({ c, index, onEdit, onDelete, onCopy, deleting, copying }: 
         {c.startDate || c.endDate ? `${c.startDate ?? "?"} ~ ${c.endDate ?? "?"}` : "—"}
       </td>
       {/* 잔여일 */}
-      <td className="px-4 py-3"><DaysBadge days={c.daysRemaining} /></td>
+      <td className="px-4 py-3">{hideDays ? null : <DaysBadge days={c.daysRemaining} />}</td>
       {/* 계약금액 */}
       <td className="px-4 py-3 text-xs font-semibold" style={{ color: "#10B981" }}>{wonFmt(c.contractAmount)}</td>
       {/* 매출 */}
@@ -1415,6 +1426,15 @@ function ProjectsInner() {
     return g.activeWorkDaysRemaining === 0;
   }
 
+  // 품목 종료일 필터 — 상세(펼친 행)에서 품목 단위로 다시 거른다
+  const itemFilter = statusFilter === "WD-7" || statusFilter === "WD-3" || statusFilter === "WD-1" || statusFilter === "WD-0" ? statusFilter : null;
+  function matchesItemDeadline(days: number | null, f: "WD-7" | "WD-3" | "WD-1" | "WD-0") {
+    if (f === "WD-7") return withinDays(days, 7);
+    if (f === "WD-3") return withinDays(days, 3);
+    if (f === "WD-1") return withinDays(days, 1);
+    return days === 0;
+  }
+
   const filtered = teamFiltered.filter((g) => {
     let statusOk: boolean;
     if (statusFilter === "전체")        statusOk = true;
@@ -2153,18 +2173,37 @@ function ProjectsInner() {
                       </tr>
                     ),
 
-                    isOpen && !isLoadingCamps && camps.map((c, idx) => (
-                      <CampaignRow
-                        key={`camp-${c.id}`}
-                        c={c}
-                        index={camps.length - 1 - idx}
-                        onEdit={(cam) => { setEditCampaign(toCampaignFormData(cam)); setActiveCampGroup(g.id); }}
-                        onDelete={(cid) => handleDeleteCampaign(cid, g.id)}
-                        onCopy={(cid) => handleCopyCampaign(cid, g.id)}
-                        deleting={deletingCamp}
-                        copying={copyingCamp}
-                      />
-                    )),
+                    isOpen && !isLoadingCamps && camps.flatMap((c, idx) => {
+                      // 품목 종료일 필터에서는 그 잔여일에 맞는 품목만 보여주고 캠페인 잔여일은 숨긴다
+                      const items = itemFilter ? (c.items ?? []).filter((it) => matchesItemDeadline(it.daysRemaining, itemFilter)) : [];
+                      if (itemFilter && items.length === 0) return [];
+                      return [
+                        <CampaignRow
+                          key={`camp-${c.id}`}
+                          c={c}
+                          index={camps.length - 1 - idx}
+                          onEdit={(cam) => { setEditCampaign(toCampaignFormData(cam)); setActiveCampGroup(g.id); }}
+                          onDelete={(cid) => handleDeleteCampaign(cid, g.id)}
+                          onCopy={(cid) => handleCopyCampaign(cid, g.id)}
+                          deleting={deletingCamp}
+                          copying={copyingCamp}
+                          hideDays={!!itemFilter}
+                        />,
+                        ...items.map((it) => (
+                          <tr key={`item-${it.id}`} className="border-t" style={{ borderColor: "#F1F5F9", background: "rgba(249,115,22,0.03)" }}>
+                            <td className="pl-20 pr-4 py-2 text-xs" style={{ color: "#475569" }}>
+                              {it.productName || "—"}{it.quantity != null && <span className="ml-1.5" style={{ color: "#94A3B8" }}>{it.quantity}개</span>}
+                            </td>
+                            <td /><td />
+                            <td className="px-4 py-2 text-xs whitespace-nowrap" style={{ color: "#94A3B8" }}>
+                              {`${it.workStartDate ?? "?"} ~ ${it.workEndDate ?? "?"}`}
+                            </td>
+                            <td className="px-4 py-2"><DaysBadge days={it.daysRemaining} /></td>
+                            <td colSpan={6} />
+                          </tr>
+                        )),
+                      ];
+                    }),
 
                     isOpen && !isLoadingCamps && (
                       <tr key={`add-camp-${g.id}`} style={{ background: "rgba(49,130,246,0.02)" }}>

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { projectGroups, projects, projectRevenues, projectCosts, confirmRequests, paymentRequests } from "@/db/schema";
-import { eq, desc, max, count, sql, inArray } from "drizzle-orm";
+import { eq, desc, max, count, sql, inArray, and, isNotNull } from "drizzle-orm";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -56,7 +56,7 @@ export async function GET(_req: Request, { params }: Params) {
     }
 
     // 3개 집계 쿼리 병렬 실행
-    const [costTotalRows, revStats, costStats] = await Promise.all([
+    const [costTotalRows, revStats, costStats, itemRows] = await Promise.all([
       db.select({ projectId: projectCosts.projectId, total: count(projectCosts.id) })
         .from(projectCosts)
         .where(inArray(projectCosts.projectId, campaignIds))
@@ -80,6 +80,23 @@ export async function GET(_req: Request, { params }: Params) {
         .from(paymentRequests)
         .where(inArray(paymentRequests.projectId, campaignIds))
         .groupBy(paymentRequests.projectId),
+
+      // 품목 종료일 필터에서 상세에 보여줄 미완료 품목
+      db.select({
+          id:            projectRevenues.id,
+          projectId:     projectRevenues.projectId,
+          productName:   projectRevenues.productName,
+          quantity:      projectRevenues.quantity,
+          workStartDate: projectRevenues.workStartDate,
+          workEndDate:   projectRevenues.workEndDate,
+        })
+        .from(projectRevenues)
+        .where(and(
+          inArray(projectRevenues.projectId, campaignIds),
+          eq(projectRevenues.workCompleted, false),
+          isNotNull(projectRevenues.workEndDate),
+        ))
+        .orderBy(projectRevenues.workEndDate),
     ]);
 
     const costTotalMap = new Map(costTotalRows.map((r) => [r.projectId!, Number(r.total)]));
@@ -101,6 +118,9 @@ export async function GET(_req: Request, { params }: Params) {
         costTotal:        costTotalMap.get(c.id) ?? 0,
         costApproved:     cost.approved,
         costPending:      cost.pending,
+        items:            itemRows
+          .filter((it) => it.projectId === c.id)
+          .map(({ projectId: _p, ...it }) => ({ ...it, daysRemaining: daysRemaining(it.workEndDate) })),
       };
     });
 
