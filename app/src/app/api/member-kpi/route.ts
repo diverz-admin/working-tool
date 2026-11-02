@@ -15,6 +15,7 @@ import { isRevenueConfirmed, parseCriteria } from "@/lib/revenue-stats";
  *   실적 — 화면에서 고른 기준(캠페인 시작일 = 확인완료된 수주 / 계산서·통장 = 실제 매출 행), 그 달 전체
  *   예상 — 당월 시작 프로젝트의 계약 공급가 (확인 여부 무관, 이미 수주한 금액)
  *   운영중 — 기준일(asOf) 현재 돌고 있는 캠페인 건수
+ *   계약 — 당월 시작 프로젝트 중 확인완료된 건수
  */
 export async function GET(req: NextRequest) {
   try {
@@ -61,6 +62,7 @@ export async function GET(req: NextRequest) {
 
     const revenue  = new Map<string, number>();
     const forecast = new Map<string, number>();
+    const deals    = new Map<string, number>();   // 확인완료된 당월 시작 계약 건수 — 기준과 무관하게 수주 건수로 센다
     const add = (m: Map<string, number>, k: string | null, v: number) => {
       if (!k) return;
       m.set(k, (m.get(k) ?? 0) + v);
@@ -69,6 +71,7 @@ export async function GET(req: NextRequest) {
     for (const p of monthProjects) {
       const amount = supplyOf(p);
       add(forecast, p.person, amount);
+      if (p.confirmed) add(deals, p.person, 1);
       if (criteria === "캠페인 시작날짜" && p.confirmed) add(revenue, p.person, amount);
     }
 
@@ -106,6 +109,7 @@ export async function GET(req: NextRequest) {
         target:   t > 0 ? t : null,
         revenue:  revenue.get(m.name) ?? 0,
         forecast: forecast.get(m.name) ?? 0,
+        deals:    deals.get(m.name) ?? 0,
         active:   active.get(m.name) ?? 0,
       };
     });

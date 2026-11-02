@@ -10,9 +10,26 @@
 import { useState, useEffect } from "react";
 import { fetchJson, saveErrorMessage } from "@/lib/fetch-json";
 import type { MeetingMembers, MeetingMemberEntry } from "@/db/schema";
-import { C, SectionCard, EntryFields, Avatar, Empty, personColor, won, emptyEntry, type BoardContext } from "./shared";
+import { C, SectionCard, EntryFields, Avatar, Empty, personColor, won, man, emptyEntry, type BoardContext } from "./shared";
 
-interface MemberKpi { name: string; team: string | null; target: number | null; revenue: number; forecast: number; active: number }
+interface MemberKpi { name: string; team: string | null; target: number | null; revenue: number; forecast: number; active: number; deals?: number }
+
+/** /api/meeting-board/schedule 에서 쓰는 부분 — 프로젝트 일정 섹션과 같은 판정을 그대로 받는다 */
+interface Campaign { person: string | null; type: string | null; amount: number }
+interface ScheduleData { active: Campaign[]; thisWeek: Campaign[]; lastWeek: (Campaign & { renewal: unknown | null })[] }
+
+/** 카드 아래 네 칸 — 지난달 마감 · 운영중 · 이번 주 종료 · 지난주 연장 */
+interface MemberExtra {
+  prev?: MemberKpi; prev2?: MemberKpi;
+  guaranteed: number; managed: number;
+  endCount: number; endAmount: number;
+  renewed: number; ended: number;
+}
+
+const shiftMonth = (y: number, m: number, d: number) => {
+  const t = new Date(y, m - 1 + d, 1);
+  return { y: t.getFullYear(), m: t.getMonth() + 1 };
+};
 
 /** 영업관리팀은 따로 섹션이 있다 — 이름에 "영업"이 들어가도 여기서 뺀다 */
 const isSalesTeam = (team: string | null) => !!team && team.startsWith("영업") && team !== "영업관리팀";
@@ -29,6 +46,10 @@ export default function SalesSection({ ctx, members, onMembers, prevMembers, onB
   const [opened, setOpened] = useState<string[]>([]);
 
   const [reloadKey, setReloadKey] = useState(0);
+  const [prevKpi, setPrevKpi] = useState<{ prev: MemberKpi[]; prev2: MemberKpi[] } | null>(null);
+  const [schedule, setSchedule] = useState<ScheduleData | null>(null);
+  const [extraError, setExtraError] = useState(false);
+  const p1 = shiftMonth(ctx.year, ctx.month, -1), p2 = shiftMonth(ctx.year, ctx.month, -2);
 
   useEffect(() => {
     let alive = true;
@@ -38,6 +59,34 @@ export default function SalesSection({ ctx, members, onMembers, prevMembers, onB
       .catch(e => { if (alive) setError(e instanceof Error ? e.message : "멤버별 집계를 불러오지 못했습니다."); });
     return () => { alive = false; };
   }, [ctx.year, ctx.month, ctx.criteria, ctx.asOf, reloadKey]);
+
+  // 지난 두 달 마감과 캠페인 일정 — 실패해도 카드는 그대로 두고 네 칸만 비운다
+  useEffect(() => {
+    let alive = true;
+    const kpiOf = (t: { y: number; m: number }) =>
+      fetchJson<{ members: MemberKpi[] }>(`/api/member-kpi?${new URLSearchParams({
+        year: String(t.y), month: String(t.m), team: "전체", criteria: ctx.criteria, asOf: ctx.asOf,
+      })}`).then(d => d.members);
+    const sq = new URLSearchParams({ year: String(ctx.year), month: String(ctx.month), asOf: ctx.asOf, weekStart: ctx.weekStart });
+    Promise.all([kpiOf(shiftMonth(ctx.year, ctx.month, -1)), kpiOf(shiftMonth(ctx.year, ctx.month, -2)),
+      fetchJson<ScheduleData>(`/api/meeting-board/schedule?${sq}`)])
+      .then(([prev, prev2, sch]) => { if (alive) { setPrevKpi({ prev, prev2 }); setSchedule(sch); setExtraError(false); } })
+      .catch(() => { if (alive) setExtraError(true); });
+    return () => { alive = false; };
+  }, [ctx.year, ctx.month, ctx.criteria, ctx.asOf, ctx.weekStart]);
+
+  const extraOf = (name: string): MemberExtra | null => {
+    if (!prevKpi || !schedule) return null;
+    const mine = <T extends Campaign>(list: T[]) => list.filter(c => c.person === name);
+    const active = mine(schedule.active), ending = mine(schedule.thisWeek), ended = mine(schedule.lastWeek);
+    return {
+      prev: prevKpi.prev.find(k => k.name === name), prev2: prevKpi.prev2.find(k => k.name === name),
+      guaranteed: active.filter(c => c.type === "보장형").length,
+      managed: active.filter(c => c.type !== "보장형").length,
+      endCount: ending.length, endAmount: ending.reduce((s, c) => s + c.amount, 0),
+      renewed: ended.filter(c => c.renewal).length, ended: ended.length,
+    };
+  };
 
   // 기록이 있는 사람은 영업팀이 아니어도 칸을 연다 — 적어 둔 내용이 화면에서 사라지면 안 된다
   const shown = (kpi ?? []).filter(m => isSalesTeam(m.team) || opened.includes(m.name) || members[m.name] || prevMembers?.[m.name]?.todo.trim());
@@ -73,7 +122,8 @@ export default function SalesSection({ ctx, members, onMembers, prevMembers, onB
 
       <div className="space-y-4" style={{ wordBreak: "keep-all" }}>
         {shown.map(m => (
-          <MemberCard key={m.name} m={m} month={ctx.month}
+          <MemberCard key={m.name} m={m} month={ctx.month} prevMonth={p1.m} prev2Month={p2.m}
+            extra={extraOf(m.name)} extraError={extraError}
             entry={members[m.name] ?? emptyEntry()} onEntry={e => setEntry(m.name, e)}
             prevTodo={prevMembers?.[m.name]?.todo}
             onTarget={v => saveTarget(m.name, v)} />
@@ -98,12 +148,15 @@ export default function SalesSection({ ctx, members, onMembers, prevMembers, onB
   );
 }
 
-function MemberCard({ m, month, entry, onEntry, prevTodo, onTarget }: {
-  m: MemberKpi; month: number; entry: MeetingMemberEntry; onEntry: (e: MeetingMemberEntry) => void;
+function MemberCard({ m, month, prevMonth, prev2Month, extra, extraError, entry, onEntry, prevTodo, onTarget }: {
+  m: MemberKpi; month: number; prevMonth: number; prev2Month: number;
+  extra: MemberExtra | null; extraError: boolean;
+  entry: MeetingMemberEntry; onEntry: (e: MeetingMemberEntry) => void;
   prevTodo?: string; onTarget: (v: number) => void;
 }) {
   const color = personColor(m.name);
   const rate = m.target ? (m.revenue / m.target) * 100 : null;
+  const dash = extraError ? "–" : "…";
   return (
     <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${C.line}` }}>
       <div className="h-[3px]" style={{ background: color }} />
@@ -114,18 +167,31 @@ function MemberCard({ m, month, entry, onEntry, prevTodo, onTarget }: {
             <p className="text-[16px] font-bold" style={{ color: C.ink }}>
               {m.name}{m.team && <span className="text-[12px] font-medium ml-1.5" style={{ color: C.faint }}>{m.team}</span>}
             </p>
-            <div className="flex items-center gap-2 mt-1 text-[13px]" style={{ color: C.muted }}>
-              {month}월 목표
-              <TargetInput key={`${m.name}-${m.target ?? 0}`} value={m.target} onCommit={onTarget} />
-            </div>
+            <p className="text-[13px] mt-0.5" style={{ color: C.muted }}>
+              {month}월 실적 <b className="font-semibold tabular-nums" style={{ color: C.ink }}>{won(m.revenue)}</b>
+              {m.target ? <> · 남은 금액 <span className="tabular-nums">{won(Math.max(0, m.target - m.revenue))}</span></> : null}
+              {" "}· 수주 예상 <span className="tabular-nums">{won(m.forecast)}</span>
+            </p>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-2 ml-auto">
-            <Stat label="실적" value={won(m.revenue)} strong />
-            <Stat label="남은 금액" value={m.target ? won(Math.max(0, m.target - m.revenue)) : "–"} />
-            <Stat label="수주 예상" value={won(m.forecast)} />
-            <Stat label="운영중" value={`${m.active}건`} />
+          <div className="flex items-center gap-2 ml-auto text-[13px]" style={{ color: C.muted }}>
+            {month}월 목표
+            <TargetInput key={`${m.name}-${m.target ?? 0}`} value={m.target} onCommit={onTarget} />
           </div>
         </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-px mt-4 rounded-xl overflow-hidden"
+          style={{ background: C.line, border: `1px solid ${C.line}` }}>
+          <Box label={`${prevMonth}월 마감`} value={extra ? man(extra.prev?.revenue ?? 0) : dash}
+            sub={extra ? `${extra.prev?.deals ?? 0}건 · ${prev2Month}월 ${man(extra.prev2?.revenue ?? 0)}` : undefined} />
+          <Box label="운영중" value={`${m.active}건`}
+            sub={extra ? `보장 ${extra.guaranteed} · 관리 ${extra.managed}` : undefined} />
+          <Box label="이번 주 종료" value={extra ? `${extra.endCount}건` : dash}
+            color={extra && extra.endCount > 0 ? C.warn : undefined}
+            sub={extra && extra.endCount > 0 ? man(extra.endAmount) : undefined} />
+          <Box label="지난주 연장" value={extra ? (extra.ended ? `${extra.renewed}/${extra.ended}` : "–") : dash}
+            sub="종료 건 중 재계약" />
+        </div>
+
         <div className="mt-4 pt-4" style={{ borderTop: `1px solid ${C.lineSoft}` }}>
           <EntryFields value={entry} onChange={onEntry} prevTodo={prevTodo}
             labels={{ issue: { label: "이슈 · 지원 요청" } }} />
@@ -135,12 +201,12 @@ function MemberCard({ m, month, entry, onEntry, prevTodo, onTarget }: {
   );
 }
 
-function Stat({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+function Box({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
   return (
-    <div className="min-w-0">
-      <p className="text-[12px]" style={{ color: C.faint }}>{label}</p>
-      <p className={`tabular-nums ${strong ? "text-[17px] font-bold" : "text-[14px] font-semibold"}`}
-        style={{ color: strong ? C.ink : C.body }}>{value}</p>
+    <div className="px-4 py-3 min-w-0" style={{ background: C.soft }}>
+      <p className="text-[12px]" style={{ color: C.muted }}>{label}</p>
+      <p className="text-[18px] font-bold tabular-nums mt-0.5" style={{ color: color ?? C.ink }}>{value}</p>
+      {sub && <p className="text-[12px] mt-0.5" style={{ color: C.faint }}>{sub}</p>}
     </div>
   );
 }
