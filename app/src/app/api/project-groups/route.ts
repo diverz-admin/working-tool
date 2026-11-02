@@ -45,7 +45,7 @@ export async function GET() {
       // ── 그룹 레벨 집계 (기존) ──────────────────────────────
       db.select({
           groupId:    projects.projectGroupId,
-          minWorkEnd: sql<string | null>`MIN(${projectRevenues.workEndDate}) FILTER (WHERE ${projectRevenues.workCompleted} = false)`,
+          minWorkEnd: sql<string | null>`MIN(${projectRevenues.workEndDate}) FILTER (WHERE ${projectRevenues.workCompleted} = false AND ${projectRevenues.workEndDate} >= (now() AT TIME ZONE 'Asia/Seoul')::date)`,
         })
         .from(projects)
         .innerJoin(projectRevenues, eq(projectRevenues.projectId, projects.id))

@@ -48,10 +48,10 @@ export async function GET() {
         sql`MAX(${projects.endDate}) FILTER (WHERE ${projects.status} = '진행') ASC NULLS LAST`,
       ),
 
-      // 2. 작업 만료일
+      // 2. 작업 만료일 — 완료 체크를 안 한 지난 품목이 남아 있어도 오늘 이후 가장 가까운 종료일을 쓴다
       db.select({
         groupId:    projects.projectGroupId,
-        minWorkEnd: sql<string | null>`MIN(${projectRevenues.workEndDate}) FILTER (WHERE ${projectRevenues.workCompleted} = false)`,
+        minWorkEnd: sql<string | null>`MIN(${projectRevenues.workEndDate}) FILTER (WHERE ${projectRevenues.workCompleted} = false AND ${projectRevenues.workEndDate} >= (now() AT TIME ZONE 'Asia/Seoul')::date)`,
       })
       .from(projects)
       .innerJoin(projectRevenues, eq(projectRevenues.projectId, projects.id))
