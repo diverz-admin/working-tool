@@ -449,6 +449,8 @@ export const reportMeetings = pgTable("report_meetings", {
   content:    text("content").notNull().default(""),   // 기타 논의·메모 (구버전 자유 서술도 여기에 남는다)
   sections:   jsonb("sections").$type<MeetingSections>(),  // 4대 축 기록. null = 구버전 회의록
   members:    jsonb("members").$type<MeetingMembers>(),    // 멤버별 한 일·할 일·이슈. null = 멤버 기록 없음
+  teamNotes:  jsonb("team_notes").$type<MeetingTeamNotes>(), // 영업관리·마케팅·개발·관리팀 칸. null = 기록 없음
+  attendees:  jsonb("attendees").$type<string[]>(),          // 참석자 이름. null = 기록 없음
   authorName: text("author_name"),
   createdAt:  timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt:  timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -476,6 +478,55 @@ export type ChatMention = typeof chatMentions.$inferSelect;
  */
 export type MeetingMemberEntry = { done: string; todo: string; issue: string };
 export type MeetingMembers = Record<string, MeetingMemberEntry>;
+
+/**
+ * 회의록 팀별 기록 — 사람이 아니라 팀 단위로 쓰는 칸. 키는 MEETING_TEAM_KEYS(lib/meeting-sections).
+ * 칸 이름은 팀마다 다르게 보이지만(예: 마케팅 issue = "이슈 · 요청", todo = "이번 달 방향") 저장은 세 칸으로 같다.
+ */
+export type MeetingTeamKey = "ops" | "marketing" | "dev" | "admin";
+export type MeetingTeamNotes = Partial<Record<MeetingTeamKey, MeetingMemberEntry>>;
+
+/**
+ * 업체 관리 상태 — 회의록 영업관리팀 표에서 고르는 만족도·특이사항.
+ * 회의마다가 아니라 업체마다 하나라서 다음 회의에도 그대로 이어진다.
+ */
+export const clientCare = pgTable("client_care", {
+  clientId:     uuid("client_id").primaryKey().references(() => clients.id, { onDelete: "cascade" }),
+  satisfaction: text("satisfaction"),               // 만족 | 보통 | 불만 | null = 미확인
+  note:         text("note").notNull().default(""), // 특이사항
+  checkedAt:    date("checked_at"),                 // 만족도를 마지막으로 확인한 날
+  updatedBy:    text("updated_by"),
+  updatedAt:    timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type ClientCare = typeof clientCare.$inferSelect;
+
+/** 끝나가는 캠페인의 연장 협의 상태 — 회의록 프로젝트 일정에서 고른다. */
+export const campaignRenewals = pgTable("campaign_renewals", {
+  projectId: uuid("project_id").primaryKey().references(() => projects.id, { onDelete: "cascade" }),
+  status:    text("status").notNull(),   // 협의 전 | 협의중 | 연장 | 종료
+  updatedBy: text("updated_by"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type CampaignRenewal = typeof campaignRenewals.$inferSelect;
+
+/** 팀별 날짜 할 일 — 회의록 마케팅팀·개발팀 캘린더. 회의록과 따로 두어 다음 회의에도 이어진다. */
+export const teamTasks = pgTable("team_tasks", {
+  id:        uuid("id").primaryKey().defaultRandom(),
+  team:      text("team").notNull(),        // marketing | dev (MeetingTeamKey)
+  taskDate:  date("task_date").notNull(),
+  title:     text("title").notNull(),
+  assignee:  text("assignee"),              // users.name
+  done:      boolean("done").notNull().default(false),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("team_tasks_team_date_idx").on(table.team, table.taskDate),
+]);
+
+export type TeamTask = typeof teamTasks.$inferSelect;
 
 export const kpiTargets = pgTable("kpi_targets", {
   id:     uuid("id").primaryKey().defaultRandom(),

@@ -1,4 +1,4 @@
-import type { MeetingAxisKey, MeetingAxisEntry, MeetingSections, MeetingMemberEntry, MeetingMembers } from "@/db/schema";
+import type { MeetingAxisKey, MeetingAxisEntry, MeetingSections, MeetingMemberEntry, MeetingMembers, MeetingTeamKey, MeetingTeamNotes } from "@/db/schema";
 
 /** 회의록 4대 축. 화면(meetings)의 AXES 목록과 순서를 맞춰 둔다. */
 export const MEETING_AXIS_KEYS: MeetingAxisKey[] = ["revenue", "operation", "sales", "marketing"];
@@ -66,4 +66,30 @@ export function normalizeMeetingMembers(raw: unknown): MeetingMembers {
     if (memberHasText(entry)) out[name.trim()] = entry;
   }
   return out;
+}
+
+// ─── 팀별 기록 ────────────────────────────────────────────────
+
+/** 사람이 아니라 팀 단위로 쓰는 칸 — 회의록 화면 순서와 같다 */
+export const MEETING_TEAM_KEYS: MeetingTeamKey[] = ["ops", "marketing", "dev", "admin"];
+
+/** 저장된 팀 기록을 팀 → 세 칸으로 맞춘다. 모르는 키·빈 칸은 뺀다. */
+export function normalizeMeetingTeamNotes(raw: unknown): MeetingTeamNotes {
+  const out: MeetingTeamNotes = {};
+  if (!raw || typeof raw !== "object") return out;
+  const src = raw as Record<string, unknown>;
+  for (const key of MEETING_TEAM_KEYS) {
+    const v = src[key];
+    if (!v || typeof v !== "object") continue;
+    const e = v as Record<string, unknown>;
+    const entry = { done: str(e.done), todo: str(e.todo), issue: str(e.issue) };
+    if (memberHasText(entry)) out[key] = entry;
+  }
+  return out;
+}
+
+/** 참석자 이름 목록 — 공백·중복을 뺀다 */
+export function normalizeAttendees(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return [...new Set(raw.filter((v): v is string => typeof v === "string").map(v => v.trim()).filter(Boolean))];
 }

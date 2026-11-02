@@ -7,11 +7,11 @@
  * 회의록은 리포트를 보다가 곁들여 적는 것이 아니라 회의 시간에 이 화면만 띄워놓고 쓰는 문서라,
  * 리포트의 팀·기간 필터와 상태를 공유할 이유가 없다. 필요한 필터(연·월·기준)만 여기서 직접 고른다.
  *
- * 화면 구성: 맨 위 매출현황(자동 집계) → 달력. 달력 칸에 회의록 카드가 놓이고, 누르면 오른쪽에 작성 패널이 열린다.
+ * 화면 구성: 왼쪽 목차(이 달의 회의 · 회의 순서) + 회의 순서대로 내려가는 본문. board/MeetingBoard 참고.
  */
 
 import { useState } from "react";
-import MeetingSection from "./MeetingSection";
+import MeetingBoard from "./board/MeetingBoard";
 
 const CRITERIA = [
   { value: "캠페인 시작날짜", label: "캠페인 시작일 기준" },
@@ -44,7 +44,7 @@ export default function MeetingsPage() {
         <div>
           <h1 className="text-xl font-bold" style={{ color: "#191F28" }}>정기 회의록</h1>
           <p className="text-[13px] mt-1" style={{ color: "#6B7684" }}>
-            달력에서 주간회의 · 월간회의를 골라 작성합니다. 직전 회의 내용이 자동으로 이어집니다
+            전체 매출부터 팀별 할 일까지 회의 순서대로 읽고 적습니다
           </p>
         </div>
 
@@ -55,9 +55,8 @@ export default function MeetingsPage() {
         </select>
       </div>
 
-      {/* 월 이동은 달력 머리말에서 한다 — 저장 안 된 내용 확인을 회의록 쪽이 쥐고 있어서다.
-          공유 이미지에 "무엇을 매출로 본 수치인지" 적어야 해서 라벨까지 함께 넘긴다 */}
-      <MeetingSection year={year} month={month}
+      {/* 월 이동은 회의록 목차에서 한다 — 저장 안 된 내용 확인을 회의록 쪽이 쥐고 있어서다 */}
+      <MeetingBoard year={year} month={month}
         onMonthChange={(y, m) => { setYear(y); setMonth(m); }}
         criteria={criteria}
         criteriaLabel={CRITERIA.find(c => c.value === criteria)?.label ?? criteria} />

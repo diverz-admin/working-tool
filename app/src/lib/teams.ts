@@ -1,7 +1,7 @@
 // 팀 목록·색상 단일 소스. 화면마다 목록이 갈리지 않도록 여기서만 정의한다.
 
 /** 표준 팀 목록 (표시 순서 = 정렬 순서) */
-export const TEAMS = ["경영", "영업 1팀", "영업 2팀", "운영팀", "개발팀"] as const;
+export const TEAMS = ["경영", "영업 1팀", "영업 2팀", "영업관리팀", "운영팀", "개발팀"] as const;
 export type Team = (typeof TEAMS)[number];
 
 /** 집계·차트 정렬 기준 (데이터에 없는 팀도 순서만 잡아준다) */
@@ -17,6 +17,7 @@ export const TEAM_COLORS: Record<string, string> = {
   "경영":     "#F59E0B",
   "영업 1팀": "#6366F1",
   "영업 2팀": "#10B981",
+  "영업관리팀": "#F08C00",
   "운영팀":   "#EC4899",
   "개발팀":   "#0EA5E9",
   "기타":     "#8B5CF6",
