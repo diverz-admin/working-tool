@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useState, useEffect, Suspense } from "react";
+import { SIDEBAR_COOKIE } from "@/lib/sidebar";
 import { useUser } from "@/lib/UserContext";
 import { fetchJson } from "@/lib/fetch-json";
 import { TEAMS } from "@/lib/teams";
@@ -552,19 +553,41 @@ function OperationsNavSection() {
   );
 }
 
-export default function Sidebar() {
+/**
+ * 왼쪽 메뉴. 회의록처럼 넓게 보는 화면에서 접을 수 있다.
+ * 본문 여백(ml-64)은 레이아웃의 data-sidebar 값으로 CSS가 바꾼다 — 상태를 레이아웃까지 올리지 않아도 된다.
+ */
+export default function Sidebar({ initialCollapsed = false }: { initialCollapsed?: boolean }) {
+  const [collapsed, setCollapsed] = useState(initialCollapsed);
+
+  function toggle(next: boolean) {
+    setCollapsed(next);
+    document.querySelector("[data-sidebar]")?.setAttribute("data-sidebar", next ? "collapsed" : "open");
+    document.cookie = `${SIDEBAR_COOKIE}=${next ? "collapsed" : "open"}; path=/; max-age=31536000; samesite=lax`;
+  }
+
   return (
+    <>
     <aside
-      className="w-64 shrink-0 flex flex-col fixed inset-y-0 left-0 overflow-y-auto z-30"
+      className={`w-64 shrink-0 flex flex-col fixed inset-y-0 left-0 overflow-y-auto z-30 transition-transform duration-200 ${collapsed ? "-translate-x-full" : ""}`}
       style={{ background: "#FFFFFF", borderRight: "1px solid #E5E8EB" }}
+      aria-hidden={collapsed || undefined}
+      inert={collapsed || undefined}
     >
       {/* 로고 */}
-      <div className="px-5 py-6" style={{ borderBottom: "1px solid #F2F4F6" }}>
+      <div className="px-5 py-6 flex items-center justify-between" style={{ borderBottom: "1px solid #F2F4F6" }}>
         <img
           src="/logo-diverz.png"
           alt="DIVERZ"
           style={{ height: 36, width: "auto", objectFit: "contain" }}
         />
+        <button type="button" onClick={() => toggle(true)} aria-label="메뉴 접기" title="메뉴 접기"
+          className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:bg-[#F2F4F6]"
+          style={{ color: "#8B95A1" }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="11 17 6 12 11 7" /><polyline points="18 17 13 12 18 7" />
+          </svg>
+        </button>
       </div>
 
       {/* 네비게이션 */}
@@ -590,5 +613,17 @@ export default function Sidebar() {
         <p className="text-xs" style={{ color: "#B0B8C1" }}>v0.1.0</p>
       </div>
     </aside>
+
+    {/* 접혀 있을 때 왼쪽 가장자리의 펼치기 손잡이 */}
+    {collapsed && (
+      <button type="button" onClick={() => toggle(false)} aria-label="메뉴 펼치기" title="메뉴 펼치기"
+        className="fixed left-0 top-20 z-30 w-7 h-11 rounded-r-xl flex items-center justify-center transition-colors hover:bg-[#F2F4F6]"
+        style={{ background: "#FFFFFF", border: "1px solid #E5E8EB", borderLeft: 0, color: "#6B7684", boxShadow: "0 2px 8px rgba(0,0,0,.06)" }}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="13 17 18 12 13 7" /><polyline points="6 17 11 12 6 7" />
+        </svg>
+      </button>
+    )}
+    </>
   );
 }
