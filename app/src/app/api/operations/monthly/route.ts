@@ -6,6 +6,8 @@ import { monthRange } from "@/lib/month-range";
 import { isRevenueConfirmed } from "@/lib/revenue-stats";
 
 const REV_FIELDS = {
+  projectId:      projects.id,
+  campaignName:   projects.campaignName,
   assignedTeam:   projects.assignedTeam,
   assignedPerson: projects.assignedPerson,
   startDate:      projects.startDate,
@@ -21,7 +23,7 @@ const REV_FIELDS = {
 } as const;
 
 const REV_GROUP_BY = [
-  projects.id, projects.assignedTeam, projects.assignedPerson, projects.startDate,
+  projects.id, projects.campaignName, projects.assignedTeam, projects.assignedPerson, projects.startDate,
   projects.contractAmount, projects.kpiSupply, projects.kpiTax, clients.companyName,
 ] as const;
 
@@ -78,7 +80,9 @@ export async function GET(req: NextRequest) {
         rowNum:       projectCosts.rowNum,
         assignee:     projectCosts.assignee,
         assignedTeam: projects.assignedTeam,
+        projectId:    projects.id,
         campaignName: projects.campaignName,
+        clientName:   clients.companyName,
         vendor:       projectCosts.vendor,
         productName:  projectCosts.productName,
         quantity:     projectCosts.quantity,
@@ -92,6 +96,7 @@ export async function GET(req: NextRequest) {
       })
       .from(projectCosts)
       .innerJoin(projects, eq(projectCosts.projectId, projects.id))
+      .leftJoin(clients, eq(projects.clientId, clients.id))
       .where(and(
         eq(projectCosts.isApproved, true),
         isNotNull(costDateField),
@@ -104,6 +109,9 @@ export async function GET(req: NextRequest) {
     ]);
 
     const revRows = revData.map(p => ({
+      id:           p.projectId,
+      projectId:    p.projectId,
+      campaignName: p.campaignName,
       assignedTeam: p.assignedTeam,
       assignee:     p.assignedPerson,
       startDate:    p.startDate,
@@ -116,20 +124,26 @@ export async function GET(req: NextRequest) {
       tax:         useContract ? (p.kpiTax         ?? Number(p.taxSum    ?? 0)) : Number(p.taxSum    ?? 0),
     }));
 
-    // ── 승인된 내부지출 → 해당 월 SGA 카테고리별 합산 ──
-    let expenseRows: { requestedAt: string | null; amount: number | null; expenseCategory: string | null }[] = [];
+    // ── 승인된 내부지출 (그 달 요청분) — 팀별 손익의 지출 통계 + 해당 월 SGA 카테고리별 합산 ──
+    type ExpenseRow = { id: string; title: string; assignedTeam: string | null; requester: string;
+      requestedAt: string | null; amount: number | null; expenseCategory: string | null };
+    let expenseRows: ExpenseRow[] = [];
     try {
       expenseRows = await db.select({
+        id:              internalExpenseRequests.id,
+        title:           internalExpenseRequests.title,
+        assignedTeam:    internalExpenseRequests.assignedTeam,
+        requester:       internalExpenseRequests.requester,
         requestedAt:     internalExpenseRequests.requestedAt,
         amount:          internalExpenseRequests.amount,
         expenseCategory: internalExpenseRequests.expenseCategory,
       }).from(internalExpenseRequests)
         .where(and(
           eq(internalExpenseRequests.status, "승인"),
-          isNotNull(internalExpenseRequests.expenseCategory),
           gte(internalExpenseRequests.requestedAt, from),
           lte(internalExpenseRequests.requestedAt, to),
-        ));
+        ))
+        .orderBy(internalExpenseRequests.requestedAt);
     } catch { /* expense_category 컬럼 없으면 무시 */ }
 
     const baseSgaRows = sgaData.filter(r => r.category !== "직접매입(상품)");
@@ -147,6 +161,7 @@ export async function GET(req: NextRequest) {
       revRows,
       costRows: costData,
       sgaRows:  Array.from(sgaMap.values()),
+      expenseRows,
     });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
