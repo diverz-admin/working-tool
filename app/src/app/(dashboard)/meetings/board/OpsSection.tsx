@@ -21,6 +21,8 @@ const SAT_TONE: Record<Satisfaction, Tone> = { 만족: TONE.good, 보통: TONE.w
 const SAT_OPTIONS: (Satisfaction | null)[] = ["만족", "보통", "불만", null];
 
 type ViewKey = "all" | "note" | "none" | "end";
+type EndBasis = "campaign" | "item";
+const endOf = (c: OpsClient, basis: EndBasis) => (basis === "campaign" ? c.campaignEnd : c.itemEnd);
 const RW_LIMIT = 3;   // 업체 한 줄에 처음 보이는 리워드 수
 const FOLD_LIMIT = 5; // 뒤쪽 기간 묶음이 처음 보이는 업체 수
 
@@ -252,6 +254,7 @@ function ClientTable({ data, onSave }: {
   onSave: (c: OpsClient, patch: { satisfaction?: Satisfaction | null; note?: string }) => void;
 }) {
   const [view, setView] = useState<ViewKey>("all");
+  const [basis, setBasis] = useState<EndBasis>("campaign");
   const [owner, setOwner] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [satOpen, setSatOpen] = useState<string | null>(null);
@@ -268,7 +271,7 @@ function ClientTable({ data, onSave }: {
     ["all", "전체", () => true],
     ["note", "특이사항", c => !!c.note.trim()],
     ["none", "리워드 미등록", c => !c.rewards.length],
-    ["end", "이번 주 종료", c => !!c.endDate && c.endDate <= weekEnd],
+    ["end", "이번 주 종료", c => { const e = endOf(c, basis); return !!e && e <= weekEnd; }],
   ];
 
   const owners = useMemo(() => {
@@ -279,16 +282,19 @@ function ClientTable({ data, onSave }: {
 
   const byOwner = (c: OpsClient) => !owner || c.owners.includes(owner);
   const viewFn = VIEWS.find(v => v[0] === view)![2];
-  const list = data.clients.filter(c => viewFn(c) && byOwner(c)); // API가 종료일 순으로 준다
+  // 고른 종료 기준(캠페인 / 품목)의 종료일 순으로 다시 세운다
+  const list = data.clients.filter(c => viewFn(c) && byOwner(c))
+    .sort((a, b) => (endOf(a, basis) ?? "9999").localeCompare(endOf(b, basis) ?? "9999") || a.name.localeCompare(b.name, "ko"));
+  const ends = (limit: string) => (c: OpsClient) => { const e = endOf(c, basis); return !!e && e <= limit; };
 
   // 종료가 가까운 업체부터 기간별로 끊는다. 뒤쪽 묶음은 길어서 처음엔 일부만 보인다
   const buckets: { key: string; label: string; range: string; tone: Tone; fits: (c: OpsClient) => boolean }[] = [
     { key: "week", label: "이번 주 종료", range: `${md(asOf)} – ${md(weekEnd)}`, tone: TONE.bad,
-      fits: c => !!c.endDate && c.endDate <= weekEnd },
+      fits: ends(weekEnd) },
     { key: "next", label: "다음 주 종료", range: `${md(addDays(weekEnd, 1))} – ${md(nextEnd)}`, tone: TONE.warn,
-      fits: c => !!c.endDate && c.endDate <= nextEnd },
+      fits: ends(nextEnd) },
     { key: "month", label: `${m}월 안에 종료`, range: `${md(addDays(nextEnd, 1))} – ${md(monthEnd)}`, tone: TONE.accent,
-      fits: c => !!c.endDate && c.endDate <= monthEnd },
+      fits: ends(monthEnd) },
     { key: "later", label: "그 이후 · 장기 계약", range: "다음 달 이후 · 종료일 없음", tone: TONE.muted, fits: () => true },
   ];
   let rest = list;
@@ -326,6 +332,10 @@ function ClientTable({ data, onSave }: {
             </TabButton>
           ))}
         </Tabs>
+        <Tabs label="종료 기준">
+          <TabButton pressed={basis === "campaign"} onClick={() => { setBasis("campaign"); setExpanded(new Set()); }}>캠페인 종료</TabButton>
+          <TabButton pressed={basis === "item"} onClick={() => { setBasis("item"); setExpanded(new Set()); }}>품목 종료</TabButton>
+        </Tabs>
         {owners.length > 1 && (
           <span className="lg:ml-auto">
             <Tabs label="영업 담당">
@@ -354,7 +364,7 @@ function ClientTable({ data, onSave }: {
             </span>
           </div>
           {(g.folded ? g.rows.slice(0, FOLD_LIMIT) : g.rows).map(c => (
-            <ClientRow key={c.id} c={c} asOf={asOf}
+            <ClientRow key={c.id} c={c} asOf={asOf} basis={basis}
               satOpen={satOpen === c.id} onSatToggle={() => setSatOpen(s => s === c.id ? null : c.id)}
               onSat={v => { setSatOpen(null); if (v !== c.satisfaction) onSave(c, { satisfaction: v }); }}
               noteOpen={noteOpen === c.id} onNoteOpen={() => { setSatOpen(null); setNoteOpen(c.id); }}
@@ -393,13 +403,14 @@ function TabButton({ pressed, onClick, children }: { pressed: boolean; onClick: 
   );
 }
 
-function ClientRow({ c, asOf, satOpen, onSatToggle, onSat, noteOpen, onNoteOpen, onNoteClose, rwAll, onRwToggle, canEdit }: {
-  c: OpsClient; asOf: string;
+function ClientRow({ c, asOf, basis, satOpen, onSatToggle, onSat, noteOpen, onNoteOpen, onNoteClose, rwAll, onRwToggle, canEdit }: {
+  c: OpsClient; asOf: string; basis: EndBasis;
   satOpen: boolean; onSatToggle: () => void; onSat: (v: Satisfaction | null) => void;
   noteOpen: boolean; onNoteOpen: () => void; onNoteClose: (v: string | null) => void;
   rwAll: boolean; onRwToggle: () => void; canEdit: boolean;
 }) {
-  const d = c.endDate ? daysBetween(asOf, c.endDate) : null;
+  const end = endOf(c, basis);
+  const d = end ? daysBetween(asOf, end) : null;
   const edge = c.satisfaction === "불만" ? C.bad : c.satisfaction === "보통" ? C.warn : null;
   const rws = rwAll ? c.rewards : c.rewards.slice(0, RW_LIMIT);
   const showCampaigns = c.campaigns.length > 1 || (c.campaigns[0] && c.campaigns[0] !== c.name);
@@ -442,10 +453,10 @@ function ClientRow({ c, asOf, satOpen, onSatToggle, onSat, noteOpen, onNoteOpen,
             </span>
           )}
           <span className="tabular-nums">
-            {c.endDate ? <>
+            {end ? <>
               {d !== null && d >= 0 && d <= 6 && <span className="font-semibold mr-1" style={{ color: C.warn }}>D-{d}</span>}
-              {md(c.endDate)} 종료
-            </> : "종료일 없음"}
+              {basis === "item" ? "품목 " : ""}{md(end)} 종료
+            </> : basis === "item" ? "품목 종료일 없음" : "종료일 없음"}
           </span>
         </div>
         {c.rank && <RankLine rank={c.rank} />}

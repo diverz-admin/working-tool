@@ -33,6 +33,8 @@ export interface OpsClient {
   campaigns: string[];        // 운영중 캠페인 이름
   guaranteed: boolean;        // 보장형 캠페인이 하나라도 있음
   endDate: string | null;     // 가장 가까운 종료일 — 캠페인 종료일과 아직 안 끝난 품목 종료일 중 이른 날. 둘 다 없으면 null
+  campaignEnd: string | null; // 가장 먼저 끝나는 캠페인의 종료일
+  itemEnd: string | null;     // 아직 안 끝난 품목 중 가장 이른 종료일 (패키지 제외)
   rewards: OpsReward[];
   rank: { rank: number | null; keyword: string | null; checked: boolean } | null; // 보장형만
   satisfaction: Satisfaction | null;
@@ -228,6 +230,8 @@ export async function GET(req: NextRequest) {
         campaigns: [...new Set(sorted.map(p => p.campaign))],
         guaranteed: gs.length > 0,
         endDate,
+        campaignEnd,
+        itemEnd,
         rewards,
         rank,
         satisfaction: sat === "만족" || sat === "보통" || sat === "불만" ? sat : null,
