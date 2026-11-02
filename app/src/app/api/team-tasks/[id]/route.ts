@@ -25,7 +25,7 @@ type Params = { params: Promise<{ id: string }> };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** 바꿀 칸만 보낸다 — { title?, done?, taskDate?, assignee? } */
+/** 바꿀 칸만 보낸다 — { title?, done?, taskDate?, endDate?, assignee? } */
 export async function PATCH(req: NextRequest, { params }: Params) {
   try {
     const { id } = await params;
@@ -48,8 +48,25 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       if (!isIsoDate(body.taskDate)) return NextResponse.json({ error: "날짜(YYYY-MM-DD)가 올바르지 않습니다." }, { status: 400 });
       set.taskDate = body.taskDate;
     }
+    if ("endDate" in body) {
+      if (body.endDate !== null && !isIsoDate(body.endDate)) {
+        return NextResponse.json({ error: "종료일(YYYY-MM-DD)이 올바르지 않습니다." }, { status: 400 });
+      }
+      set.endDate = body.endDate;
+    }
     if ("assignee" in body) set.assignee = cleanName(body.assignee);
     if (!Object.keys(set).length) return NextResponse.json({ error: "바꿀 내용이 없습니다." }, { status: 400 });
+
+    // 시작·종료 중 하나만 바꿔도 순서가 맞는지 저장된 값과 함께 확인한다
+    if ("taskDate" in set || "endDate" in set) {
+      const [cur] = await db.select({ taskDate: teamTasks.taskDate, endDate: teamTasks.endDate })
+        .from(teamTasks).where(eq(teamTasks.id, id));
+      if (!cur) return NextResponse.json({ error: "할 일을 찾을 수 없습니다." }, { status: 404 });
+      const start = set.taskDate ?? cur.taskDate;
+      const end = "endDate" in set ? set.endDate : cur.endDate;
+      if (end && end < start) return NextResponse.json({ error: "종료일은 시작일과 같거나 뒤여야 합니다." }, { status: 400 });
+      set.endDate = end && end !== start ? end : null;
+    }
 
     const [task] = await db.update(teamTasks).set({ ...set, updatedAt: new Date() })
       .where(eq(teamTasks.id, id)).returning();

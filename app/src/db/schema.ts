@@ -515,7 +515,8 @@ export type CampaignRenewal = typeof campaignRenewals.$inferSelect;
 export const teamTasks = pgTable("team_tasks", {
   id:        uuid("id").primaryKey().defaultRandom(),
   team:      text("team").notNull(),        // marketing | dev (MeetingTeamKey)
-  taskDate:  date("task_date").notNull(),
+  taskDate:  date("task_date").notNull(),       // 시작일
+  endDate:   date("end_date"),                  // 종료일 — 비어 있으면 하루짜리
   title:     text("title").notNull(),
   assignee:  text("assignee"),              // users.name
   done:      boolean("done").notNull().default(false),

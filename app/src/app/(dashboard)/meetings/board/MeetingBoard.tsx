@@ -433,12 +433,12 @@ export default function MeetingBoard({ year, month, onMonthChange, criteria, cri
         </div>
 
         <TeamCalendar ctx={ctx} team="marketing" id="s-marketing" no={5} title="마케팅팀"
-          hint="날짜마다 해야 할 일 · 지난 날짜에 남은 일은 빨간색"
+          hint="기간별 할 일 카드 · 종료일 지나도 안 끝난 일은 빨간색"
           notes={teamEntry("marketing")} onNotes={setTeam("marketing")}
           labels={{ issue: { label: "이슈 · 요청" }, todo: { label: "이번 달 마케팅 방향" } }}
           onBadge={badgeSetters["s-marketing"]} />
         <TeamCalendar ctx={ctx} team="dev" id="s-dev" no={6} title="개발팀" ownerTeam="개발팀"
-          hint="날짜마다 해야 할 일 · 지난 날짜에 남은 일은 빨간색"
+          hint="기간별 할 일 카드 · 종료일 지나도 안 끝난 일은 빨간색"
           notes={teamEntry("dev")} onNotes={setTeam("dev")}
           labels={{ issue: { label: "이슈 · 요청" }, todo: { label: "요청 받은 기능 · 우선순위" } }}
           onBadge={badgeSetters["s-dev"]} />

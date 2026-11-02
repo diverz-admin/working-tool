@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { teamTasks } from "@/db/schema";
-import { and, asc, eq, gte, lte } from "drizzle-orm";
+import { and, asc, eq, lte, sql } from "drizzle-orm";
 
 /**
  * 회의록 마케팅팀·개발팀의 날짜별 할 일.
@@ -44,7 +44,12 @@ export async function GET(req: NextRequest) {
     }
 
     const tasks = await db.select().from(teamTasks)
-      .where(and(eq(teamTasks.team, team), gte(teamTasks.taskDate, from), lte(teamTasks.taskDate, to)))
+      // 기간이 조회 범위와 겹치는 할 일 — 시작이 범위 끝 이전이고, 끝(없으면 시작)이 범위 시작 이후
+      .where(and(
+        eq(teamTasks.team, team),
+        lte(teamTasks.taskDate, to),
+        sql`coalesce(${teamTasks.endDate}, ${teamTasks.taskDate}) >= ${from}`,
+      ))
       .orderBy(asc(teamTasks.taskDate), asc(teamTasks.createdAt));
 
     return NextResponse.json({ tasks });
@@ -62,10 +67,15 @@ export async function POST(req: NextRequest) {
     if (!isIsoDate(body.taskDate)) return NextResponse.json({ error: "날짜(YYYY-MM-DD)가 올바르지 않습니다." }, { status: 400 });
     const t = cleanTitle(body.title);
     if ("error" in t) return NextResponse.json({ error: t.error }, { status: 400 });
+    const end = body.endDate ?? null;
+    if (end !== null && (!isIsoDate(end) || end < body.taskDate)) {
+      return NextResponse.json({ error: "종료일은 시작일과 같거나 뒤여야 합니다." }, { status: 400 });
+    }
 
     const [task] = await db.insert(teamTasks).values({
       team:      body.team,
       taskDate:  body.taskDate,
+      endDate:   end && end !== body.taskDate ? end : null,
       title:     t.title,
       assignee:  cleanName(body.assignee),
       createdBy: cleanName(body.createdBy),
