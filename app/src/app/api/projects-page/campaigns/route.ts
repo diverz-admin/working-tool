@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { projects, projectRevenues, projectCosts, confirmRequests, paymentRequests } from "@/db/schema";
-import { eq, desc, max, count, sql } from "drizzle-orm";
+import { eq, desc, max, count, sql, and } from "drizzle-orm";
 
 function daysRemaining(dateStr: string | null): number | null {
   if (!dateStr) return null;
@@ -12,7 +12,7 @@ function daysRemaining(dateStr: string | null): number | null {
 // 기존 N개(그룹 수) 개별 요청 → 단일 요청으로 통합
 export async function GET() {
   try {
-    const [campaignRows, costTotalRows, revStatsRows, costStatsRows] = await Promise.all([
+    const [campaignRows, costTotalRows, revStatsRows, costStatsRows, itemRows] = await Promise.all([
       // 1. 모든 캠페인 + workEndDate + revenueTotal
       db.select({
         id:             projects.id,
@@ -67,7 +67,29 @@ export async function GET() {
       })
         .from(paymentRequests)
         .groupBy(paymentRequests.projectId),
+
+      // 5. 품목 종료일 필터에서 상세에 보여줄 품목 — 완료 체크 안 됐고 오늘 이후에 끝나는 것만
+      db.select({
+        id:            projectRevenues.id,
+        projectId:     projectRevenues.projectId,
+        productName:   projectRevenues.productName,
+        quantity:      projectRevenues.quantity,
+        workStartDate: projectRevenues.workStartDate,
+        workEndDate:   projectRevenues.workEndDate,
+      })
+        .from(projectRevenues)
+        .where(and(
+          eq(projectRevenues.workCompleted, false),
+          sql`${projectRevenues.workEndDate} >= (now() AT TIME ZONE 'Asia/Seoul')::date`,
+        ))
+        .orderBy(projectRevenues.workEndDate),
     ]);
+
+    const itemsMap = new Map<string, unknown[]>();
+    for (const { projectId, ...it } of itemRows) {
+      if (!itemsMap.has(projectId)) itemsMap.set(projectId, []);
+      itemsMap.get(projectId)!.push({ ...it, daysRemaining: daysRemaining(it.workEndDate) });
+    }
 
     const costTotalMap = new Map(costTotalRows.map(r => [r.projectId!, Number(r.total)]));
     const revStatsMap  = new Map(revStatsRows.map(r => [r.projectId!, {
@@ -97,6 +119,7 @@ export async function GET() {
         costTotal:        costTotalMap.get(c.id) ?? 0,
         costApproved:     cost.approved,
         costPending:      cost.pending,
+        items:            itemsMap.get(c.id) ?? [],
       };
       const gId = c.projectGroupId ?? "__ungrouped__";
       if (!campaignsByGroup[gId]) campaignsByGroup[gId] = [];
