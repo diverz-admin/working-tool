@@ -1,10 +1,12 @@
 "use client";
 
 /**
- * 회의록 마케팅팀·개발팀 — 기간 카드 캘린더.
+ * 회의록 마케팅팀·개발팀 — 기간 카드 캘린더 (노션 캘린더처럼 달력 위에서 바로 다룬다).
  *
- * 할 일 하나 = 카드 하나. 시작일~종료일에 걸쳐 가로 막대로 놓인다 (노션 캘린더처럼).
- *   달력 칸을 끌어서 기간을 고르거나, 위 입력칸에 시작·종료일을 넣어 등록한다.
+ * 할 일 하나 = 카드 하나. 시작일~종료일에 걸쳐 가로 막대로 놓인다.
+ *   - 빈 칸을 누르거나 끌면 그 기간에 새 카드 입력칸이 생긴다
+ *   - 카드를 끌면 옮겨지고, 카드 양 끝을 끌면 시작·종료일이 늘어나거나 줄어든다
+ *   - 카드를 누르면 그 자리에서 제목·담당·기간·완료를 고친다
  *   종료일이 지났는데 완료 안 된 카드는 빨간색.
  * 저장은 team_tasks 테이블(/api/team-tasks) — task_date = 시작일, end_date = 종료일(하루짜리면 비움).
  * 회의록 본문(이슈·메모)은 notes로 따로 저장된다.
@@ -34,8 +36,9 @@ interface Member { name: string; team: string | null; position: string | null; s
 const TITLE_MAX = 200;
 const WEEK_HEAD = ["월", "화", "수", "목", "금", "토", "일"];
 const ISO_RE = /^\d{4}-\d{2}-\d{2}$/;
+const DRAFT = "draft";
 const isTemp = (id: string) => id.startsWith("tmp-");
-const endOf = (t: Task) => t.endDate ?? t.taskDate;
+const endOf = (t: Pick<Task, "taskDate" | "endDate">) => t.endDate ?? t.taskDate;
 const dowOf = (iso: string) => DOW[new Date(`${iso}T00:00:00`).getDay()];
 const lastDayOf = (y: number, m: number) => {
   const d = new Date(y, m, 0).getDate();
@@ -43,6 +46,16 @@ const lastDayOf = (y: number, m: number) => {
 };
 const overlaps = (t: Task, from: string, to: string) => t.taskDate <= to && endOf(t) >= from;
 const rangeText = (t: Task) => (t.endDate ? `${md(t.taskDate)} – ${md(t.endDate)}` : md(t.taskDate));
+const sorted = (a: string, b: string): [string, string] => (a <= b ? [a, b] : [b, a]);
+
+/** 화면 좌표 아래 날짜 칸 — 카드가 위에 덮여 있어도 찾는다 */
+function dayAt(x: number, y: number): string | null {
+  for (const el of document.elementsFromPoint(x, y)) {
+    const d = (el as HTMLElement).dataset?.date;
+    if (d) return d;
+  }
+  return null;
+}
 
 /** 한 주 안에 놓일 카드 조각 — 줄(lane)이 겹치지 않게 위에서부터 채운다 */
 interface Seg { task: Task; c0: number; c1: number; lane: number; cutL: boolean; cutR: boolean }
@@ -62,6 +75,19 @@ function layoutWeek(tasks: Task[], ws: string): { segs: Seg[]; lanes: number } {
     return { task, c0, c1, lane, cutL: task.taskDate < ws, cutR: endOf(task) > we };
   });
   return { segs, lanes: laneEnd.length };
+}
+
+/** 카드 끌기 — move: 통째로 옮김, start/end: 한쪽 끝만 늘리고 줄임 */
+interface Drag { id: string; mode: "move" | "start" | "end"; from: string; to: string }
+
+function applyDrag(t: Task, d: Drag): Task {
+  const delta = daysBetween(d.from, d.to);
+  if (!delta) return t;
+  let s = t.taskDate, e = endOf(t);
+  if (d.mode === "move") { s = addDays(s, delta); e = addDays(e, delta); }
+  else if (d.mode === "start") s = addDays(s, delta) > e ? e : addDays(s, delta);
+  else e = addDays(e, delta) < s ? s : addDays(e, delta);
+  return { ...t, taskDate: s, endDate: e === s ? null : e };
 }
 
 export default function TeamCalendar({
@@ -130,68 +156,59 @@ export default function TeamCalendar({
     if (ctx.userName && !names.includes(ctx.userName)) names.push(ctx.userName);
     return [...new Set(names)];
   }, [owners, members, ctx.userName]);
-
-  // ── 등록·고치기 칸 ──
-  const firstDay = today >= gridStart && today <= gridEnd ? today : ctx.weekStart;
-  const [fStart, setFStart] = useState(firstDay);
-  const [fEnd, setFEnd] = useState(firstDay);
-  const [fWho, setFWho] = useState("");
-  const [fText, setFText] = useState("");
-  const [editingId, setEditingId] = useState<string | null>(null);   // null = 새로 등록
-  const textRef = useRef<HTMLInputElement>(null);
-  // 고르지 않았으면 팀 담당자 → 지금 쓰는 사람 순으로 기본값
-  const who = fWho || owners[0]?.name || ctx.userName || assigneeOptions[0] || "";
+  // 새 카드 담당 기본값 — 팀 담당자 → 지금 쓰는 사람
+  const defaultWho = owners[0]?.name || ctx.userName || assigneeOptions[0] || "";
 
   const [msg, setMsg] = useState<string | null>(null);
   const [armed, setArmed] = useState<string | null>(null);              // 삭제 한 번 더 누르면 지워지는 할 일
 
-  const pickRange = (a: string, b: string) => {
-    const [s, e] = a <= b ? [a, b] : [b, a];
-    setEditingId(null);
-    setFStart(s);
-    setFEnd(e);
-    textRef.current?.focus();
-  };
+  // ── 새 카드 입력칸 (달력 위) ──
+  const [draft, setDraft] = useState<{ start: string; end: string; text: string; who: string } | null>(null);
 
-  const setStart = (v: string) => {
-    setFStart(v);
-    if (ISO_RE.test(v) && (!ISO_RE.test(fEnd) || fEnd < v)) setFEnd(v);
-  };
+  // ── 카드 바로 고치기 (달력 위 작은 창) ──
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [form, setForm] = useState({ title: "", who: "", start: "", end: "" });
+  const editorRef = useRef<HTMLDivElement | null>(null);
+  const draftRef = useRef<HTMLDivElement | null>(null);
+  const touchRef = useRef(false);   // 마지막 누름이 터치였나 — 터치는 끌기 없이 '눌러서 열기'만
 
-  const startEdit = (t: Task) => {
-    setEditingId(t.id);
-    setFStart(t.taskDate);
-    setFEnd(endOf(t));
-    setFWho(t.assignee ?? "");
-    setFText(t.title);
+  const openEditor = (t: Task) => {
+    if (isTemp(t.id)) return;
+    setDraft(null);
+    setOpenId(t.id);
+    setForm({ title: t.title, who: t.assignee ?? "", start: t.taskDate, end: endOf(t) });
     setMsg(null);
-    textRef.current?.focus();
+  };
+  const closeEditor = () => { setOpenId(null); setArmed(null); };
+
+  const newDraft = (a: string, b: string) => {
+    const [s, e] = sorted(a, b);
+    setOpenId(null);
+    setDraft({ start: s, end: e, text: "", who: defaultWho });
   };
 
-  const resetForm = () => {
-    setEditingId(null);
-    setFText("");
-    setFWho("");
-  };
-
-  const add = async (t: string, start: string, end: string) => {
+  const add = async (d: NonNullable<typeof draft>) => {
+    const t = d.text.trim();
+    if (!t) { setDraft(null); return; }
+    if (t.length > TITLE_MAX) { setMsg(`할 일은 ${TITLE_MAX}자 이내로 입력해주세요.`); return; }
     const tmp: Task = {
-      id: `tmp-${Date.now()}`, team, taskDate: start, endDate: end === start ? null : end,
-      title: t, assignee: who || null, done: false,
+      id: `tmp-${Date.now()}`, team, taskDate: d.start, endDate: d.end === d.start ? null : d.end,
+      title: t, assignee: d.who || null, done: false,
     };
     setTasks(p => [...p, tmp]);
-    setFText("");
+    setDraft(null);
+    setMsg(null);
     try {
       const res = await fetch("/api/team-tasks", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ team, taskDate: start, endDate: tmp.endDate, title: t, assignee: who || null, createdBy: ctx.userName || null }),
+        body: JSON.stringify({ team, taskDate: tmp.taskDate, endDate: tmp.endDate, title: t, assignee: tmp.assignee, createdBy: ctx.userName || null }),
       });
       if (!res.ok) throw new Error(await saveErrorMessage(res, "할 일을 추가하지 못했습니다."));
       const { task } = (await res.json()) as { task: Task };
       setTasks(p => p.map(x => (x.id === tmp.id ? { ...task, endDate: task.endDate ?? null } : x)));
     } catch (e) {
       setTasks(p => p.filter(x => x.id !== tmp.id));
-      setFText(cur => cur || t);
+      setDraft(cur => cur ?? d);
       setMsg(e instanceof Error ? e.message : "할 일을 추가하지 못했습니다.");
     }
   };
@@ -200,15 +217,19 @@ export default function TeamCalendar({
   /** 바꾼 칸만 보내고, 실패하면 이전 값으로 되돌린다 */
   const patch = useCallback(async (task: Task, change: Change, fail: string) => {
     if (isTemp(task.id)) return;
-    setTasks(p => p.map(x => (x.id === task.id ? { ...x, ...change } : x)));
+    const diff = Object.fromEntries(
+      Object.entries(change).filter(([k, v]) => task[k as keyof Task] !== v),
+    ) as Change;
+    if (!Object.keys(diff).length) return;
+    setTasks(p => p.map(x => (x.id === task.id ? { ...x, ...diff } : x)));
     setMsg(null);
     try {
       const res = await fetch(`/api/team-tasks/${task.id}`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(change),
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(diff),
       });
       if (!res.ok) throw new Error(await saveErrorMessage(res, fail));
     } catch (e) {
-      const back = Object.fromEntries(Object.keys(change).map(k => [k, task[k as keyof Task]])) as Partial<Task>;
+      const back = Object.fromEntries(Object.keys(diff).map(k => [k, task[k as keyof Task]])) as Partial<Task>;
       setTasks(p => p.map(x => (x.id === task.id ? { ...x, ...back } : x)));
       setMsg(e instanceof Error ? e.message : fail);
     }
@@ -216,31 +237,24 @@ export default function TeamCalendar({
 
   const toggle = (task: Task) => patch(task, { done: !task.done }, "완료 표시를 저장하지 못했습니다.");
 
-  const submit = () => {
-    const t = fText.trim();
-    if (!t) return;
-    if (!ISO_RE.test(fStart)) { setMsg("시작일을 골라주세요."); return; }
-    const end = ISO_RE.test(fEnd) ? fEnd : fStart;
-    if (end < fStart) { setMsg("종료일은 시작일과 같거나 뒤여야 합니다."); return; }
+  const saveEditor = () => {
+    const task = tasks.find(x => x.id === openId);
+    if (!task) { closeEditor(); return; }
+    const t = form.title.trim();
+    if (!t) { setMsg("할 일 내용을 입력해주세요."); return; }
     if (t.length > TITLE_MAX) { setMsg(`할 일은 ${TITLE_MAX}자 이내로 입력해주세요.`); return; }
-    setMsg(null);
-    if (!editingId) { add(t, fStart, end); return; }
-
-    const task = tasks.find(x => x.id === editingId);
-    resetForm();
-    if (!task) return;
-    const next: Change = { title: t, taskDate: fStart, endDate: end === fStart ? null : end, assignee: who || null };
-    const change = Object.fromEntries(
-      Object.entries(next).filter(([k, v]) => task[k as keyof Task] !== v),
-    ) as Change;
-    if (Object.keys(change).length) patch(task, change, "할 일을 고치지 못했습니다.");
+    if (!ISO_RE.test(form.start)) { setMsg("시작일을 골라주세요."); return; }
+    const end = ISO_RE.test(form.end) && form.end >= form.start ? form.end : form.start;
+    closeEditor();
+    patch(task, { title: t, assignee: form.who || null, taskDate: form.start, endDate: end === form.start ? null : end },
+      "할 일을 고치지 못했습니다.");
   };
 
   const remove = async (task: Task) => {
     if (isTemp(task.id)) return;
     if (armed !== task.id) { setArmed(task.id); return; }
     setArmed(null);
-    if (editingId === task.id) resetForm();
+    setOpenId(null);
     setTasks(p => p.filter(x => x.id !== task.id));
     setMsg(null);
     try {
@@ -259,22 +273,71 @@ export default function TeamCalendar({
     return () => clearTimeout(t);
   }, [armed]);
 
-  // ── 달력 칸 끌어서 기간 고르기 (마우스) ──
-  const [drag, setDrag] = useState<{ a: string; b: string } | null>(null);
-  const dragRef = useRef(drag);
-  useEffect(() => { dragRef.current = drag; });
+  // 고치기 창 밖을 누르거나 Esc — 닫는다 (저장은 '저장' 또는 Enter)
   useEffect(() => {
-    if (!drag) return;
-    const up = () => {
-      const d = dragRef.current;
-      setDrag(null);
-      if (d) pickRange(d.a, d.b);
+    if (!openId && !draft) return;
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape") { setOpenId(null); setDraft(null); } };
+    const down = (e: PointerEvent) => {
+      const target = e.target as Node;
+      if (openId && editorRef.current && !editorRef.current.contains(target)) setOpenId(null);
+      if (draft && draftRef.current && !draftRef.current.contains(target)) {
+        if (draft.text.trim()) add(draft); else setDraft(null);
+      }
     };
-    window.addEventListener("pointerup", up);
-    return () => window.removeEventListener("pointerup", up);
+    window.addEventListener("keydown", key);
+    window.addEventListener("pointerdown", down, true);
+    return () => { window.removeEventListener("keydown", key); window.removeEventListener("pointerdown", down, true); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [drag !== null]);
-  const inDrag = (d: string) => !!drag && d >= (drag.a < drag.b ? drag.a : drag.b) && d <= (drag.a < drag.b ? drag.b : drag.a);
+  }, [openId, draft]);
+
+  // ── 마우스 끌기: 빈 칸 → 새 기간 고르기 / 카드 → 옮기기·늘리기 ──
+  const [sel, setSel] = useState<{ a: string; b: string } | null>(null);
+  const [drag, setDrag] = useState<Drag | null>(null);
+  const live = useRef({ sel, drag, tasks });
+  useEffect(() => { live.current = { sel, drag, tasks }; });
+  const active = !!sel || !!drag;
+
+  useEffect(() => {
+    if (!active) return;
+    const move = (e: PointerEvent) => {
+      const d = dayAt(e.clientX, e.clientY);
+      if (!d) return;
+      const { sel: s, drag: g } = live.current;
+      if (s && s.b !== d) setSel({ ...s, b: d });
+      if (g && g.to !== d) setDrag({ ...g, to: d });
+    };
+    const up = () => {
+      const { sel: s, drag: g, tasks: ts } = live.current;
+      setSel(null);
+      setDrag(null);
+      if (s) newDraft(s.a, s.b);
+      if (g) {
+        const task = ts.find(x => x.id === g.id);
+        if (!task) return;
+        if (g.from === g.to) { if (g.mode === "move") openEditor(task); return; }
+        const next = applyDrag(task, g);
+        patch(task, { taskDate: next.taskDate, endDate: next.endDate }, "날짜를 옮기지 못했습니다.");
+      }
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    return () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
+
+  const inSel = (d: string) => {
+    if (!sel) return false;
+    const [s, e] = sorted(sel.a, sel.b);
+    return d >= s && d <= e;
+  };
+
+  // 끄는 동안은 옮겨진 자리로 미리 보여준다
+  const shown = useMemo(() => {
+    const list = drag ? tasks.map(t => (t.id === drag.id ? applyDrag(t, drag) : t)) : tasks;
+    if (!draft) return list;
+    const ghost: Task = { id: DRAFT, team, taskDate: draft.start, endDate: draft.end === draft.start ? null : draft.end, title: "", assignee: null, done: false };
+    return [...list, ghost];
+  }, [tasks, drag, draft, team]);
 
   // ── 숫자 ──
   const thisW = tasks.filter(t => overlaps(t, ctx.weekStart, weekEnd));
@@ -299,29 +362,123 @@ export default function TeamCalendar({
     ...(extraKpi ? [extraKpi] : []),
   ];
 
-  // ── 카드 ──
-  const renderCard = (t: Task, opt: { cutL?: boolean; cutR?: boolean; showRange?: boolean } = {}) => {
+  // ── 부품 ──
+  const fieldCls = "text-[12px] rounded-md border px-2 py-1 outline-none focus:border-[#3182F6] min-w-0 bg-white";
+  const stop = (e: React.PointerEvent) => e.stopPropagation();
+
+  const whoSelect = (value: string, onChange: (v: string) => void) => (
+    <select value={value} onChange={e => onChange(e.target.value)} aria-label="담당"
+      className={fieldCls} style={{ borderColor: C.line, color: C.ink }}>
+      <option value="">담당 없음</option>
+      {assigneeOptions.map(n => <option key={n} value={n}>{n}</option>)}
+      {value && !assigneeOptions.includes(value) && <option value={value}>{value}</option>}
+    </select>
+  );
+
+  /** 카드를 눌렀을 때 그 아래 뜨는 고치기 창 */
+  const renderEditor = (t: Task, alignRight: boolean) => (
+    <div ref={editorRef} onPointerDown={stop}
+      className="absolute top-full mt-1 z-30 w-[280px] max-w-[calc(100vw-48px)] rounded-xl p-3 flex flex-col gap-2 text-left cursor-auto"
+      style={{ [alignRight ? "right" : "left"]: 0, background: "#fff", border: `1px solid ${C.line}`, boxShadow: "0 8px 24px rgba(0,0,0,0.12)" }}>
+      <input autoFocus value={form.title} maxLength={TITLE_MAX} aria-label="할 일 제목"
+        onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+        onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); saveEditor(); } }}
+        className="text-[13px] font-semibold rounded-md border px-2 py-1.5 outline-none focus:border-[#3182F6]"
+        style={{ borderColor: C.line, color: C.ink }} />
+      <div className="flex items-center gap-1.5">
+        <input type="date" value={form.start} aria-label="시작일"
+          onChange={e => setForm(f => ({ ...f, start: e.target.value, end: f.end < e.target.value ? e.target.value : f.end }))}
+          className={`${fieldCls} flex-1`} style={{ borderColor: C.line, color: C.ink }} />
+        <span className="text-[12px]" style={{ color: C.faint }}>~</span>
+        <input type="date" value={form.end} min={form.start} aria-label="종료일"
+          onChange={e => setForm(f => ({ ...f, end: e.target.value }))}
+          className={`${fieldCls} flex-1`} style={{ borderColor: C.line, color: C.ink }} />
+      </div>
+      <div className="flex items-center gap-2">
+        {whoSelect(form.who, v => setForm(f => ({ ...f, who: v })))}
+        <label className="flex items-center gap-1.5 text-[12px] cursor-pointer" style={{ color: C.body }}>
+          <input type="checkbox" checked={t.done} onChange={() => toggle(t)} className="w-3.5 h-3.5 accent-[#2B8A3E]" />
+          완료
+        </label>
+      </div>
+      <div className="flex items-center justify-between gap-2 pt-1">
+        <button type="button" onClick={() => remove(t)}
+          className="text-[12px] font-medium rounded-md px-2 py-1"
+          style={armed === t.id ? { background: C.bad, color: "#fff" } : { color: C.bad }}>
+          {armed === t.id ? "한 번 더 누르면 삭제" : "삭제"}
+        </button>
+        <div className="flex gap-1">
+          <button type="button" onClick={closeEditor}
+            className="text-[12px] font-medium rounded-md px-2.5 py-1 hover:bg-[#F2F4F6]" style={{ color: C.muted }}>닫기</button>
+          <button type="button" onClick={saveEditor} disabled={!form.title.trim()}
+            className="text-[12px] font-semibold text-white rounded-md px-3 py-1 disabled:opacity-40"
+            style={{ background: C.accent }}>저장</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  /** 새 카드 입력칸 — 고른 기간 자리에 바로 뜬다 */
+  const renderDraft = (first: boolean) => {
+    if (!draft) return null;
+    if (!first) return <div className="h-full rounded-md" style={{ background: C.accentSoft, border: `1px dashed ${C.accent}`, minHeight: 34 }} />;
+    return (
+      <div ref={draftRef} className="rounded-lg p-1.5 flex flex-col gap-1" onPointerDown={stop}
+        style={{ background: "#fff", border: `1.5px solid ${C.accent}`, boxShadow: `0 0 0 3px ${C.accentSoft}` }}>
+        <input autoFocus value={draft.text} maxLength={TITLE_MAX} placeholder="할 일 제목 입력 후 Enter"
+          aria-label="새 할 일 제목"
+          onChange={e => setDraft(d => (d ? { ...d, text: e.target.value } : d))}
+          onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); add(draft); } }}
+          className="text-[12px] font-semibold px-1 py-0.5 outline-none placeholder:font-normal placeholder:text-[#8B95A1] min-w-0"
+          style={{ color: C.ink }} />
+        <div className="flex items-center gap-1.5 text-[11px]" style={{ color: C.muted }}>
+          {whoSelect(draft.who, v => setDraft(d => (d ? { ...d, who: v } : d)))}
+          <span className="tabular-nums">{draft.start === draft.end ? md(draft.start) : `${md(draft.start)} – ${md(draft.end)}`}</span>
+        </div>
+      </div>
+    );
+  };
+
+  /** 카드 — 끌면 옮기기, 양 끝 손잡이를 끌면 기간 늘리기·줄이기, 누르면 고치기 */
+  const renderCard = (t: Task, opt: { cutL?: boolean; cutR?: boolean; inGrid?: boolean } = {}) => {
     const isLate = !t.done && endOf(t) < today;
     const pending = isTemp(t.id);
-    const editing = editingId === t.id;
+    const isOpen = openId === t.id;
+    const dragging = drag?.id === t.id;
     const r = 8;
+    const grab = (mode: Drag["mode"]) => (e: React.PointerEvent) => {
+      touchRef.current = e.pointerType !== "mouse";
+      if (e.button !== 0 || pending) return;
+      e.stopPropagation();
+      if (touchRef.current || !opt.inGrid) return;   // 터치·목록은 onClick으로 연다
+      e.preventDefault();
+      const d = dayAt(e.clientX, e.clientY);
+      if (d) setDrag({ id: t.id, mode, from: d, to: d });
+    };
     return (
-      <div className="group/task relative w-full min-w-0 h-full transition-colors"
+      <div role="button" tabIndex={pending ? -1 : 0} aria-label={`${t.title} (${rangeText(t)}) 고치기`}
+        onPointerDown={grab("move")}
+        onClick={() => { if (touchRef.current || !opt.inGrid) openEditor(t); }}
+        onKeyDown={e => { if (e.key === "Enter" && e.target === e.currentTarget) openEditor(t); }}
+        className={`group/task relative w-full min-w-0 h-full select-none focus-visible:outline-2 focus-visible:outline-[#3182F6] ${opt.inGrid ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"}`}
         style={{
           background: isLate ? C.badSoft : "#fff",
-          border: `1px solid ${editing ? C.accent : isLate ? "#FFC9C9" : C.line}`,
-          boxShadow: editing ? `0 0 0 2px ${C.accentSoft}` : "0 1px 2px rgba(0,0,0,0.04)",
+          border: `1px solid ${isOpen || dragging ? C.accent : isLate ? "#FFC9C9" : C.line}`,
+          boxShadow: dragging ? "0 6px 16px rgba(0,0,0,0.12)" : isOpen ? `0 0 0 2px ${C.accentSoft}` : "0 1px 2px rgba(0,0,0,0.04)",
           borderRadius: `${opt.cutL ? 2 : r}px ${opt.cutR ? 2 : r}px ${opt.cutR ? 2 : r}px ${opt.cutL ? 2 : r}px`,
-          opacity: t.done ? 0.55 : pending ? 0.7 : 1,
+          opacity: t.done && !dragging ? 0.55 : pending ? 0.7 : 1,
         }}>
-        <button type="button" onClick={() => !pending && startEdit(t)} disabled={pending}
-          title="눌러서 고치기"
-          className="block w-full min-w-0 text-left px-2 pt-1.5 pb-1 pr-10 rounded-[inherit] hover:bg-black/[0.02] focus-visible:outline-2 focus-visible:outline-[#3182F6]">
+        <div className="px-2 pt-1.5 pb-1.5">
           <span className="block text-[12px] font-semibold leading-[1.35]"
             style={{ color: C.ink, textDecoration: t.done ? "line-through" : undefined, wordBreak: "keep-all", overflowWrap: "anywhere" }}>
             {opt.cutL && <span style={{ color: C.faint }}>← </span>}{t.title}{opt.cutR && <span style={{ color: C.faint }}> →</span>}
           </span>
           <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] mt-1" style={{ color: C.muted }}>
+            <label onPointerDown={stop} className="inline-flex items-center gap-1 cursor-pointer">
+              <input type="checkbox" checked={t.done} disabled={pending} onChange={() => toggle(t)}
+                className="w-3 h-3 accent-[#2B8A3E]" aria-label={`${t.title} 완료`} />
+              완료
+            </label>
             {t.assignee && (
               <span className="inline-flex items-center gap-1 rounded px-1.5 py-px"
                 style={{ background: `${personColor(t.assignee)}1A`, color: C.body }}>
@@ -329,25 +486,18 @@ export default function TeamCalendar({
                 {t.assignee}
               </span>
             )}
-            {(opt.showRange ?? !!t.endDate) && <span className="tabular-nums">{rangeText(t)}</span>}
+            {(t.endDate || dragging || !opt.inGrid) && <span className="tabular-nums">{rangeText(t)}</span>}
             {isLate && <span style={{ color: C.bad }}>못 함</span>}
           </span>
-        </button>
-        <label className="flex items-center gap-1.5 px-2 pb-1.5 text-[11px] cursor-pointer w-fit" style={{ color: C.muted }}>
-          <input type="checkbox" checked={t.done} disabled={pending} onChange={() => toggle(t)}
-            className="w-3 h-3 accent-[#2B8A3E]" aria-label={`${t.title} 완료`} />
-          완료
-        </label>
-        {!pending && (
-          <span className={`absolute right-1 top-1 flex items-center transition-opacity ${armed === t.id
-            ? "opacity-100" : "opacity-0 group-hover/task:opacity-100 group-focus-within/task:opacity-100 [@media(hover:none)]:opacity-100"}`}>
-            <button type="button" onClick={() => remove(t)} aria-label={armed === t.id ? `${t.title} 삭제 확인` : `${t.title} 삭제`}
-              title={armed === t.id ? "한 번 더 누르면 삭제" : "삭제"}
-              className={`h-[18px] rounded leading-none ${armed === t.id ? "px-1.5 text-[11px] font-semibold text-white" : "w-[18px] text-[13px] hover:bg-[#F2F4F6]"}`}
-              style={armed === t.id ? { background: C.bad } : { color: C.muted }}>
-              {armed === t.id ? "삭제" : "×"}
-            </button>
-          </span>
+        </div>
+        {/* 기간 늘리기 손잡이 — 진짜 시작·끝이 있는 조각에만 */}
+        {opt.inGrid && !pending && !opt.cutL && (
+          <span onPointerDown={grab("start")} title="끌어서 시작일 바꾸기" aria-hidden
+            className="absolute left-0 top-0 bottom-0 w-[7px] cursor-ew-resize rounded-l-[inherit] opacity-0 group-hover/task:opacity-100 hover:bg-[#3182F6]/25" />
+        )}
+        {opt.inGrid && !pending && !opt.cutR && (
+          <span onPointerDown={grab("end")} title="끌어서 종료일 바꾸기" aria-hidden
+            className="absolute right-0 top-0 bottom-0 w-[7px] cursor-ew-resize rounded-r-[inherit] opacity-0 group-hover/task:opacity-100 hover:bg-[#3182F6]/25" />
         )}
       </div>
     );
@@ -355,10 +505,9 @@ export default function TeamCalendar({
 
   const dayLabel = (d: string, first: boolean) => (first || d.endsWith("-01") ? md(d) : String(Number(d.slice(8))));
 
-  // 좁은 화면 — 시작일 순 목록 (지난주부터 이 달 끝까지)
+  // 좁은 화면 — 시작일 순 목록
   const listTasks = [...tasks].sort((a, b) => a.taskDate.localeCompare(b.taskDate) || endOf(a).localeCompare(endOf(b)));
-
-  const inputCls = "text-[13px] rounded-lg border px-2 py-1.5 outline-none focus:border-[#3182F6] min-w-0";
+  const addDay = today >= gridStart && today <= gridEnd ? today : ctx.weekStart;
 
   return (
     <SectionCard id={id} no={no} title={title} hint={hint}>
@@ -381,38 +530,14 @@ export default function TeamCalendar({
         )}
         {!loadError && <KpiRow items={loading ? kpis.map(k => (k === extraKpi ? k : { ...k, value: "…", sub: undefined, color: undefined })) : kpis} />}
 
-        {/* 등록·고치기 칸 */}
         <div className="flex items-center justify-between gap-3 flex-wrap mt-5 mb-2.5">
           <p className="text-[15px] font-semibold" style={{ color: C.ink }}>{ctx.month}월 할 일</p>
           {!loadError && (
-            <form autoComplete="off" className="flex flex-wrap items-center gap-1.5 min-w-0 w-full sm:w-auto"
-              onSubmit={e => { e.preventDefault(); submit(); }}>
-              {editingId && <span className="text-[12px] font-semibold mr-0.5" style={{ color: C.accent }}>고치는 중</span>}
-              <input type="date" value={fStart} aria-label="시작일" onChange={e => setStart(e.target.value)}
-                className={inputCls} style={{ borderColor: C.line, color: C.ink }} />
-              <span className="text-[12px]" style={{ color: C.faint }}>~</span>
-              <input type="date" value={fEnd} min={fStart} aria-label="종료일" onChange={e => setFEnd(e.target.value)}
-                className={inputCls} style={{ borderColor: C.line, color: C.ink }} />
-              <select value={who} onChange={e => setFWho(e.target.value)} aria-label="담당"
-                className={`${inputCls} bg-white`} style={{ borderColor: C.line, color: C.ink }}>
-                {!who && <option value="">담당 없음</option>}
-                {assigneeOptions.map(n => <option key={n} value={n}>{n}</option>)}
-              </select>
-              <input ref={textRef} type="text" value={fText} maxLength={TITLE_MAX} aria-label="할 일"
-                placeholder="할 일 카드 제목" onChange={e => setFText(e.target.value)}
-                onKeyDown={e => { if (e.key === "Escape" && editingId) { e.preventDefault(); resetForm(); } }}
-                className={`${inputCls} px-2.5 placeholder:text-[#8B95A1] flex-1 sm:flex-none sm:w-[200px]`}
-                style={{ borderColor: editingId ? C.accent : C.line, color: C.ink }} />
-              <button type="submit" disabled={!fText.trim()}
-                className="text-[13px] font-semibold text-white rounded-lg px-3.5 py-1.5 disabled:opacity-40"
-                style={{ background: C.accent }}>{editingId ? "저장" : "추가"}</button>
-              {editingId && (
-                <button type="button" onClick={resetForm}
-                  className="text-[13px] font-medium rounded-lg px-2.5 py-1.5 hover:bg-[#F2F4F6]" style={{ color: C.muted }}>
-                  취소
-                </button>
-              )}
-            </form>
+            <button type="button" onClick={() => newDraft(addDay, addDay)}
+              className="text-[13px] font-semibold rounded-lg px-3 py-1.5 hover:bg-[#EAF2FE]"
+              style={{ color: C.accent, border: `1px solid ${C.line}` }}>
+              + 할 일 추가
+            </button>
           )}
         </div>
 
@@ -438,9 +563,9 @@ export default function TeamCalendar({
           <>
             {/* 넓은 화면 — 월요일 시작 달력, 주마다 카드 줄 */}
             <div aria-label={`${title} ${ctx.month}월 할 일 캘린더`}
-              className="hidden min-[761px]:block rounded-[14px] overflow-hidden"
-              style={{ border: `1px solid ${C.line}`, userSelect: drag ? "none" : undefined }}>
-              <div className="grid" style={{ gridTemplateColumns: "repeat(7, minmax(0, 1fr))", background: C.soft, borderBottom: `1px solid ${C.line}` }}>
+              className="hidden min-[761px]:block rounded-[14px]"
+              style={{ border: `1px solid ${C.line}`, userSelect: active ? "none" : undefined, cursor: drag ? (drag.mode === "move" ? "grabbing" : "ew-resize") : undefined }}>
+              <div className="grid rounded-t-[14px]" style={{ gridTemplateColumns: "repeat(7, minmax(0, 1fr))", background: C.soft, borderBottom: `1px solid ${C.line}` }}>
                 {WEEK_HEAD.map((w, i) => (
                   <div key={w} className="text-[12px] font-medium px-2.5 py-2"
                     style={{ color: i > 4 ? C.bad : C.faint, opacity: i > 4 ? 0.7 : 1 }}>
@@ -449,7 +574,8 @@ export default function TeamCalendar({
                 ))}
               </div>
               {weekStarts.map((ws, wi) => {
-                const { segs, lanes } = layoutWeek(tasks, ws);
+                const { segs, lanes } = layoutWeek(shown, ws);
+                const lastRow = wi === weekStarts.length - 1;
                 return (
                   <div key={ws} className="grid"
                     style={{
@@ -464,21 +590,23 @@ export default function TeamCalendar({
                       const wk = d >= ctx.weekStart && d <= weekEnd;
                       const isToday = d === today;
                       return (
-                        <div key={d} aria-current={isToday ? "date" : undefined}
+                        <div key={d} data-date={d} aria-current={isToday ? "date" : undefined}
                           onPointerDown={e => {
-                            if (e.button !== 0) return;
-                            if (e.pointerType !== "mouse") { pickRange(d, d); return; }
+                            touchRef.current = e.pointerType !== "mouse";
+                            if (e.button !== 0 || touchRef.current) return;
                             e.preventDefault();
-                            setDrag({ a: d, b: d });
+                            setSel({ a: d, b: d });
                           }}
-                          onPointerEnter={() => { if (drag) setDrag({ ...drag, b: d }); }}
-                          title="눌러서 이 날짜로 추가 · 끌어서 기간 선택"
-                          className="cursor-pointer"
+                          onClick={() => { if (touchRef.current) newDraft(d, d); }}
+                          title="눌러서 이 날짜에 추가 · 끌어서 기간 고르기"
+                          className="cursor-cell"
                           style={{
                             gridColumn: i + 1, gridRow: "1 / -1",
                             borderRight: i < 6 ? `1px solid ${C.lineSoft}` : undefined,
-                            background: inDrag(d) ? C.accentSoft : out ? C.soft : wk ? "rgba(49,130,246,0.04)" : "#fff",
+                            background: inSel(d) ? C.accentSoft : out ? C.soft : wk ? "rgba(49,130,246,0.04)" : "#fff",
                             boxShadow: isToday ? `inset 0 0 0 2px ${C.accent}` : undefined,
+                            borderBottomLeftRadius: lastRow && i === 0 ? 14 : undefined,
+                            borderBottomRightRadius: lastRow && i === 6 ? 14 : undefined,
                           }}>
                           <div className="px-2 pt-1.5">
                             <span className="text-[13px] tabular-nums rounded-full"
@@ -491,37 +619,48 @@ export default function TeamCalendar({
                         </div>
                       );
                     })}
-                    {segs.map(s => (
-                      <div key={s.task.id} className="relative z-[1] min-w-0"
-                        style={{
-                          gridColumn: `${s.c0 + 1} / ${s.c1 + 2}`, gridRow: s.lane + 2,
-                          margin: `0 ${s.cutR ? 0 : 5}px 4px ${s.cutL ? 0 : 5}px`,
-                          pointerEvents: drag ? "none" : undefined,
-                        }}>
-                        {renderCard(s.task, { cutL: s.cutL, cutR: s.cutR })}
-                      </div>
-                    ))}
+                    {segs.map(s => {
+                      const isDraft = s.task.id === DRAFT;
+                      const isOpen = openId === s.task.id;
+                      return (
+                        <div key={s.task.id} className={`relative min-w-0 ${isOpen || isDraft ? "z-20" : "z-[1]"}`}
+                          style={{
+                            gridColumn: `${s.c0 + 1} / ${s.c1 + 2}`, gridRow: s.lane + 2,
+                            margin: `0 ${s.cutR ? 0 : 5}px 4px ${s.cutL ? 0 : 5}px`,
+                            minWidth: isDraft && !s.cutL ? 150 : undefined,
+                            pointerEvents: active && drag?.id !== s.task.id ? "none" : undefined,
+                          }}>
+                          {isDraft
+                            ? renderDraft(!s.cutL)
+                            : renderCard(s.task, { cutL: s.cutL, cutR: s.cutR, inGrid: true })}
+                          {isOpen && !s.cutL && renderEditor(s.task, s.c0 >= 4)}
+                          {isOpen && s.cutL && s.task.taskDate < gridStart && ws === gridStart && renderEditor(s.task, s.c0 >= 4)}
+                        </div>
+                      );
+                    })}
                   </div>
                 );
               })}
             </div>
 
-            {/* 좁은 화면 — 카드 목록 (시작일 순) */}
+            {/* 좁은 화면 — 카드 목록 (시작일 순), 누르면 그 자리에서 고치기 */}
             <div className="min-[761px]:hidden flex flex-col gap-1.5">
-              {listTasks.length === 0 && (
+              {draft && <div className="relative">{renderDraft(true)}</div>}
+              {listTasks.length === 0 && !draft && (
                 <div className="rounded-[14px]" style={{ border: `1px solid ${C.line}` }}><Empty>등록된 할 일이 없습니다</Empty></div>
               )}
               {listTasks.map(t => (
-                <div key={t.id}>
+                <div key={t.id} className={`relative ${openId === t.id ? "z-20" : ""}`}>
                   <p className="text-[11px] mb-0.5 tabular-nums" style={{ color: C.faint }}>
                     {md(t.taskDate)} ({dowOf(t.taskDate)}){t.endDate ? ` – ${md(t.endDate)} (${dowOf(t.endDate)})` : ""}
                   </p>
-                  {renderCard(t, { showRange: false })}
+                  {renderCard(t)}
+                  {openId === t.id && renderEditor(t, false)}
                 </div>
               ))}
             </div>
             <p className="text-[12px] mt-2" style={{ color: C.faint }}>
-              달력 칸을 누르거나 끌어서 기간을 고른 뒤 제목을 적으면 카드가 생깁니다 · 카드를 누르면 고치기 · 종료일이 지났는데 완료 안 된 카드는 빨간색
+              빈 칸을 누르거나 끌어서 새 카드 · 카드를 끌면 옮기기, 양 끝을 끌면 기간 늘리기 · 카드를 누르면 고치기 · 종료일이 지났는데 완료 안 된 카드는 빨간색
             </p>
           </>
         )}
