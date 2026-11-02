@@ -14,7 +14,7 @@ import type { MeetingMemberEntry } from "@/db/schema";
 import type { OpsBoardData, OpsClient, OpsReward, Satisfaction } from "@/app/api/meeting-board/clients/route";
 import {
   C, TONE, SectionCard, Panel, Flag, Empty, EntryFields, Avatar, personColor,
-  addDays, daysBetween, md, num, won, ymd, type BoardContext, type Tone,
+  addDays, daysBetween, md, num, won, type BoardContext, type Tone,
 } from "./shared";
 
 const SAT_TONE: Record<Satisfaction, Tone> = { 만족: TONE.good, 보통: TONE.warn, 불만: TONE.bad };
@@ -282,12 +282,7 @@ function ClientTable({ data, onSave }: {
   const list = data.clients.filter(c => viewFn(c) && byOwner(c)); // API가 종료일 순으로 준다
 
   // 종료가 가까운 업체부터 기간별로 끊는다. 뒤쪽 묶음은 길어서 처음엔 일부만 보인다
-  // 맨 위는 '진짜 오늘' 종료 — 회의일(asOf)이 오늘보다 앞이어도 오늘 끝나는 업체를 먼저 챙긴다
-  const today = ymd(new Date());
-  // keep: 묶음에 넣고도 뒤 묶음에서 빼지 않는다 — 오늘 종료 업체는 '이번 주 종료'에도 함께 보인다
-  const buckets: { key: string; label: string; range: string; tone: Tone; fits: (c: OpsClient) => boolean; keep?: boolean }[] = [
-    { key: "today", label: "오늘 종료", range: `${md(today)} (오늘)`, tone: TONE.bad,
-      fits: c => c.endDate === today, keep: true },
+  const buckets: { key: string; label: string; range: string; tone: Tone; fits: (c: OpsClient) => boolean }[] = [
     { key: "week", label: "이번 주 종료", range: `${md(asOf)} – ${md(weekEnd)}`, tone: TONE.bad,
       fits: c => !!c.endDate && c.endDate <= weekEnd },
     { key: "next", label: "다음 주 종료", range: `${md(addDays(weekEnd, 1))} – ${md(nextEnd)}`, tone: TONE.warn,
@@ -299,8 +294,8 @@ function ClientTable({ data, onSave }: {
   let rest = list;
   const groups = buckets.map((b, i) => {
     const rows = rest.filter(b.fits);
-    if (!b.keep) rest = rest.filter(c => !b.fits(c));
-    const folded = i >= 3 && !expanded.has(b.key) && rows.length > FOLD_LIMIT;
+    rest = rest.filter(c => !b.fits(c));
+    const folded = i >= 2 && !expanded.has(b.key) && rows.length > FOLD_LIMIT;
     return { ...b, rows, folded };
   }).filter(g => g.rows.length);
 

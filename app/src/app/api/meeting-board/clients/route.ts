@@ -32,7 +32,7 @@ export interface OpsClient {
   owners: string[];           // 이 업체 캠페인의 담당 전부 (담당 필터용)
   campaigns: string[];        // 운영중 캠페인 이름
   guaranteed: boolean;        // 보장형 캠페인이 하나라도 있음
-  endDate: string | null;     // 가장 가까운 캠페인 종료일. 전부 종료일이 없으면 null
+  endDate: string | null;     // 가장 가까운 종료일 — 캠페인 종료일과 아직 안 끝난 품목 종료일 중 이른 날. 둘 다 없으면 null
   rewards: OpsReward[];
   rank: { rank: number | null; keyword: string | null; checked: boolean } | null; // 보장형만
   satisfaction: Satisfaction | null;
@@ -211,6 +211,13 @@ export async function GET(req: NextRequest) {
       const rewards = [...(rewardsOf.get(cid)?.values() ?? [])].sort((a, b) =>
         Number(a.done) - Number(b.done) || Number(b.isPackage) - Number(a.isPackage)
         || (b.end ?? "9999").localeCompare(a.end ?? "9999") || a.product.localeCompare(b.product, "ko"));
+      // 캠페인은 남았어도 품목이 먼저 끝나면 그날을 종료일로 본다(패키지는 계약 형태라 제외)
+      const campaignEnd = toIso(sorted[0].endDate);
+      const itemEnd = rewards
+        .filter(r => !r.done && !r.isPackage && r.end)
+        .map(r => r.end!)
+        .sort()[0] ?? null;
+      const endDate = campaignEnd && itemEnd ? (itemEnd < campaignEnd ? itemEnd : campaignEnd) : campaignEnd ?? itemEnd;
       const c = careOf.get(cid);
       const sat = c?.satisfaction;
       return {
@@ -220,7 +227,7 @@ export async function GET(req: NextRequest) {
         owners: [...new Set(ps.map(p => p.person).filter((v): v is string => !!v))],
         campaigns: [...new Set(sorted.map(p => p.campaign))],
         guaranteed: gs.length > 0,
-        endDate: toIso(sorted[0].endDate),
+        endDate,
         rewards,
         rank,
         satisfaction: sat === "만족" || sat === "보통" || sat === "불만" ? sat : null,
