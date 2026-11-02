@@ -1,13 +1,9 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
+import { daysRemaining } from "@/lib/days-remaining";
 import { projectGroups, projects, projectRevenues, projectCosts, confirmRequests, paymentRequests } from "@/db/schema";
 import { eq, count, sql, max, desc } from "drizzle-orm";
 
-function daysRemaining(dateStr: string | null): number | null {
-  if (!dateStr) return null;
-  const diff = new Date(dateStr).setHours(0,0,0,0) - new Date().setHours(0,0,0,0);
-  return Math.ceil(diff / 86400000);
-}
 
 export async function GET() {
   try {

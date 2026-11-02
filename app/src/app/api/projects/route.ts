@@ -1,15 +1,11 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
+import { daysRemaining } from "@/lib/days-remaining";
 import { projects, projectRevenues, projectCosts, projectGroups } from "@/db/schema";
 import { NextRequest } from "next/server";
 import { desc, eq, max, getTableColumns, count, sql, and, inArray } from "drizzle-orm";
 import { clients } from "@/db/schema";
 
-function daysRemaining(dateStr: string | null): number | null {
-  if (!dateStr) return null;
-  const diff = new Date(dateStr).setHours(0,0,0,0) - new Date().setHours(0,0,0,0);
-  return Math.ceil(diff / 86400000);
-}
 
 function computeTab(status: string, days: number | null) {
   if (status === "종료") return "종료";
