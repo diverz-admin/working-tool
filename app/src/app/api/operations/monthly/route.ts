@@ -80,6 +80,7 @@ export async function GET(req: NextRequest) {
         rowNum:       projectCosts.rowNum,
         assignee:     projectCosts.assignee,
         assignedTeam: projects.assignedTeam,
+        projectPerson: projects.assignedPerson,
         projectId:    projects.id,
         campaignName: projects.campaignName,
         clientName:   clients.companyName,
