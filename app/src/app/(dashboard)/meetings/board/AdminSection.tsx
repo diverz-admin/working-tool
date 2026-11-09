@@ -12,7 +12,7 @@ import Link from "next/link";
 import { fetchJson } from "@/lib/fetch-json";
 import type { MeetingMemberEntry } from "@/db/schema";
 import {
-  C, TONE, SectionCard, Panel, KpiRow, Flag, Empty, EntryFields, Avatar,
+  C, TONE, SectionCard, Panel, KpiRow, Flag, Empty, EntryFields, Avatar, type PartSave,
   won, man, md, DOW, type BoardContext, type Tone,
 } from "./shared";
 
@@ -48,12 +48,13 @@ const leaveRange = (l: Leave) =>
 const leaveText = (l: Leave) =>
   `${l.requester} · ${leaveRange(l)} ${l.leaveType}${l.leaveDays ? ` ${l.leaveDays}일` : ""}`;
 
-export default function AdminSection({ ctx, notes, onNotes, prevTodo, onBadge }: {
+export default function AdminSection({ ctx, notes, onNotes, prevTodo, onBadge, save }: {
   ctx: BoardContext;
   notes: MeetingMemberEntry;
   onNotes: (e: MeetingMemberEntry) => void;
   prevTodo?: string;
   onBadge?: (text: string) => void;
+  save?: PartSave;
 }) {
   const [data, setData] = useState<AdminData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -117,7 +118,7 @@ export default function AdminSection({ ctx, notes, onNotes, prevTodo, onBadge }:
         {data && <AdminBody data={data} waitTotal={waitTotal} />}
 
         <div className="mt-5">
-          <EntryFields value={notes} onChange={onNotes} prevTodo={prevTodo}
+          <EntryFields value={notes} onChange={onNotes} prevTodo={prevTodo} save={save} saveLabel="팀 기록 저장"
             labels={{
               done:  { label: "전주 한 일", note: "결과 점검", placeholder: "예) 10월 세금계산서 발행 마감 · 10월 급여 지급" },
               todo:  { label: "금주 할 일", placeholder: "예) 10월 손익 확정 · 부가세 자료 정리" },

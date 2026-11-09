@@ -73,17 +73,24 @@ export function memberHasText(e?: MeetingMemberEntry | null): boolean {
   return !!e && !!(e.done.trim() || e.todo.trim() || e.issue.trim() || (e.stats && Object.keys(e.stats).length));
 }
 
+/** 한 사람(또는 한 팀)의 기록을 세 칸 + 실적으로 맞춘다. 비었으면 null */
+export function normalizeMemberEntry(raw: unknown, withStats = true): MeetingMemberEntry | null {
+  if (!raw || typeof raw !== "object") return null;
+  const e = raw as Record<string, unknown>;
+  const entry: MeetingMemberEntry = { done: str(e.done), todo: str(e.todo), issue: str(e.issue) };
+  const stats = withStats ? normalizeWeekStats(e.stats) : undefined;
+  if (stats) entry.stats = stats;
+  return memberHasText(entry) ? entry : null;
+}
+
 /** 저장된 멤버 기록을 이름 → 세 칸으로 맞춘다. 내용이 없는 멤버는 뺀다. */
 export function normalizeMeetingMembers(raw: unknown): MeetingMembers {
   const out: MeetingMembers = {};
   if (!raw || typeof raw !== "object") return out;
   for (const [name, v] of Object.entries(raw as Record<string, unknown>)) {
-    if (!name.trim() || !v || typeof v !== "object") continue;
-    const e = v as Record<string, unknown>;
-    const entry: MeetingMemberEntry = { done: str(e.done), todo: str(e.todo), issue: str(e.issue) };
-    const stats = normalizeWeekStats(e.stats);
-    if (stats) entry.stats = stats;
-    if (memberHasText(entry)) out[name.trim()] = entry;
+    if (!name.trim()) continue;
+    const entry = normalizeMemberEntry(v);
+    if (entry) out[name.trim()] = entry;
   }
   return out;
 }
@@ -99,11 +106,8 @@ export function normalizeMeetingTeamNotes(raw: unknown): MeetingTeamNotes {
   if (!raw || typeof raw !== "object") return out;
   const src = raw as Record<string, unknown>;
   for (const key of MEETING_TEAM_KEYS) {
-    const v = src[key];
-    if (!v || typeof v !== "object") continue;
-    const e = v as Record<string, unknown>;
-    const entry = { done: str(e.done), todo: str(e.todo), issue: str(e.issue) };
-    if (memberHasText(entry)) out[key] = entry;
+    const entry = normalizeMemberEntry(src[key], false);
+    if (entry) out[key] = entry;
   }
   return out;
 }

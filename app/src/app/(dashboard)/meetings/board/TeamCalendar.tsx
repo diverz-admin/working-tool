@@ -18,7 +18,7 @@ import { fetchJson, saveErrorMessage } from "@/lib/fetch-json";
 import {
   C, SectionCard, KpiRow, Empty, EntryFields, Avatar, personColor,
   addDays, mondayOf, md, DOW, daysBetween,
-  type BoardContext, type KpiItem, type EntryLabels,
+  type BoardContext, type KpiItem, type EntryLabels, type PartSave,
 } from "./shared";
 
 interface Task {
@@ -91,7 +91,7 @@ function applyDrag(t: Task, d: Drag): Task {
 }
 
 export default function TeamCalendar({
-  ctx, team, id, no, title, hint, ownerTeam, extraKpi, notes, onNotes, labels, onBadge,
+  ctx, team, id, no, title, hint, ownerTeam, extraKpi, notes, onNotes, labels, onBadge, save,
 }: {
   ctx: BoardContext;
   team: "marketing" | "dev";
@@ -106,6 +106,7 @@ export default function TeamCalendar({
   onNotes: (e: MeetingMemberEntry) => void;
   labels?: EntryLabels;
   onBadge?: (text: string) => void;
+  save?: PartSave;
 }) {
   // ── 보여줄 기간 — 지난주 결과가 보이도록 회의 주 앞 주부터, 그 달 마지막 주까지 (최소 6주) ──
   const mm = String(ctx.month).padStart(2, "0");
@@ -667,7 +668,7 @@ export default function TeamCalendar({
 
         {/* 회의 메모 */}
         <div className="mt-5">
-          <EntryFields value={notes} onChange={onNotes} labels={labels} keys={["issue", "todo"]} />
+          <EntryFields value={notes} onChange={onNotes} labels={labels} keys={["issue", "todo"]} save={save} saveLabel="팀 기록 저장" />
         </div>
       </div>
     </SectionCard>

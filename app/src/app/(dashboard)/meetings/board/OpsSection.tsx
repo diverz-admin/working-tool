@@ -13,7 +13,7 @@ import { fetchJson, saveErrorMessage } from "@/lib/fetch-json";
 import type { MeetingMemberEntry } from "@/db/schema";
 import type { OpsBoardData, OpsClient, OpsReward, Satisfaction } from "@/app/api/meeting-board/clients/route";
 import {
-  C, TONE, SectionCard, Panel, Flag, Empty, EntryFields, Avatar, personColor,
+  C, TONE, SectionCard, Panel, Flag, Empty, EntryFields, Avatar, type PartSave, personColor,
   addDays, daysBetween, md, num, won, type BoardContext, type Tone,
 } from "./shared";
 
@@ -26,12 +26,13 @@ const endOf = (c: OpsClient, basis: EndBasis) => (basis === "campaign" ? c.campa
 const RW_LIMIT = 3;   // 업체 한 줄에 처음 보이는 리워드 수
 const FOLD_LIMIT = 5; // 뒤쪽 기간 묶음이 처음 보이는 업체 수
 
-export default function OpsSection({ ctx, notes, onNotes, prevTodo, onBadge }: {
+export default function OpsSection({ ctx, notes, onNotes, prevTodo, onBadge, save: notesSave }: {
   ctx: BoardContext;
   notes: MeetingMemberEntry;
   onNotes: (e: MeetingMemberEntry) => void;
   prevTodo?: string;
   onBadge?: (text: string) => void;
+  save?: PartSave;
 }) {
   // 응답에 요청 조건을 함께 담는다 — 회의 날짜를 바꾸면 이전 날짜의 표가 잠깐 보이는 일이 없다
   const key = `${ctx.asOf}|${ctx.weekStart}`;
@@ -136,7 +137,7 @@ export default function OpsSection({ ctx, notes, onNotes, prevTodo, onBadge }: {
       </div>
 
       <div className="mt-5">
-        <EntryFields value={notes} onChange={onNotes} prevTodo={prevTodo}
+        <EntryFields value={notes} onChange={onNotes} prevTodo={prevTodo} save={notesSave} saveLabel="팀 기록 저장"
           labels={{
             done:  { label: "전주 한 일", note: "결과 점검" },
             todo:  { label: "금주 할 일", note: "운영 계획" },

@@ -216,6 +216,29 @@ export function MiniButton({ children, onClick, disabled }: { children: React.Re
 
 export const emptyEntry = (): MeetingMemberEntry => ({ done: "", todo: "", issue: "" });
 
+/**
+ * 칸 하나(팀 · 멤버 한 명)만 따로 저장하는 상태.
+ * 회의록 전체를 한 번에 덮지 않고 이 칸만 서버에 보낸다 — 여러 사람이 각자 자기 칸을 동시에 써도 서로 지우지 않는다.
+ */
+export interface PartSave { dirty: boolean; saving: boolean; saved: boolean; error?: string | null; onSave: () => void }
+
+/** 칸 아래 저장 줄 — 상태 한 마디 + 저장 버튼 */
+export function SaveBar({ save, label = "저장" }: { save: PartSave; label?: string }) {
+  const status = save.error ? { text: save.error, color: C.bad }
+    : save.saving ? { text: "저장 중…", color: C.muted }
+    : save.saved ? { text: "저장됨", color: C.good }
+    : save.dirty ? { text: "저장하지 않은 변경이 있습니다", color: C.warn }
+    : null;
+  return (
+    <div className="flex items-center justify-end gap-3 mt-3">
+      {status && <span className="text-[12px] font-medium" role="status" style={{ color: status.color }}>{status.text}</span>}
+      <button type="button" onClick={save.onSave} disabled={!save.dirty || save.saving}
+        className="h-8 px-3.5 rounded-lg text-[13px] font-semibold text-white transition-opacity disabled:opacity-35"
+        style={{ background: C.accent }}>{label}</button>
+    </div>
+  );
+}
+
 /** 칸 이름 — 저장은 done·todo·issue 세 칸이지만 팀마다 부르는 이름이 다르다 */
 export type EntryLabels = Partial<Record<MeetingEntryTextKey, { label: string; note?: string; placeholder?: string }>>;
 
@@ -223,11 +246,13 @@ export type EntryLabels = Partial<Record<MeetingEntryTextKey, { label: string; n
  * 팀·사람 한 명의 기록 칸 묶음.
  * prevTodo가 있으면 "지난 할 일 가져오기"로 직전 회의의 할 일을 한 일 칸에 붙인다.
  */
-export function EntryFields({ value, onChange, labels, prevTodo, keys = ["done", "todo", "issue"], stacked, rows }: {
+export function EntryFields({ value, onChange, labels, prevTodo, keys = ["done", "todo", "issue"], stacked, rows, save, saveLabel }: {
   value: MeetingMemberEntry; onChange: (v: MeetingMemberEntry) => void;
   labels?: EntryLabels; prevTodo?: string; keys?: (MeetingEntryTextKey)[];
   /** 칸을 위아래로 쌓는다 — 좁은 카드 안에서 쓴다 */
   stacked?: boolean; rows?: number;
+  /** 이 칸 묶음만 따로 저장하는 버튼을 아래에 붙인다 */
+  save?: PartSave; saveLabel?: string;
 }) {
   const base: Required<EntryLabels> = {
     done:  { label: "전주 한 일", note: "결과 점검" },
@@ -238,7 +263,7 @@ export function EntryFields({ value, onChange, labels, prevTodo, keys = ["done",
     if (!prevTodo?.trim()) return;
     onChange({ ...value, done: value.done.trim() ? `${value.done.trim()}\n${prevTodo.trim()}` : prevTodo.trim() });
   };
-  return (
+  const fields = (
     <div className={stacked ? "grid gap-5" : "grid gap-3.5"}
       style={{ gridTemplateColumns: stacked ? "minmax(0, 1fr)" : `repeat(auto-fit, minmax(240px, 1fr))` }}>
       {keys.map(k => {
@@ -251,4 +276,6 @@ export function EntryFields({ value, onChange, labels, prevTodo, keys = ["done",
       })}
     </div>
   );
+  if (!save) return fields;
+  return <div>{fields}<SaveBar save={save} label={saveLabel} /></div>;
 }

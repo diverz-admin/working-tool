@@ -8,7 +8,8 @@
  *
  * 왼쪽 목차에서 이 달의 회의(월간 · 주차별)를 고르고, 순서 칸을 눌러 해당 섹션으로 내려간다.
  * 숫자는 각 섹션이 스스로 불러오고, 회의록에 저장되는 건 사람이 쓴 칸(멤버별 · 팀별 · 결정사항)과
- * 회의일 · 작성자 · 참석자뿐이다. 업체 만족도 · 연장 상태 · 팀 할 일은 회의가 아니라 대상마다
+ * 회의일 · 작성자 · 참석자뿐이다. 팀 칸과 영업 멤버 칸은 저마다 저장 버튼이 있어 그 칸만 서버에 보낸다 —
+ * 여러 사람이 각자 자기 칸을 동시에 써도 서로 덮지 않는다. 왼쪽 "전체 저장"은 바뀐 칸만 모아 보낸다. 업체 만족도 · 연장 상태 · 팀 할 일은 회의가 아니라 대상마다
  * 따로 저장돼 다음 회의에도 이어진다.
  */
 
@@ -16,11 +17,11 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { fetchJson, saveErrorMessage } from "@/lib/fetch-json";
 import { useUser } from "@/lib/UserContext";
 import {
-  normalizeMeetingMembers, normalizeMeetingTeamNotes, normalizeAttendees, memberHasText,
-  WEEK_STAT_KEYS, WEEK_STAT_LABELS,
+  normalizeMeetingMembers, normalizeMeetingTeamNotes, normalizeAttendees, memberHasText, normalizeMemberEntry,
+  WEEK_STAT_KEYS, WEEK_STAT_LABELS, MEETING_TEAM_KEYS,
 } from "@/lib/meeting-sections";
 import type { MeetingMembers, MeetingTeamNotes, MeetingTeamKey, MeetingMemberEntry, MeetingEntryTextKey } from "@/db/schema";
-import { C, Field, Avatar, emptyEntry, mondayOf, ymd, md, DOW, type BoardContext } from "./shared";
+import { C, Field, Avatar, SaveBar, emptyEntry, mondayOf, ymd, md, DOW, type BoardContext, type PartSave } from "./shared";
 import RevenueSection from "./RevenueSection";
 import SalesSection from "./SalesSection";
 import OpsSection from "./OpsSection";
@@ -106,13 +107,36 @@ function findPrevNote(notes: BoardNote[], prevNotes: BoardNote[], y: number, m: 
   return undefined;
 }
 
-/** 저장된 값과 화면 값을 같은 모양으로 맞춰 비교한다 */
-function snapshot(d: { content: string; author: string; date: string; members: MeetingMembers; teamNotes: MeetingTeamNotes; attendees: string[] }) {
-  return JSON.stringify({
-    content: d.content, author: d.author, date: d.date,
-    members: normalizeMeetingMembers(d.members), teamNotes: normalizeMeetingTeamNotes(d.teamNotes),
-    attendees: [...normalizeAttendees(d.attendees)].sort(),
-  });
+/** 칸 하나가 같은지 — 빈 칸과 없는 칸은 같다 */
+const sameEntry = (a?: MeetingMemberEntry | null, b?: MeetingMemberEntry | null) =>
+  JSON.stringify(normalizeMemberEntry(a ?? null)) === JSON.stringify(normalizeMemberEntry(b ?? null));
+
+const sameList = (a: string[], b: string[]) =>
+  JSON.stringify([...normalizeAttendees(a)].sort()) === JSON.stringify([...normalizeAttendees(b)].sort());
+
+/** 회의 머리(회의일 · 작성자 · 참석자)와 결정사항 */
+interface Header { content: string; author: string; date: string; attendees: string[] }
+const sameHeader = (a: Header, b: Header) =>
+  a.content === b.content && a.author === b.author && a.date === b.date && sameList(a.attendees, b.attendees);
+
+/**
+ * 저장이 끝난 뒤 화면 값을 서버 값에 맞춘다.
+ * 저장 전 그대로였거나(base) 방금 보낸 값과 같은(sent) 칸은 서버 값을 받는다 — 다른 사람이 그사이 저장한 칸도 여기서 들어온다.
+ * 저장하는 동안 새로 고친 칸은 화면 값을 그대로 둔다.
+ */
+function adoptEntries<K extends string>(
+  local: Partial<Record<K, MeetingMemberEntry>>, base: Partial<Record<K, MeetingMemberEntry>>,
+  sent: Partial<Record<K, MeetingMemberEntry>>, server: Partial<Record<K, MeetingMemberEntry>>,
+) {
+  const out: Partial<Record<K, MeetingMemberEntry>> = {};
+  const keys = new Set([...Object.keys(local), ...Object.keys(base), ...Object.keys(sent), ...Object.keys(server)] as K[]);
+  for (const k of keys) {
+    const l = local[k];
+    const take = sameEntry(l, base[k]) || (k in sent && sameEntry(l, sent[k]));
+    const v = take ? server[k] : l;
+    if (v) out[k] = v;
+  }
+  return out;
 }
 
 // ─── 메인 ─────────────────────────────────────────────────────
@@ -135,8 +159,10 @@ export default function MeetingBoard({ year, month, onMonthChange, criteria, cri
   const [teamNotes, setTeamNotes] = useState<MeetingTeamNotes>({});
   const [attendees, setAttendees] = useState<string[]>([]);
 
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  /** 저장 중인 칸 — "all"(전체) · "header" · "m:이름" · "t:팀키" */
+  const [saving, setSaving] = useState<string[]>([]);
+  const [savedKey, setSavedKey] = useState<string | null>(null);
+  const [partErrors, setPartErrors] = useState<Record<string, string>>({});
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [badges, setBadges] = useState<Record<string, string>>({});
@@ -183,7 +209,8 @@ export default function MeetingBoard({ year, month, onMonthChange, criteria, cri
     setMembers(normalizeMeetingMembers(current?.members));
     setTeamNotes(normalizeMeetingTeamNotes(current?.teamNotes));
     setError(null);
-    setSaved(false);
+    setSavedKey(null);
+    setPartErrors({});
   }, [loadKey, current, savedDate, me.name]);
 
   // 참석자는 멤버 목록이 늦게 와도 채워지도록 따로 맞춘다
@@ -195,14 +222,19 @@ export default function MeetingBoard({ year, month, onMonthChange, criteria, cri
     setAttendees(savedAttendees);
   }, [attendeeKey, savedAttendees]);
 
-  const dirty = useMemo(() =>
-    snapshot({ content, author, date, members, teamNotes, attendees }) !==
-    snapshot({
-      content: current?.content ?? "", author: current?.authorName ?? me.name, date: savedDate,
-      members: normalizeMeetingMembers(current?.members), teamNotes: normalizeMeetingTeamNotes(current?.teamNotes),
-      attendees: savedAttendees,
-    }),
-  [content, author, date, members, teamNotes, attendees, current, savedDate, savedAttendees, me.name]);
+  // ── 무엇이 바뀌었나 — 칸마다 따로 본다 ──
+  const savedMembers = useMemo(() => normalizeMeetingMembers(current?.members), [current]);
+  const savedTeams = useMemo(() => normalizeMeetingTeamNotes(current?.teamNotes), [current]);
+  const savedHeader: Header = useMemo(() => ({
+    content: current?.content ?? "", author: current?.authorName ?? me.name, date: savedDate, attendees: savedAttendees,
+  }), [current, me.name, savedDate, savedAttendees]);
+
+  const dirtyMembers = useMemo(() =>
+    [...new Set([...Object.keys(members), ...Object.keys(savedMembers)])].filter(n => !sameEntry(members[n], savedMembers[n])),
+  [members, savedMembers]);
+  const dirtyTeams = useMemo(() => MEETING_TEAM_KEYS.filter(k => !sameEntry(teamNotes[k], savedTeams[k])), [teamNotes, savedTeams]);
+  const headerDirty = !sameHeader({ content, author, date, attendees }, savedHeader);
+  const dirty = headerDirty || dirtyMembers.length > 0 || dirtyTeams.length > 0;
 
   // 저장 안 하고 창을 닫으면 브라우저가 한 번 묻게 한다
   useEffect(() => {
@@ -245,38 +277,82 @@ export default function MeetingBoard({ year, month, onMonthChange, criteria, cri
   const teamEntry = (key: MeetingTeamKey) => teamNotes[key] ?? emptyEntry();
 
   // ── 저장 / 삭제 / 복사 ──
-  async function handleSave() {
-    setSaving(true);
+  // 저장이 끝났을 때 그사이 다른 회의로 옮겼는지 본다
+  const meetingKey = `${year}-${month}|${week ?? "M"}`;
+  const meetingRef = useRef(meetingKey);
+  useEffect(() => { meetingRef.current = meetingKey; }, [meetingKey]);
+
+  /**
+   * 고른 칸만 서버에 보낸다. 서버는 보낸 칸만 바꾸고 나머지는 그대로 둔다.
+   * 아직 회의록이 없으면 회의일 · 작성자 · 참석자도 함께 보내 첫 줄을 만든다.
+   */
+  async function save(parts: { header?: boolean; members?: string[]; teams?: MeetingTeamKey[] }, key: string) {
+    const withHeader = !!parts.header || !current;
+    const sentMembers: MeetingMembers = Object.fromEntries((parts.members ?? []).map(n => [n, members[n] ?? emptyEntry()]));
+    const sentTeams: MeetingTeamNotes = Object.fromEntries((parts.teams ?? []).map(k => [k, teamNotes[k] ?? emptyEntry()]));
+    const sentHeader: Header = { content, author, date, attendees };
+    const base = { members: savedMembers, teams: savedTeams, header: savedHeader };
+    const startedFor = meetingKey;
+
+    setSaving(s => [...s, key]);
+    setPartErrors(e => { const n = { ...e }; delete n[key]; return n; });
     setError(null);
-    const res = await fetch("/api/report-meetings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        year, month, week, team: TEAM, content, authorName: author || null, meetingDate: date || null,
-        members, teamNotes, attendees,
-      }),
-    });
-    if (!res.ok) {
-      setError(await saveErrorMessage(res));
-      setSaving(false);
-      return;
-    }
-    const data = await res.json();
-    if (data?.note) {
-      // 새 회의록이면 id가 붙어 loadKey가 바뀐다 — 화면 값을 다시 덮지 않도록 ref를 함께 옮긴다
-      const key = `${year}-${month}|${week ?? "M"}|${data.note.id}`;
-      loadedRef.current = key;
-      attendeeRef.current = `${key}|${normalizeAttendees(data.note.attendees).join(",")}`;
-      setNotes(p => {
-        const i = p.findIndex(n => n.id === data.note.id);
-        if (i < 0) return [...p, data.note];
-        const next = [...p]; next[i] = data.note; return next;
+    try {
+      const res = await fetch("/api/report-meetings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          year, month, week, team: TEAM, members: sentMembers, teamNotes: sentTeams,
+          header: withHeader ? { content, authorName: author || null, meetingDate: date || null, attendees } : undefined,
+        }),
       });
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      if (!res.ok) throw new Error(await saveErrorMessage(res));
+      const note = (await res.json())?.note as BoardNote | undefined;
+      if (!note) throw new Error("저장 결과를 받지 못했습니다.");
+
+      if (note.year === year && note.month === month) {
+        setNotes(p => {
+          const i = p.findIndex(n => n.id === note.id);
+          if (i < 0) return [...p, note];
+          const next = [...p]; next[i] = note; return next;
+        });
+      }
+      if (meetingRef.current !== startedFor) return;
+
+      // 새 회의록이면 id가 붙어 loadKey가 바뀐다 — 화면 값을 통째로 다시 덮지 않도록 ref를 함께 옮기고, 칸마다 맞춘다
+      const k = `${year}-${month}|${week ?? "M"}|${note.id}`;
+      const srvAttendees = normalizeAttendees(note.attendees);
+      loadedRef.current = k;
+      attendeeRef.current = `${k}|${srvAttendees.join(",")}`;
+
+      setMembers(l => adoptEntries(l, base.members, sentMembers, normalizeMeetingMembers(note.members)) as MeetingMembers);
+      setTeamNotes(l => adoptEntries(l, base.teams, sentTeams, normalizeMeetingTeamNotes(note.teamNotes)));
+      const pick = <T,>(l: T, b: T, sent: T, srv: T, eq: (x: T, y: T) => boolean = Object.is) =>
+        eq(l, b) || (withHeader && eq(l, sent)) ? srv : l;
+      setContent(l => pick(l, base.header.content, sentHeader.content, note.content));
+      setAuthor(l => pick(l, base.header.author, sentHeader.author, note.authorName ?? me.name));
+      setDate(l => pick(l, base.header.date, sentHeader.date, note.meetingDate ?? defaultDate(year, month, week)));
+      setAttendees(l => pick(l, base.header.attendees, sentHeader.attendees, srvAttendees, sameList));
+
+      setSavedKey(key);
+      setTimeout(() => setSavedKey(s => (s === key ? null : s)), 2000);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "저장하지 못했습니다.";
+      setPartErrors(p => ({ ...p, [key]: msg }));
+      setError(msg);
+    } finally {
+      setSaving(s => s.filter(x => x !== key));
     }
-    setSaving(false);
   }
+
+  const handleSaveAll = () => save({ header: headerDirty, members: dirtyMembers, teams: dirtyTeams }, "all");
+
+  const partSave = (key: string, isDirty: boolean, parts: Parameters<typeof save>[0]): PartSave => ({
+    dirty: isDirty, saving: saving.includes(key) || saving.includes("all"), saved: savedKey === key,
+    error: partErrors[key], onSave: () => save(parts, key),
+  });
+  const teamSave = (k: MeetingTeamKey) => partSave(`t:${k}`, dirtyTeams.includes(k), { teams: [k] });
+  const memberSave = (name: string) => partSave(`m:${name}`, dirtyMembers.includes(name), { members: [name] });
 
   async function handleDelete() {
     if (!current) return;
@@ -359,11 +435,16 @@ export default function MeetingBoard({ year, month, onMonthChange, criteria, cri
         </nav>
 
         <div className="grid grid-cols-2 gap-1.5 pt-2" style={{ borderTop: `1px solid ${C.lineSoft}` }}>
-          <button type="button" onClick={handleSave} disabled={saving || !dirty}
+          <button type="button" onClick={handleSaveAll} disabled={saving.includes("all") || !dirty}
             className="col-span-2 h-9 rounded-lg text-[13px] font-semibold text-white transition-opacity disabled:opacity-40"
             style={{ background: C.accent }}>
-            {saving ? "저장 중…" : saved ? "저장됨" : dirty ? "저장" : "저장된 상태"}
+            {saving.includes("all") ? "저장 중…" : savedKey === "all" ? "저장됨" : dirty ? "전체 저장" : "저장된 상태"}
           </button>
+          {dirty && (
+            <p className="col-span-2 text-[11px] px-1 leading-snug" style={{ color: C.faint }}>
+              바뀐 칸 {dirtyMembers.length + dirtyTeams.length + (headerDirty ? 1 : 0)}곳만 저장합니다 · 칸마다 따로 저장할 수도 있습니다
+            </p>
+          )}
           <button type="button" onClick={handleCopy}
             className="h-8 rounded-lg text-[12px] font-medium hover:bg-[#F2F4F6]" style={{ border: `1px solid ${C.line}`, color: C.body }}>
             {copied ? "복사됨" : "텍스트 복사"}
@@ -423,9 +504,9 @@ export default function MeetingBoard({ year, month, onMonthChange, criteria, cri
 
         <RevenueSection ctx={ctx} onBadge={badgeSetters["s-revenue"]} />
         <SalesSection ctx={ctx} members={members} onMembers={setMembers} prevMembers={prevMembers}
-          onBadge={badgeSetters["s-sales"]} />
+          onBadge={badgeSetters["s-sales"]} saveOf={memberSave} />
         <OpsSection ctx={ctx} notes={teamEntry("ops")} onNotes={setTeam("ops")} prevTodo={prevTeams.ops?.todo}
-          onBadge={badgeSetters["s-ops"]} />
+          onBadge={badgeSetters["s-ops"]} save={teamSave("ops")} />
         <ScheduleSection ctx={ctx} onBadge={badgeSetters["s-schedule"]} />
 
         <div className="flex items-baseline gap-3 flex-wrap px-1 pt-4" style={{ borderTop: `2px solid ${C.ink}` }}>
@@ -435,16 +516,16 @@ export default function MeetingBoard({ year, month, onMonthChange, criteria, cri
 
         <TeamCalendar ctx={ctx} team="marketing" id="s-marketing" no={5} title="마케팅팀"
           hint="기간별 할 일 카드 · 종료일 지나도 안 끝난 일은 빨간색"
-          notes={teamEntry("marketing")} onNotes={setTeam("marketing")}
+          notes={teamEntry("marketing")} onNotes={setTeam("marketing")} save={teamSave("marketing")}
           labels={{ issue: { label: "이슈 · 요청" }, todo: { label: "이번 달 마케팅 방향" } }}
           onBadge={badgeSetters["s-marketing"]} />
         <TeamCalendar ctx={ctx} team="dev" id="s-dev" no={6} title="개발팀" ownerTeam="개발팀"
           hint="기간별 할 일 카드 · 종료일 지나도 안 끝난 일은 빨간색"
-          notes={teamEntry("dev")} onNotes={setTeam("dev")}
+          notes={teamEntry("dev")} onNotes={setTeam("dev")} save={teamSave("dev")}
           labels={{ issue: { label: "이슈 · 요청" }, todo: { label: "요청 받은 기능 · 우선순위" } }}
           onBadge={badgeSetters["s-dev"]} />
         <AdminSection ctx={ctx} notes={teamEntry("admin")} onNotes={setTeam("admin")} prevTodo={prevTeams.admin?.todo}
-          onBadge={badgeSetters["s-admin"]} />
+          onBadge={badgeSetters["s-admin"]} save={teamSave("admin")} />
 
         <section id="s-decision" aria-labelledby="s-decision-h" className="rounded-2xl bg-white p-5 md:p-6 scroll-mt-4"
           style={{ border: `1px solid ${C.line}` }}>
@@ -455,6 +536,7 @@ export default function MeetingBoard({ year, month, onMonthChange, criteria, cri
           </div>
           <Field label="결정사항 · 기타 논의" value={content} onChange={setContent} rows={8}
             placeholder={"예) 11월 목표 3,000만 원으로 확정\n보장형 순위 밖 2곳은 이번 주 안에 키워드 재점검"} />
+          <SaveBar save={partSave("header", headerDirty, { header: true })} label="결정사항 · 회의 정보 저장" />
         </section>
       </div>
     </div>

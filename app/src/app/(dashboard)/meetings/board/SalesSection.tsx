@@ -11,7 +11,7 @@ import { useState, useEffect } from "react";
 import { fetchJson, saveErrorMessage } from "@/lib/fetch-json";
 import type { MeetingMembers, MeetingMemberEntry, MeetingWeekStats } from "@/db/schema";
 import { WEEK_STAT_KEYS, WEEK_STAT_LABELS } from "@/lib/meeting-sections";
-import { C, SectionCard, EntryFields, Avatar, Empty, personColor, won, man, emptyEntry, type BoardContext } from "./shared";
+import { C, SectionCard, EntryFields, Avatar, Empty, personColor, won, man, emptyEntry, type BoardContext, type PartSave } from "./shared";
 
 interface MemberKpi { name: string; team: string | null; target: number | null; revenue: number; forecast: number; active: number; deals?: number }
 
@@ -38,12 +38,14 @@ const TARGET = "#7048E8";
 /** 영업관리팀은 따로 섹션이 있다 — 이름에 "영업"이 들어가도 여기서 뺀다 */
 const isSalesTeam = (team: string | null) => !!team && team.startsWith("영업") && team !== "영업관리팀";
 
-export default function SalesSection({ ctx, members, onMembers, prevMembers, onBadge }: {
+export default function SalesSection({ ctx, members, onMembers, prevMembers, onBadge, saveOf }: {
   ctx: BoardContext;
   members: MeetingMembers;
   onMembers: (m: MeetingMembers) => void;
   prevMembers?: MeetingMembers;
   onBadge?: (text: string) => void;
+  /** 멤버 한 명의 칸만 따로 저장 */
+  saveOf?: (name: string) => PartSave;
 }) {
   const [kpi, setKpi] = useState<MemberKpi[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -151,7 +153,7 @@ export default function SalesSection({ ctx, members, onMembers, prevMembers, onB
           <MemberCard key={m.name} m={m} month={ctx.month} prevMonth={p1.m} prev2Month={p2.m}
             extra={extraOf(m.name)} extraError={extraError}
             entry={members[m.name] ?? emptyEntry()} onEntry={e => setEntry(m.name, e)}
-            prevTodo={prevMembers?.[m.name]?.todo}
+            prevTodo={prevMembers?.[m.name]?.todo} save={saveOf?.(m.name)}
             onTarget={v => saveTarget(m.name, v)} />
         ))}
       </div>
@@ -174,11 +176,11 @@ export default function SalesSection({ ctx, members, onMembers, prevMembers, onB
   );
 }
 
-function MemberCard({ m, month, prevMonth, prev2Month, extra, extraError, entry, onEntry, prevTodo, onTarget }: {
+function MemberCard({ m, month, prevMonth, prev2Month, extra, extraError, entry, onEntry, prevTodo, onTarget, save }: {
   m: MemberKpi; month: number; prevMonth: number; prev2Month: number;
   extra: MemberExtra | null; extraError: boolean;
   entry: MeetingMemberEntry; onEntry: (e: MeetingMemberEntry) => void;
-  prevTodo?: string; onTarget: (v: number) => void;
+  prevTodo?: string; onTarget: (v: number) => void; save?: PartSave;
 }) {
   const color = personColor(m.name);
   const rate = m.target ? (m.revenue / m.target) * 100 : null;
@@ -220,6 +222,7 @@ function MemberCard({ m, month, prevMonth, prev2Month, extra, extraError, entry,
       <div className="p-5" style={{ borderTop: `1px solid ${C.line}` }}>
         <StatsInputs value={entry.stats} onChange={stats => onEntry({ ...entry, stats })} />
         <EntryFields value={entry} onChange={onEntry} prevTodo={prevTodo} stacked rows={7}
+          save={save} saveLabel={`${m.name} 저장`}
           labels={{
             done:  { label: "전주 한 일", note: "결과 점검" },
             todo:  { label: "금주 할 일", note: "목표를 채울 계획" },
