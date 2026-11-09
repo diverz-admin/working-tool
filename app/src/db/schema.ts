@@ -476,7 +476,11 @@ export type ChatMention = typeof chatMentions.$inferSelect;
  *   todo  — 이번 기간에 할 일
  *   issue — 이슈 · 지원 요청
  */
-export type MeetingMemberEntry = { done: string; todo: string; issue: string };
+/** 영업 멤버의 전주 실적 숫자 — 콜 수 · 계약 건수(신규 / 연장 / 메타신규). 안 적은 칸은 키가 없다 */
+export type MeetingWeekStats = { calls?: number; newDeals?: number; renewals?: number; metaNew?: number };
+export type MeetingMemberEntry = { done: string; todo: string; issue: string; stats?: MeetingWeekStats };
+/** 사람이 글로 쓰는 세 칸 */
+export type MeetingEntryTextKey = "done" | "todo" | "issue";
 export type MeetingMembers = Record<string, MeetingMemberEntry>;
 
 /**

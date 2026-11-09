@@ -3,13 +3,14 @@
 /**
  * ② 영업팀 — 새 계약을 가져오는 사람별로 목표 · 실적 · 할 일을 본다.
  *
- * 숫자는 /api/member-kpi(프로젝트 담당자 기준)에서 오고, 사람이 적는 건 월 목표와 세 칸뿐이다.
+ * 숫자는 /api/member-kpi(프로젝트 담당자 기준)에서 오고, 사람이 적는 건 월 목표 · 전주 실적(콜 수 · 신규 · 연장 · 메타신규)과 세 칸이다.
  * 영업팀이 아닌 사람도 담당 캠페인이 있으면 "다른 멤버"로 꺼내 칸을 열 수 있다.
  */
 
 import { useState, useEffect } from "react";
 import { fetchJson, saveErrorMessage } from "@/lib/fetch-json";
-import type { MeetingMembers, MeetingMemberEntry } from "@/db/schema";
+import type { MeetingMembers, MeetingMemberEntry, MeetingWeekStats } from "@/db/schema";
+import { WEEK_STAT_KEYS, WEEK_STAT_LABELS } from "@/lib/meeting-sections";
 import { C, SectionCard, EntryFields, Avatar, Empty, personColor, won, man, emptyEntry, type BoardContext } from "./shared";
 
 interface MemberKpi { name: string; team: string | null; target: number | null; revenue: number; forecast: number; active: number; deals?: number }
@@ -116,12 +117,34 @@ export default function SalesSection({ ctx, members, onMembers, prevMembers, onB
 
   const setEntry = (name: string, e: MeetingMemberEntry) => onMembers({ ...members, [name]: e });
 
+  // 전주 실적 합계 — 화면에 보이는 멤버 것만 더한다. 아무도 안 적었으면 줄을 숨긴다
+  const statTotals = WEEK_STAT_KEYS.map(k => {
+    const vals = shown.map(m => members[m.name]?.stats?.[k]).filter((v): v is number => v !== undefined);
+    return { k, value: vals.length ? vals.reduce((a, b) => a + b, 0) : null };
+  });
+  const hasStats = statTotals.some(t => t.value !== null);
+
   return (
     <SectionCard id="s-sales" no={2} title="영업팀"
       hint="새 계약을 가져오는 팀 · 멤버별 매출은 프로젝트 담당자 기준 · 지난 회의의 '할 일'을 '한 일' 칸으로 가져올 수 있습니다">
       {error && <p className="text-[13px] mb-3" style={{ color: C.bad }}>{error}</p>}
       {!kpi && !error && <Empty>멤버별 집계를 불러오는 중입니다.</Empty>}
       {kpi && shown.length === 0 && <Empty>영업팀 멤버가 없습니다.</Empty>}
+
+      {hasStats && (
+        <div className="flex items-center gap-x-5 gap-y-1 flex-wrap mb-4 px-4 py-3 rounded-xl text-[14px]"
+          style={{ background: C.soft, color: C.muted }}>
+          <span className="font-semibold" style={{ color: C.body }}>팀 전주 실적</span>
+          {statTotals.map(t => (
+            <span key={t.k}>
+              {WEEK_STAT_LABELS[t.k]}{" "}
+              <span className="font-bold tabular-nums" style={{ color: t.value === null ? C.faint : C.ink }}>
+                {t.value === null ? "–" : `${t.value.toLocaleString("ko-KR")}${t.k === "calls" ? "콜" : "건"}`}
+              </span>
+            </span>
+          ))}
+        </div>
+      )}
 
       <div className="grid gap-4 xl:grid-cols-2 items-start" style={{ wordBreak: "keep-all" }}>
         {shown.map(m => (
@@ -195,12 +218,46 @@ function MemberCard({ m, month, prevMonth, prev2Month, extra, extraError, entry,
       </div>
 
       <div className="p-5" style={{ borderTop: `1px solid ${C.line}` }}>
+        <StatsInputs value={entry.stats} onChange={stats => onEntry({ ...entry, stats })} />
         <EntryFields value={entry} onChange={onEntry} prevTodo={prevTodo} stacked rows={7}
           labels={{
             done:  { label: "전주 한 일", note: "결과 점검" },
             todo:  { label: "금주 할 일", note: "목표를 채울 계획" },
             issue: { label: "이슈 · 지원 요청" },
           }} />
+      </div>
+    </div>
+  );
+}
+
+/** 전주 실적 네 칸 — 콜 수 · 계약 신규 / 연장 / 메타신규. 숫자만 받고, 비우면 "안 적음"으로 둔다 */
+function StatsInputs({ value, onChange }: { value?: MeetingWeekStats; onChange: (v: MeetingWeekStats | undefined) => void }) {
+  const set = (k: keyof MeetingWeekStats, text: string) => {
+    const digits = text.replace(/[^0-9]/g, "");
+    const next: MeetingWeekStats = { ...value };
+    if (digits) next[k] = Number(digits); else delete next[k];
+    onChange(Object.keys(next).length ? next : undefined);
+  };
+  return (
+    <div className="mb-5">
+      <p className="text-[13px] font-semibold mb-1.5" style={{ color: C.body }}>
+        전주 실적<span className="font-normal ml-1.5" style={{ color: C.faint }}>콜 수 · 계약 건수</span>
+      </p>
+      <div className="grid grid-cols-4 gap-px rounded-xl overflow-hidden" style={{ background: C.line, border: `1px solid ${C.line}` }}>
+        {WEEK_STAT_KEYS.map((k, i) => (
+          <label key={k} className="px-3 py-2.5 min-w-0 cursor-text focus-within:bg-white transition-colors" style={{ background: C.soft }}>
+            <span className="block text-[12px] font-medium" style={{ color: C.muted }}>
+              {i > 0 && <span style={{ color: C.faint }}>계약 </span>}{WEEK_STAT_LABELS[k]}
+            </span>
+            <span className="flex items-baseline gap-1 mt-0.5">
+              <input value={value?.[k]?.toString() ?? ""} inputMode="numeric" placeholder="0" aria-label={`전주 ${WEEK_STAT_LABELS[k]}`}
+                onChange={e => set(k, e.target.value)}
+                className="w-full min-w-0 bg-transparent outline-none text-[18px] font-bold tabular-nums placeholder:font-normal placeholder:text-[#C5CBD3]"
+                style={{ color: C.ink }} />
+              <span className="text-[12px] shrink-0" style={{ color: C.faint }}>{k === "calls" ? "콜" : "건"}</span>
+            </span>
+          </label>
+        ))}
       </div>
     </div>
   );

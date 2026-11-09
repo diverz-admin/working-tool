@@ -17,8 +17,9 @@ import { fetchJson, saveErrorMessage } from "@/lib/fetch-json";
 import { useUser } from "@/lib/UserContext";
 import {
   normalizeMeetingMembers, normalizeMeetingTeamNotes, normalizeAttendees, memberHasText,
+  WEEK_STAT_KEYS, WEEK_STAT_LABELS,
 } from "@/lib/meeting-sections";
-import type { MeetingMembers, MeetingTeamNotes, MeetingTeamKey, MeetingMemberEntry } from "@/db/schema";
+import type { MeetingMembers, MeetingTeamNotes, MeetingTeamKey, MeetingMemberEntry, MeetingEntryTextKey } from "@/db/schema";
 import { C, Field, Avatar, emptyEntry, mondayOf, ymd, md, DOW, type BoardContext } from "./shared";
 import RevenueSection from "./RevenueSection";
 import SalesSection from "./SalesSection";
@@ -464,7 +465,7 @@ function label(month: number, week: number | null) {
   return week === null ? `${month}월 월간회의` : `${month}월 ${week}주차 주간회의`;
 }
 
-const TEAM_TITLES: Record<MeetingTeamKey, { title: string; labels: Record<keyof MeetingMemberEntry, string> }> = {
+const TEAM_TITLES: Record<MeetingTeamKey, { title: string; labels: Record<MeetingEntryTextKey, string> }> = {
   ops:       { title: "영업관리팀", labels: { done: "전주 한 일", todo: "금주 할 일", issue: "영업팀에 요청 · 이슈" } },
   marketing: { title: "마케팅팀",   labels: { done: "한 일", todo: "이번 달 마케팅 방향", issue: "이슈 · 요청" } },
   dev:       { title: "개발팀",     labels: { done: "한 일", todo: "요청 받은 기능 · 우선순위", issue: "이슈 · 요청" } },
@@ -478,9 +479,11 @@ function buildCopyText(d: {
 }) {
   const out: string[] = [`[${label(d.month, d.week)}] ${d.date}${d.author ? ` · 작성 ${d.author}` : ""}`];
   if (d.attendees.length) out.push(`참석: ${d.attendees.join(", ")}`);
-  const block = (title: string, e: MeetingMemberEntry, names: Record<keyof MeetingMemberEntry, string>) => {
+  const block = (title: string, e: MeetingMemberEntry, names: Record<MeetingEntryTextKey, string>) => {
     if (!memberHasText(e)) return;
     out.push("", `■ ${title}`);
+    const stats = WEEK_STAT_KEYS.filter(k => e.stats?.[k] !== undefined).map(k => `${WEEK_STAT_LABELS[k]} ${e.stats![k]}`);
+    if (stats.length) out.push(`- 전주 실적: ${stats.join(" · ")}`);
     for (const k of ["done", "todo", "issue"] as const) {
       if (e[k].trim()) out.push(`- ${names[k]}`, ...e[k].trim().split("\n").map(l => `  ${l}`));
     }

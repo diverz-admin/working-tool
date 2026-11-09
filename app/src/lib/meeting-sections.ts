@@ -1,4 +1,4 @@
-import type { MeetingAxisKey, MeetingAxisEntry, MeetingSections, MeetingMemberEntry, MeetingMembers, MeetingTeamKey, MeetingTeamNotes } from "@/db/schema";
+import type { MeetingAxisKey, MeetingAxisEntry, MeetingSections, MeetingMemberEntry, MeetingMembers, MeetingWeekStats, MeetingTeamKey, MeetingTeamNotes } from "@/db/schema";
 
 /** 회의록 4대 축. 화면(meetings)의 AXES 목록과 순서를 맞춰 둔다. */
 export const MEETING_AXIS_KEYS: MeetingAxisKey[] = ["revenue", "operation", "sales", "marketing"];
@@ -51,8 +51,26 @@ export function meetingSectionsAreEmpty(s: MeetingSections): boolean {
 
 export const emptyMemberEntry = (): MeetingMemberEntry => ({ done: "", todo: "", issue: "" });
 
+/** 전주 실적 칸 — 화면 순서와 같다 */
+export const WEEK_STAT_KEYS: (keyof MeetingWeekStats)[] = ["calls", "newDeals", "renewals", "metaNew"];
+export const WEEK_STAT_LABELS: Record<keyof MeetingWeekStats, string> = {
+  calls: "콜 수", newDeals: "신규", renewals: "연장", metaNew: "메타신규",
+};
+
+/** 0 이상 정수만 남긴다. 하나도 없으면 undefined */
+export function normalizeWeekStats(raw: unknown): MeetingWeekStats | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const src = raw as Record<string, unknown>;
+  const out: MeetingWeekStats = {};
+  for (const k of WEEK_STAT_KEYS) {
+    const n = typeof src[k] === "number" ? src[k] : typeof src[k] === "string" && src[k] !== "" ? Number(src[k]) : NaN;
+    if (Number.isFinite(n) && n >= 0) out[k] = Math.floor(n);
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
 export function memberHasText(e?: MeetingMemberEntry | null): boolean {
-  return !!e && !!(e.done.trim() || e.todo.trim() || e.issue.trim());
+  return !!e && !!(e.done.trim() || e.todo.trim() || e.issue.trim() || (e.stats && Object.keys(e.stats).length));
 }
 
 /** 저장된 멤버 기록을 이름 → 세 칸으로 맞춘다. 내용이 없는 멤버는 뺀다. */
@@ -62,7 +80,9 @@ export function normalizeMeetingMembers(raw: unknown): MeetingMembers {
   for (const [name, v] of Object.entries(raw as Record<string, unknown>)) {
     if (!name.trim() || !v || typeof v !== "object") continue;
     const e = v as Record<string, unknown>;
-    const entry = { done: str(e.done), todo: str(e.todo), issue: str(e.issue) };
+    const entry: MeetingMemberEntry = { done: str(e.done), todo: str(e.todo), issue: str(e.issue) };
+    const stats = normalizeWeekStats(e.stats);
+    if (stats) entry.stats = stats;
     if (memberHasText(entry)) out[name.trim()] = entry;
   }
   return out;

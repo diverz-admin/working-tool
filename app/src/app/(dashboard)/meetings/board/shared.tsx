@@ -7,7 +7,7 @@
  * 글자 굵기는 가볍게 둔다 — 섹션 제목·큰 숫자만 700, 라벨·이름은 600, 보조 설명은 400~500.
  */
 
-import type { MeetingMemberEntry } from "@/db/schema";
+import type { MeetingMemberEntry, MeetingEntryTextKey } from "@/db/schema";
 
 /** 앱 공통 토큰(--diverz-*)과 같은 값 */
 export const C = {
@@ -217,7 +217,7 @@ export function MiniButton({ children, onClick, disabled }: { children: React.Re
 export const emptyEntry = (): MeetingMemberEntry => ({ done: "", todo: "", issue: "" });
 
 /** 칸 이름 — 저장은 done·todo·issue 세 칸이지만 팀마다 부르는 이름이 다르다 */
-export type EntryLabels = Partial<Record<keyof MeetingMemberEntry, { label: string; note?: string; placeholder?: string }>>;
+export type EntryLabels = Partial<Record<MeetingEntryTextKey, { label: string; note?: string; placeholder?: string }>>;
 
 /**
  * 팀·사람 한 명의 기록 칸 묶음.
@@ -225,7 +225,7 @@ export type EntryLabels = Partial<Record<keyof MeetingMemberEntry, { label: stri
  */
 export function EntryFields({ value, onChange, labels, prevTodo, keys = ["done", "todo", "issue"], stacked, rows }: {
   value: MeetingMemberEntry; onChange: (v: MeetingMemberEntry) => void;
-  labels?: EntryLabels; prevTodo?: string; keys?: (keyof MeetingMemberEntry)[];
+  labels?: EntryLabels; prevTodo?: string; keys?: (MeetingEntryTextKey)[];
   /** 칸을 위아래로 쌓는다 — 좁은 카드 안에서 쓴다 */
   stacked?: boolean; rows?: number;
 }) {
