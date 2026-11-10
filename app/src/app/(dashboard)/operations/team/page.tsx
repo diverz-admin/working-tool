@@ -18,21 +18,25 @@ const CRITERIA_OPTIONS = [
   { value: "캠페인 시작날짜", label: "캠페인 시작날짜 기준" },
   { value: "계산서날짜", label: "계산서날짜 기준" },
   { value: "통장", label: "통장 기준" },
+  { value: "영업자 정산", label: "영업자 정산기준" },
 ];
 
-// 매출 표시 날짜: 통장→입금일(paymentDate), 계산서→발행일(invoiceDate), 그 외→캠페인 시작일(startDate)
+// 매출 표시 날짜: 통장→입금일(paymentDate), 계산서→발행일(invoiceDate),
+// 영업자 정산→발행일, 계산서 없으면 입금일, 그 외→캠페인 시작일(startDate)
 function revDateLabel(criteria: string) {
-  return criteria === "통장" ? "통장(입금일)" : criteria === "계산서날짜" ? "계산서날짜" : "캠페인 시작날짜";
+  return criteria === "통장" ? "통장(입금일)" : criteria === "계산서날짜" ? "계산서날짜"
+    : criteria === "영업자 정산" ? "발행일·입금일" : "캠페인 시작날짜";
 }
 function revDateVal(r: { startDate: string | null; invoiceDate: string | null; paymentDate: string | null }, criteria: string) {
-  return criteria === "통장" ? r.paymentDate : criteria === "계산서날짜" ? r.invoiceDate : r.startDate;
+  return criteria === "통장" ? r.paymentDate : criteria === "계산서날짜" ? r.invoiceDate
+    : criteria === "영업자 정산" ? (r.invoiceDate || r.paymentDate) : r.startDate;
 }
-// 매입 표시 날짜: 통장·계산서→확인일(purchaseDate), 그 외(캠페인 시작)→작업시작일(workStartDate)
+// 매입 표시 날짜: 통장·계산서·영업자 정산→확인일(purchaseDate), 그 외(캠페인 시작)→작업시작일(workStartDate)
 function costDateLabel(criteria: string) {
-  return criteria === "통장" ? "통장(승인일)" : criteria === "계산서날짜" ? "확인일" : "작업시작일";
+  return criteria === "통장" ? "통장(승인일)" : criteria === "캠페인 시작날짜" ? "작업시작일" : "확인일";
 }
 function costDateVal(r: { invoiceDate: string | null; purchaseDate: string | null; workStartDate: string | null }, criteria: string) {
-  return criteria === "통장" || criteria === "계산서날짜" ? r.purchaseDate : r.workStartDate;
+  return criteria === "캠페인 시작날짜" ? r.workStartDate : r.purchaseDate;
 }
 
 // ─── 타입 ────────────────────────────────────────────────
@@ -113,10 +117,11 @@ const S = {
 
 // ─── 요약 바 ──────────────────────────────────────────────
 
-function SummaryBar({ revRows, costRows, teamLabel }: {
+function SummaryBar({ revRows, costRows, teamLabel, onSelectPerson }: {
   revRows: RevenueRow[];
   costRows: CostRow[];
   teamLabel?: string;
+  onSelectPerson?: (name: string) => void;
 }) {
   const totalSupply  = sumN(revRows.map(r => r.supplyPrice));
   const totalTax     = sumN(revRows.map(r => r.tax));
@@ -142,14 +147,14 @@ function SummaryBar({ revRows, costRows, teamLabel }: {
           </div>
         ))}
       </div>
-      {!teamLabel && <MemberStats revRows={revRows} costRows={costRows} />}
+      {!teamLabel && <MemberStats revRows={revRows} costRows={costRows} onSelect={onSelectPerson} />}
     </div>
   );
 }
 
 // ─── 멤버별 통계 (전체에서만) ──────────────────────────────
 
-function MemberStats({ revRows, costRows }: { revRows: RevenueRow[]; costRows: CostRow[] }) {
+function MemberStats({ revRows, costRows, onSelect }: { revRows: RevenueRow[]; costRows: CostRow[]; onSelect?: (name: string) => void }) {
   const members = PEOPLE.filter(p => p !== "전체") as string[];
   const stat = new Map(members.map(m => [m, { rev: 0, cost: 0, projects: new Set<string>(), clients: new Set<string>() }]));
   for (const r of revRows) {
@@ -181,7 +186,9 @@ function MemberStats({ revRows, costRows }: { revRows: RevenueRow[]; costRows: C
           const share = totalRev ? (v.rev / totalRev) * 100 : 0;
           const empty = !v.rev && !v.cost;
           return (
-            <div key={k} className="rounded-xl p-3.5" style={{ background: "#F8FAFC", border: "1px solid #EEF1F4", opacity: empty ? 0.6 : 1 }}>
+            <button key={k} type="button" onClick={() => onSelect?.(k)} title={`${k} 내역만 보기`}
+              className="rounded-xl p-3.5 text-left transition-all bg-[#F8FAFC] hover:bg-white hover:shadow-sm cursor-pointer"
+              style={{ border: "1px solid #EEF1F4", opacity: empty ? 0.6 : 1 }}>
               <div className="flex items-center gap-2 mb-2.5">
                 <div className="w-6 h-6 rounded-lg flex items-center justify-center text-white text-[11px] font-semibold shrink-0"
                   style={{ background: color }}>{k.slice(0, 1)}</div>
@@ -206,7 +213,7 @@ function MemberStats({ revRows, costRows }: { revRows: RevenueRow[]; costRows: C
                   </span>
                 </div>
               </div>
-            </div>
+            </button>
           );
         })}
       </div>
@@ -417,7 +424,7 @@ export default function TeamProfitPage() {
   const now = new Date();
   const [year,     setYear]     = useState(now.getFullYear());
   const [month,    setMonth]    = useState(now.getMonth() + 1);
-  const [criteria, setCriteria] = useState("캠페인 시작날짜");
+  const [criteria, setCriteria] = useState("영업자 정산");
   const [person,   setPerson]   = useState<Person>("전체");
   const [dataTab,  setDataTab]  = useState<"client" | "revenue" | "cost">("client");
 
@@ -426,7 +433,7 @@ export default function TeamProfitPage() {
   const [loading,  setLoading]  = useState(true);
   const [error,    setError]    = useState<string | null>(null);
 
-  // 매출: 캠페인 시작 날짜 기준 / 매입: 계산서 발행 날짜 기준
+  // 기준별 매출·매입 날짜는 @/lib/revenue-stats 참고 (기본: 영업자 정산)
   const load = useCallback(() => {
     setLoading(true);
     setError(null);
@@ -469,7 +476,7 @@ export default function TeamProfitPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold" style={{ color: "#191F28" }}>팀별 손익현황</h1>
-          <p className="text-xs mt-0.5" style={{ color:"#94A3B8" }}>{criteria === "통장" ? "매출: 입금 승인일 기준 · 매입: 승인일 기준" : criteria === "계산서날짜" ? "매출: 계산서 발행일 기준 · 매입: 확인일 기준" : "매출: 캠페인 시작일 기준 · 매입: 작업시작일 기준"}</p>
+          <p className="text-xs mt-0.5" style={{ color:"#94A3B8" }}>{criteria === "통장" ? "매출: 입금 승인일 기준 · 매입: 승인일 기준" : criteria === "계산서날짜" ? "매출: 계산서 발행일 기준 · 매입: 확인일 기준" : criteria === "영업자 정산" ? "매출: 계산서 발행일 (계산서 없는 건은 입금확인일) 기준 · 매입: 승인일 기준" : "매출: 캠페인 시작일 기준 · 매입: 작업시작일 기준"}</p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -549,6 +556,7 @@ export default function TeamProfitPage() {
             revRows={filteredRev}
             costRows={filteredCost}
             teamLabel={all ? undefined : person}
+            onSelectPerson={name => setPerson(name as Person)}
           />
 
           {/* 업체별 / 매출 / 매입 탭 */}

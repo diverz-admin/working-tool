@@ -452,7 +452,7 @@ export default function MonthlyManagePage() {
   const now = new Date();
   const [year,     setYear]     = useState(now.getFullYear());
   const [month,    setMonth]    = useState(now.getMonth() + 1);
-  const [criteria, setCriteria] = useState("캠페인 시작날짜");
+  const [criteria, setCriteria] = useState("계산서날짜");
   const [dataTab,  setDataTab]  = useState<DataTab>("revenue");
 
   const [revRows,  setRevRows]  = useState<RevenueRow[]>([]);
@@ -465,7 +465,7 @@ export default function MonthlyManagePage() {
   const [editValue, setEditValue] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // 매출: 캠페인 시작 날짜 기준 / 매입: 계산서 발행 날짜 기준
+  // 기준별 매출·매입 날짜는 @/lib/revenue-stats 참고 (기본: 계산서날짜)
   // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const load = useCallback(() => {
     setLoading(true);

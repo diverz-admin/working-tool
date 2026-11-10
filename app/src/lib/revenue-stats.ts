@@ -41,10 +41,13 @@ export function isRevenueConfirmed(projectId: AnyColumn | SQL) {
  * 매출 행(project_revenues)에도 날짜를 복사해 두지만, 복사 시점 이후에 추가된 행엔 날짜가 없고
  * 매출 행 합계가 계약금액과 다른 경우가 많아 행 기준으로 집계하면 매출이 크게 빠진다.
  *
- * 금액: 계약 일괄 요청이고 요청 금액이 프로젝트 계약금액과 같으면 계약 공급가·세액을 그대로 쓰고,
+ * 금액: 발행불필요 건은 요청 금액이 곧 공급가(부가세 없음).
+ * 계약 일괄 요청이고 요청 금액이 프로젝트 계약금액과 같으면 계약 공급가·세액을 그대로 쓰고,
  * 그 외에는 요청 금액(VAT 포함)에서 공급가를 역산한다.
+ * 날짜: kind 참고. 영업자 정산은 계산서 발행일, 계산서가 없는 건(발행불필요·미발행)은 입금확인일.
  */
-export type ConfirmRevenueKind = "invoice" | "deposit";
+/** invoice: 계산서 발행일 / deposit: 입금확인일 / settlement(영업자 정산): 발행일, 계산서가 없으면 입금확인일 */
+export type ConfirmRevenueKind = "invoice" | "deposit" | "settlement";
 
 export interface ConfirmRevenueRow {
   id:             string;          // 결재확인 요청 id
@@ -69,13 +72,15 @@ export async function fetchConfirmRevenue(
   opts: { team?: string; projectIds?: string[] } = {},
 ): Promise<ConfirmRevenueRow[]> {
   if (opts.projectIds && opts.projectIds.length === 0) return [];
-  const dateCol = kind === "invoice" ? sql`cr.tax_invoice_date` : sql`cr.deposit_confirmed_at`;
+  const dateCol = kind === "invoice"    ? sql`cr.tax_invoice_date`
+                : kind === "settlement" ? sql`COALESCE(NULLIF(cr.tax_invoice_date, ''), cr.deposit_confirmed_at)`
+                : sql`cr.deposit_confirmed_at`;
   const rows = await db.execute<{
     id: string; project_id: string | null; campaign_name: string | null;
     assigned_team: string | null; assigned_person: string | null; start_date: string | null;
     client_name: string | null; product_name: string | null;
     tax_invoice_date: string | null; deposit_confirmed_at: string | null;
-    row_key: string | null; amount: string | null;
+    row_key: string | null; amount: string | null; tax_exempt: boolean | null;
     contract_amount: number | null; kpi_supply: number | null; kpi_tax: number | null;
   }>(sql`
     SELECT cr.id, cr.project_id, p.campaign_name,
@@ -83,7 +88,8 @@ export async function fetchConfirmRevenue(
            p.assigned_person, p.start_date::text AS start_date,
            COALESCE(c.company_name, cr.client_name) AS client_name,
            cr.product_name, cr.tax_invoice_date, cr.deposit_confirmed_at,
-           cr.row_key, cr.amount, p.contract_amount, p.kpi_supply, p.kpi_tax
+           cr.row_key, cr.amount, cr.tax_exempt,
+           p.contract_amount, p.kpi_supply, p.kpi_tax
     FROM confirm_requests cr
     LEFT JOIN projects p ON p.id = cr.project_id
     LEFT JOIN clients  c ON c.id = p.client_id
@@ -99,8 +105,9 @@ export async function fetchConfirmRevenue(
     const total = Number(String(r.amount ?? "").replace(/[^0-9]/g, "")) || 0;
     const isContract = r.row_key === "__contract__"
       && r.kpi_supply != null && r.contract_amount != null && Number(r.contract_amount) === total;
-    const supplyPrice = isContract ? Number(r.kpi_supply) : Math.round(total / 1.1);
-    const tax = isContract && r.kpi_tax != null ? Number(r.kpi_tax) : total - supplyPrice;
+    // 발행불필요 건은 요청 금액 자체가 공급가(부가세 없음)
+    const supplyPrice = r.tax_exempt ? total : isContract ? Number(r.kpi_supply) : Math.round(total / 1.1);
+    const tax = r.tax_exempt ? 0 : isContract && r.kpi_tax != null ? Number(r.kpi_tax) : total - supplyPrice;
     return {
       id:             r.id,
       projectId:      r.project_id,

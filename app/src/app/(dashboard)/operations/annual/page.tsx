@@ -75,7 +75,7 @@ export default function AnnualProfitPage() {
   const curMonth = now.getMonth();
 
   const [year,     setYear]     = useState(now.getFullYear());
-  const [criteria, setCriteria] = useState("캠페인 시작날짜");
+  const [criteria, setCriteria] = useState("계산서날짜");
   const [team,     setTeam]     = useState<Team>("전체");
   const [revenue,  setRevenue]  = useState<RevenueData|null>(null);
   const [costs,    setCosts]    = useState<CostMap>({});
@@ -88,7 +88,7 @@ export default function AnnualProfitPage() {
   const [savedKey,  setSavedKey]  = useState<string|null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // 매출: 캠페인 시작 날짜 기준 / 매입: 계산서 발행 날짜 기준
+  // 기준별 매출·매입 날짜는 @/lib/revenue-stats 참고 (기본: 계산서날짜)
   const load = useCallback(() => {
     setLoading(true);
     setError(null);

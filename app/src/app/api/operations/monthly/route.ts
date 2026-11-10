@@ -35,19 +35,22 @@ export async function GET(req: NextRequest) {
     const criteria   = req.nextUrl.searchParams.get("criteria") ?? "캠페인 시작날짜";
     const useBank    = criteria === "통장";
     const useInvoice = criteria === "계산서날짜";
+    // 영업자 정산: 매출은 계산서 발행일(계산서 없는 건은 입금확인일), 매입은 확인일(승인일)
+    const useSettle  = criteria === "영업자 정산";
     // 캠페인 시작날짜 = 수주 기준(계약 공급가) / 나머지 = 실적 기준(결재확인 요청)
-    const useContract = !useBank && !useInvoice;
+    const useContract = !useBank && !useInvoice && !useSettle;
 
     // 매출 날짜: 통장 → 결재확인 입금확인일, 계산서 → 결재확인 계산서 발행일, 그 외 → 캠페인 시작일(startDate)
-    // 매입 날짜: 통장·계산서 → 확인일(purchaseDate, 결재 승인일), 그 외(캠페인 시작) → 작업시작일(workStartDate)
+    // 영업자 정산 → 계산서 발행일, 계산서 없는 건은 입금확인일
+    // 매입 날짜: 통장·계산서·영업자 정산 → 확인일(purchaseDate, 결재 승인일), 그 외(캠페인 시작) → 작업시작일(workStartDate)
     const revDateField  = projects.startDate;   // 수주 기준에서만 쓴다
-    const costDateField = (useBank || useInvoice) ? projectCosts.purchaseDate   // 매입은 계산서 기준도 확인일(승인일)
+    const costDateField = !useContract ? projectCosts.purchaseDate   // 매입은 계산서 기준도 확인일(승인일)
                         : projectCosts.workStartDate;
 
     const { from, to } = monthRange(year, month);
 
     // 실적 기준(계산서·통장) 매출: 결재확인 요청의 발행일·입금확인일과 요청 금액 — @/lib/revenue-stats 참고
-    const confirmRevP = useContract ? Promise.resolve([]) : fetchConfirmRevenue(useInvoice ? "invoice" : "deposit", from, to);
+    const confirmRevP = useContract ? Promise.resolve([]) : fetchConfirmRevenue(useSettle ? "settlement" : useInvoice ? "invoice" : "deposit", from, to);
 
     // 3 쿼리 병렬 (월간매출 + 월간매입 + 연간SGA)
     const [revData, costData, sgaData] = await Promise.all([
