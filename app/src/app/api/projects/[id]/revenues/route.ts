@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { projectRevenues, confirmRequests } from "@/db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, ne, sql } from "drizzle-orm";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -38,6 +38,27 @@ export async function PUT(req: Request, { params }: Params) {
         .from(confirmRequests)
         .where(and(eq(confirmRequests.projectId, id), eq(confirmRequests.status, "확인완료")));
 
+      // 결재확인에 기록된 입금확인일·계산서 발행일 — 매출 행 날짜의 원본.
+      // 결재 처리 전에 열어 둔 화면에서 저장하면 빈 날짜가 들어와 결재확인이 복사해 둔 날짜를 지운다.
+      // 들어온 값이 비어 있으면 원본으로 채운다. (결재 취소 시에는 결재확인 날짜를 먼저 지운 뒤 저장한다)
+      const requestDates = await tx
+        .select({ rowKey: confirmRequests.rowKey, invoiceDate: confirmRequests.taxInvoiceDate, paymentDate: confirmRequests.depositConfirmedAt })
+        .from(confirmRequests)
+        .where(and(eq(confirmRequests.projectId, id), ne(confirmRequests.status, "반려")));
+      const datesByRowKey = new Map<string, { invoiceDate: string | null; paymentDate: string | null }>();
+      for (const r of requestDates) {
+        if (!r.rowKey) continue;
+        const cur = datesByRowKey.get(r.rowKey) ?? { invoiceDate: null, paymentDate: null };
+        datesByRowKey.set(r.rowKey, {
+          invoiceDate: cur.invoiceDate || r.invoiceDate || null,
+          paymentDate: cur.paymentDate || r.paymentDate || null,
+        });
+      }
+      // "__contract__"(계약금액 일괄) 요청의 날짜는 모든 매출 행에 적용된다
+      const contractDates = datesByRowKey.get("__contract__");
+      const sourceDate = (rowId: unknown, field: "invoiceDate" | "paymentDate") =>
+        (rowId ? datesByRowKey.get(String(rowId))?.[field] : null) || contractDates?.[field] || null;
+
       if (confirmedRequests.length > 0) {
         const incomingRowIds = new Set(dedupedRevenues.map((r) => r.revenueRowId).filter(Boolean));
         // DB에 실제로 존재하는 revenueRowId만 가져와서, 현재 DB에 있는 rowKey가 incoming에서 빠진 경우만 차단
@@ -69,8 +90,8 @@ export async function PUT(req: Request, { params }: Params) {
             supplyPrice:    r.supplyPrice ? parseInt(String(r.supplyPrice)) : null,
             tax:            r.tax ? parseInt(String(r.tax)) : null,
             total:          r.total ? parseInt(String(r.total)) : null,
-            paymentDate:    r.paymentDate || null,
-            invoiceDate:    r.invoiceDate || null,
+            paymentDate:    r.paymentDate || sourceDate(r.revenueRowId, "paymentDate"),
+            invoiceDate:    r.invoiceDate || sourceDate(r.revenueRowId, "invoiceDate"),
             workStartDate:  r.workStartDate || null,
             workEndDate:    r.workEndDate || null,
             completedQty:   r.completedQty ? parseInt(String(r.completedQty)) : 0,

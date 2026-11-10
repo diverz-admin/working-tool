@@ -337,10 +337,9 @@ export default function ConfirmPage() {
   // 확인완료 → 대기 복구 (계산서 발행 기록은 유지)
   async function handleCancelConfirmation(item: ConfirmRequest) {
     if (!confirm(`"${item.projectName || item.clientName}" 입금확인을 취소하고 대기 상태로 되돌리겠습니까?\n(세금계산서 발행 기록은 유지됩니다.)`)) return;
-    await Promise.all([
-      updateConfirmRequest(item.id, { status: "대기", depositConfirmedAt: null as unknown as string }),
-      updateRevenueField(item.projectId, item.rowKey, "paymentDate", ""),
-    ]);
+    // 순서 중요: 결재확인 날짜를 먼저 지워야 매출 행 저장 시 결재확인 날짜로 다시 채워지지 않는다
+    await updateConfirmRequest(item.id, { status: "대기", depositConfirmedAt: null as unknown as string });
+    await updateRevenueField(item.projectId, item.rowKey, "paymentDate", "");
     setItems((prev) => prev.map((i) => i.id === item.id
       ? { ...i, status: "대기" as ConfirmStatus, depositConfirmedAt: undefined }
       : i));

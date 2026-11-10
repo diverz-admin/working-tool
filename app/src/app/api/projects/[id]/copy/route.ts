@@ -73,6 +73,8 @@ export async function POST(_req: Request, { params }: Params) {
               ...r,
               ...withCurrentSalePrice(row),
               projectId:     copied.id,
+              // 행 ID는 결재확인(row_key)이 가리키는 키 — 원본과 같으면 두 프로젝트의 행이 한 결재에 엮일 수 있다
+              revenueRowId:  crypto.randomUUID(),
               workCompleted: false,
               completedAt:   null,
               completedQty:  0,
