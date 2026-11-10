@@ -49,7 +49,7 @@ export async function PUT(req: Request, { params }: Params) {
 
       // 기존 costs 조회 — 승인 체크 + 파일 URL 보존에 공통 사용
       const existingCosts = await tx
-        .select({ costRowId: projectCosts.costRowId, rowNum: projectCosts.rowNum, invoiceFileUrl: projectCosts.invoiceFileUrl, invoiceFileName: projectCosts.invoiceFileName })
+        .select({ costRowId: projectCosts.costRowId, rowNum: projectCosts.rowNum, invoiceFileUrl: projectCosts.invoiceFileUrl, invoiceFileName: projectCosts.invoiceFileName, purchaseDate: projectCosts.purchaseDate })
         .from(projectCosts)
         .where(eq(projectCosts.projectId, id));
 
@@ -69,12 +69,22 @@ export async function PUT(req: Request, { params }: Params) {
       const fileByRowKey = new Map(existingCosts.filter(c => c.costRowId).map(c => [c.costRowId!, { url: c.invoiceFileUrl ?? "", name: c.invoiceFileName ?? "" }]));
       const fileByRowNum = new Map(existingCosts.map(c => [c.rowNum, { url: c.invoiceFileUrl ?? "", name: c.invoiceFileName ?? "" }]));
 
+      // 매입날짜(승인일) 보존 맵 — 승인 전에 열어 둔 화면에서 저장하면 빈 매입날짜가 들어와
+      // 결재 승인 때 기록된 날짜를 지워 버린다(승인 표시는 위에서 다시 붙어 날짜만 사라짐). 승인된 행은 기존 값을 유지한다.
+      const purchaseDateByRowKey = new Map(
+        existingCosts.filter(c => c.costRowId && c.purchaseDate).map(c => [c.costRowId!, c.purchaseDate!]),
+      );
+
       await tx.delete(projectCosts).where(eq(projectCosts.projectId, id));
 
       if (dedupedCosts.length) {
         await tx.insert(projectCosts).values(
           dedupedCosts.map((c, i: number) => {
             const existing = fileByRowKey.get(String(c.costRowId)) ?? fileByRowNum.get(i + 1);
+            const isApproved = approvedRowKeys.has(String(c.costRowId)) || Boolean(c.isApproved);
+            const purchaseDate = c.purchaseDate
+              || (isApproved && c.costRowId ? purchaseDateByRowKey.get(String(c.costRowId)) : null)
+              || null;
             return {
               projectId:       id,
               rowNum:          i + 1,
@@ -88,12 +98,12 @@ export async function PUT(req: Request, { params }: Params) {
               supplyPrice:     safeInt(c.supplyPrice),
               tax:             safeInt(c.tax),
               total:           safeInt(c.total),
-              purchaseDate:    c.purchaseDate || null,
+              purchaseDate,
               invoiceDate:     c.invoiceDate || null,
               workStartDate:   c.workStartDate || null,
               workEndDate:     c.workEndDate || null,
               workCompleted:   Boolean(c.workCompleted),
-              isApproved:      approvedRowKeys.has(String(c.costRowId)) || Boolean(c.isApproved),
+              isApproved,
               settingDate:     c.settingDate || null,
               invoiceFileUrl:  String(c.invoiceFileUrl || existing?.url || ""),
               invoiceFileName: String(c.invoiceFileName || existing?.name || ""),
