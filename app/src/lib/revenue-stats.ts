@@ -146,15 +146,14 @@ export async function fetchRevenueStats(
   }));
 }
 
-/** 승인된 매입만. 귀속 월은 계산서날짜 기준→계산서 발행일, 통장 기준→입금승인일, 캠페인 시작날짜 기준→작업시작일이며, 해당 날짜가 없는 행은 제외된다. */
+/** 승인된 매입만. 귀속 월은 통장·계산서날짜 기준→매입 확인일(결재 승인일), 캠페인 시작날짜 기준→작업시작일이며, 해당 날짜가 없는 행은 제외된다. */
 export async function fetchCostStats(
   year: number,
   criteria: StatsCriteria,
   team?: string,
 ): Promise<CostStatRow[]> {
   const dateExpr =
-    criteria === "통장"       ? projectCosts.purchaseDate
-    : criteria === "계산서날짜" ? projectCosts.invoiceDate
+    criteria === "통장" || criteria === "계산서날짜" ? projectCosts.purchaseDate   // 매입은 계산서 기준도 확인일
     : projectCosts.workStartDate;   // 캠페인 시작날짜 기준 → 매입은 작업시작일
 
   const raw = await db

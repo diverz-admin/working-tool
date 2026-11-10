@@ -104,8 +104,8 @@ export async function GET(req: NextRequest) {
         )
       );
 
-    // 승인 매입 — 통장: 승인일(purchaseDate) / 계산서: 발행일(invoiceDate) / 캠페인 시작(그 외): 작업시작일(workStartDate)
-    const costDate = useBank ? projectCosts.purchaseDate : useInvoice ? projectCosts.invoiceDate : projectCosts.workStartDate;
+    // 승인 매입 — 통장·계산서: 확인일(purchaseDate) / 캠페인 시작(그 외): 작업시작일(workStartDate)
+    const costDate = (useBank || useInvoice) ? projectCosts.purchaseDate : projectCosts.workStartDate;
     const costRows = await db
       .select({
         projectId:     projectCosts.projectId,
@@ -181,9 +181,9 @@ export async function GET(req: NextRequest) {
         monthly[m].count       += 1;
       }
     }
-    // 매입 귀속 월 — 통장: 승인일(purchaseDate) / 계산서: 발행일(invoiceDate) / 캠페인 시작: 작업시작일(workStartDate)
+    // 매입 귀속 월 — 통장·계산서: 확인일(purchaseDate) / 캠페인 시작: 작업시작일(workStartDate)
     for (const c of costRows) {
-      const cd = useBank ? c.purchaseDate : useInvoice ? c.invoiceDate : c.workStartDate;
+      const cd = (useBank || useInvoice) ? c.purchaseDate : c.workStartDate;
       if (!cd) continue;
       const m = parseInt(cd.substring(5, 7)) - 1;
       monthly[m].cost += c.supplyPrice ?? 0;
@@ -225,7 +225,7 @@ export async function GET(req: NextRequest) {
           }
         }
         for (const c of p.costRows) {
-          const cd = useBank ? c.purchaseDate : useInvoice ? c.invoiceDate : c.workStartDate;
+          const cd = (useBank || useInvoice) ? c.purchaseDate : c.workStartDate;
           const cm = cd ? parseInt(cd.substring(5, 7)) - 1 : -1;
           if (cm >= 0) teamMonthly[cm].cost += c.supplyPrice ?? 0;
         }

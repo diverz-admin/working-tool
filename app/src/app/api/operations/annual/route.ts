@@ -118,8 +118,8 @@ export async function GET(req: NextRequest) {
     const filtered     = manualRows.filter(r => r.category !== "직접매입(상품)");
     const directMonthly = new Array(12).fill(0);
     for (const r of directCostRows) {
-      // 통장: 승인일(purchaseDate) / 계산서: 발행일(invoiceDate) / 그 외(캠페인 시작·공급가): 작업시작일(workStartDate)
-      const dateStr = useBank ? r.purchaseDate : useInvoice ? r.invoiceDate : r.workStartDate;
+      // 통장·계산서: 확인일(purchaseDate) / 그 외(캠페인 시작·공급가): 작업시작일(workStartDate)
+      const dateStr = (useBank || useInvoice) ? r.purchaseDate : r.workStartDate;
       if (!dateStr) continue;
       if (parseInt(dateStr.substring(0, 4)) !== year) continue;
       directMonthly[parseInt(dateStr.substring(5, 7)) - 1] += r.supplyPrice ?? 0;

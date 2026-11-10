@@ -39,12 +39,11 @@ export async function GET(req: NextRequest) {
     const useContract = !useBank && !useInvoice;
 
     // 매출 날짜: 통장 → 입금 확인일(paymentDate), 계산서 → 발행일(invoiceDate), 그 외 → 캠페인 시작일(startDate)
-    // 매입 날짜: 통장 → 승인일(purchaseDate), 계산서 → 발행일(invoiceDate), 그 외(캠페인 시작) → 작업시작일(workStartDate)
+    // 매입 날짜: 통장·계산서 → 확인일(purchaseDate, 결재 승인일), 그 외(캠페인 시작) → 작업시작일(workStartDate)
     const revDateField  = useBank ? projectRevenues.paymentDate
                         : useInvoice ? projectRevenues.invoiceDate
                         : projects.startDate;
-    const costDateField = useBank ? projectCosts.purchaseDate
-                        : useInvoice ? projectCosts.invoiceDate
+    const costDateField = (useBank || useInvoice) ? projectCosts.purchaseDate   // 매입은 계산서 기준도 확인일(승인일)
                         : projectCosts.workStartDate;
 
     const { from, to } = monthRange(year, month);

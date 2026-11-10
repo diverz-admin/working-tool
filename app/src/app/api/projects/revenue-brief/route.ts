@@ -129,14 +129,13 @@ export async function GET(req: NextRequest) {
 
     /**
      * ── 3-2. 기준일까지 승인매입 ──
-     * 귀속일은 월간 리포트와 같은 규칙을 쓴다 — 통장: 승인일 / 계산서: 발행일 / 그 외: 작업시작일.
+     * 귀속일은 월간 리포트와 같은 규칙을 쓴다 — 통장·계산서: 확인일(승인일) / 그 외: 작업시작일.
      * 승인되지 않은 매입은 확정 지출이 아니므로 뺀다.
      */
     let asOfCost = 0;
     let monthCost = 0;
     if (ids.length > 0) {
-      const costDateCol = useBank ? projectCosts.purchaseDate
-        : useInvoice ? projectCosts.invoiceDate
+      const costDateCol = (useBank || useInvoice) ? projectCosts.purchaseDate
         : projectCosts.workStartDate;
       const costRows = await db
         .select({ supplyPrice: projectCosts.supplyPrice, refDate: costDateCol })
