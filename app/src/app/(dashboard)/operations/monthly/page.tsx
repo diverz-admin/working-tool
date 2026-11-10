@@ -110,9 +110,10 @@ const S = {
 function SummaryCards({ revRows, costRows, sgaRows, month }: {
   revRows: RevenueRow[]; costRows: CostRow[]; sgaRows: SgaRow[]; month: number;
 }) {
-  const totalRevenue  = sumN(revRows.map(r => r.total));
+  // 손익은 연간·팀별과 같은 공급가 기준 (부가세는 별도 표시)
+  const totalRevenue  = sumN(revRows.map(r => r.supplyPrice));
   const totalRevTax   = sumN(revRows.map(r => r.tax));
-  const totalDirect   = sumN(costRows.map(r => r.total));
+  const totalDirect   = sumN(costRows.map(r => r.supplyPrice));
   const totalOtherSga = sumN(
     SGA_CATEGORIES
       .filter(c => c !== "직접매입(상품)")
@@ -279,7 +280,8 @@ function ExpenseSection({
     const next = new Set(prev); next.has(key) ? next.delete(key) : next.add(key); return next;
   });
 
-  const directTotal = sumN(costRows.map(r => r.total));
+  const directTotal   = sumN(costRows.map(r => r.supplyPrice));   // 손익 계산은 공급가
+  const directGross   = sumN(costRows.map(r => r.total));         // 상세표 합계(부가세 포함) 열
 
   function sgaVal(cat: string) {
     if (cat === "직접매입(상품)") return directTotal;
@@ -383,7 +385,7 @@ function ExpenseSection({
                                 <td colSpan={6} style={{ ...S.tdLabel, textAlign:"right" as const, fontWeight:700, fontSize:12, color:"#475569" }}>소계</td>
                                 <td style={{ ...S.tdTotal, fontSize:12 }}>{wonFmt(sumN(costRows.map(r=>r.supplyPrice)))}</td>
                                 <td style={{ ...S.tdTotal, fontSize:12 }}>{wonFmt(sumN(costRows.map(r=>r.tax)))}</td>
-                                <td style={{ ...S.tdTotal, fontSize:12, background:"rgba(49,130,246,0.14)" }}>{wonFmt(directTotal)}</td>
+                                <td style={{ ...S.tdTotal, fontSize:12, background:"rgba(49,130,246,0.14)" }}>{wonFmt(directGross)}</td>
                               </tr>
                             )}
                           </tbody>

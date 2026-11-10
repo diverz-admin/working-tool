@@ -155,9 +155,10 @@ export default function OperationsDashboard() {
   const ytdRev          = sumN(Array.from({length: ytdMonth}, (_,m) => annualRevByMonth(m)));
 
   // ── 월간 집계 ──
-  const monthRevTotal  = sumN(monthRevRows.map(r => r.total));
+  // 손익은 공급가 기준 (연간·월간·팀별 화면과 동일)
+  const monthRevTotal  = sumN(monthRevRows.map(r => r.supplyPrice));
   const monthRevTax    = sumN(monthRevRows.map(r => r.tax));
-  const monthDirect    = sumN(monthCostRows.map(r => r.total));
+  const monthDirect    = sumN(monthCostRows.map(r => r.supplyPrice));
   const monthSga       = sumN(SGA_CATEGORIES
     .filter(c => c !== "직접매입(상품)")
     .map(cat => annualCosts.find(r => r.month === curMonth && r.category === cat && r.item === "합계")?.amount ?? 0)
@@ -197,8 +198,8 @@ export default function OperationsDashboard() {
 
   const teamStats = new Map<string, TeamStats>();
   for (const t of TEAMS_LIST) {
-    const rev  = sumN(monthRevRows .filter(r => r.assignedTeam === t).map(r => r.total));
-    const cost = sumN(monthCostRows.filter(r => r.assignedTeam === t).map(r => r.total));
+    const rev  = sumN(monthRevRows .filter(r => r.assignedTeam === t).map(r => r.supplyPrice));
+    const cost = sumN(monthCostRows.filter(r => r.assignedTeam === t).map(r => r.supplyPrice));
     teamStats.set(t, { rev, cost, profit: rev - cost });
   }
 

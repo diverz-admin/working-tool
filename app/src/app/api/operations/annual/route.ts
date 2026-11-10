@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { projects, projectRevenues, annualCosts, projectCosts, internalExpenseRequests } from "@/db/schema";
+import { projects, projectRevenues, annualCosts, projectCosts } from "@/db/schema";
+import { addApprovedExpenses, type CostCell } from "@/lib/expense-costs";
 import { eq, and, isNotNull, sql } from "drizzle-orm";
 import { TEAM_ORDER } from "@/lib/teams";
 import { isRevenueConfirmed } from "@/lib/revenue-stats";
@@ -128,28 +129,8 @@ export async function GET(req: NextRequest) {
       .filter(r => r.amount > 0);
 
     // ── 승인된 내부지출 → SGA 카테고리별 합산 ──
-    let expenseRows: { requestedAt: string | null; amount: number | null; expenseCategory: string | null }[] = [];
-    try {
-      expenseRows = await db.select({
-        requestedAt:     internalExpenseRequests.requestedAt,
-        amount:          internalExpenseRequests.amount,
-        expenseCategory: internalExpenseRequests.expenseCategory,
-      }).from(internalExpenseRequests)
-        .where(and(eq(internalExpenseRequests.status, "승인"), isNotNull(internalExpenseRequests.expenseCategory)));
-    } catch { /* expense_category 컬럼 없으면 무시 */ }
-
-    const allCosts = [...filtered, ...directRows];
-    for (const r of expenseRows) {
-      if (!r.requestedAt || !r.amount || !r.expenseCategory) continue;
-      if (parseInt(r.requestedAt.substring(0, 4)) !== year) continue;
-      const month = parseInt(r.requestedAt.substring(5, 7));
-      const existing = allCosts.find(c => c.category === r.expenseCategory && c.month === month && c.item === "합계");
-      if (existing) {
-        existing.amount += r.amount;
-      } else {
-        allCosts.push({ year, month, category: r.expenseCategory, item: "합계", amount: r.amount });
-      }
-    }
+    const allCosts: CostCell[] = [...filtered, ...directRows];
+    await addApprovedExpenses(allCosts, year);
 
     return NextResponse.json({ teams, other, costs: allCosts });
   } catch (e) {

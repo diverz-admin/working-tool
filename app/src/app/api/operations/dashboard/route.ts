@@ -5,6 +5,7 @@ import { eq, and, gte, lte, isNotNull, sql } from "drizzle-orm";
 import { monthRange } from "@/lib/month-range";
 import { TEAM_ORDER } from "@/lib/teams";
 import { isRevenueConfirmed } from "@/lib/revenue-stats";
+import { addApprovedExpenses, type CostCell } from "@/lib/expense-costs";
 
 export async function GET(req: NextRequest) {
   try {
@@ -111,7 +112,9 @@ export async function GET(req: NextRequest) {
     const directRows = directMonthly
       .map((amount, i) => ({ year, month: i + 1, category: "직접매입(상품)", item: "합계", amount }))
       .filter(r => r.amount > 0);
-    const annualCostsResult = [...filtered, ...directRows];
+    const annualCostsResult: CostCell[] = [...filtered, ...directRows];
+    // 연간 손익관리와 같은 규칙: 승인된 내부지출도 판관비에 포함
+    await addApprovedExpenses(annualCostsResult, year);
 
     // ── 월간 매출 rows ──
     const monthRevRows = monthRevData.map(p => ({

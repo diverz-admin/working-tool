@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { projects, projectRevenues, projectCosts, clients, annualCosts, internalExpenseRequests } from "@/db/schema";
+import { projects, projectRevenues, projectCosts, clients, annualCosts } from "@/db/schema";
+import { addApprovedExpenses, type CostCell } from "@/lib/expense-costs";
 import { eq, and, gte, lte, isNotNull, sql } from "drizzle-orm";
 import { monthRange } from "@/lib/month-range";
 import { isRevenueConfirmed } from "@/lib/revenue-stats";
@@ -125,37 +126,17 @@ export async function GET(req: NextRequest) {
       tax:         useContract ? (p.kpiTax         ?? Number(p.taxSum    ?? 0)) : Number(p.taxSum    ?? 0),
     }));
 
-    // ── 승인된 내부지출 → 해당 월 SGA 카테고리별 합산 ──
-    let expenseRows: { requestedAt: string | null; amount: number | null; expenseCategory: string | null }[] = [];
-    try {
-      expenseRows = await db.select({
-        requestedAt:     internalExpenseRequests.requestedAt,
-        amount:          internalExpenseRequests.amount,
-        expenseCategory: internalExpenseRequests.expenseCategory,
-      }).from(internalExpenseRequests)
-        .where(and(
-          eq(internalExpenseRequests.status, "승인"),
-          isNotNull(internalExpenseRequests.expenseCategory),
-          gte(internalExpenseRequests.requestedAt, from),
-          lte(internalExpenseRequests.requestedAt, to),
-        ));
-    } catch { /* expense_category 컬럼 없으면 무시 */ }
-
-    const baseSgaRows = sgaData.filter(r => r.category !== "직접매입(상품)");
-    const sgaMap = new Map(baseSgaRows.map(r => [r.category, { ...r }]));
-    for (const r of expenseRows) {
-      if (!r.amount || !r.expenseCategory) continue;
-      if (sgaMap.has(r.expenseCategory)) {
-        sgaMap.get(r.expenseCategory)!.amount += r.amount;
-      } else {
-        sgaMap.set(r.expenseCategory, { id: "", year, month, category: r.expenseCategory, item: "합계", amount: r.amount, createdAt: new Date(), updatedAt: new Date() });
-      }
-    }
+    // ── 이번 달 판관비 (수동 입력) + 승인된 내부지출 ──
+    // annualCosts는 연 단위로 가져오므로 반드시 이번 달만 남긴다 — 카테고리만으로 묶으면 다른 달 값이 섞인다
+    const sgaRows: CostCell[] = sgaData
+      .filter(r => r.month === month && r.category !== "직접매입(상품)")
+      .map(r => ({ year: r.year, month: r.month, category: r.category, item: r.item, amount: r.amount }));
+    await addApprovedExpenses(sgaRows, year, { from, to });
 
     return NextResponse.json({
       revRows,
       costRows: costData,
-      sgaRows:  Array.from(sgaMap.values()),
+      sgaRows,
     });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
