@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { projects, projectRevenues, annualCosts, projectCosts } from "@/db/schema";
 import { addApprovedExpenses, type CostCell } from "@/lib/expense-costs";
-import { eq, and, isNotNull, sql } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { TEAM_ORDER } from "@/lib/teams";
-import { isRevenueConfirmed } from "@/lib/revenue-stats";
+import { isRevenueConfirmed, fetchConfirmRevenue } from "@/lib/revenue-stats";
 
 export async function GET(req: NextRequest) {
   try {
@@ -34,36 +34,9 @@ export async function GET(req: NextRequest) {
         .from(projectCosts).where(eq(projectCosts.isApproved, true)),
     ]);
 
-    // 통장 기준: 입금 확인일(paymentDate)이 기록된 매출 행 — 결재확인 입금 승인 시 행에 직접 기록됨 (세금계산서 무관)
-    const bankRevRows = useBank
-      ? await db.select({
-          assignedTeam:   projects.assignedTeam,
-          assignedPerson: projects.assignedPerson,
-          paymentDate:    projectRevenues.paymentDate,
-          supplyPrice:    projectRevenues.supplyPrice,
-        })
-        .from(projectRevenues)
-        .innerJoin(projects, eq(projects.id, projectRevenues.projectId))
-        .where(and(
-          isNotNull(projectRevenues.paymentDate),
-          sql`EXTRACT(YEAR FROM ${projectRevenues.paymentDate}) = ${year}`,
-        ))
-      : [];
-
-    // 계산서 기준: 계산서 발행일(invoiceDate)이 기록된 매출 행 — 결재확인 발행완료 시 행에 직접 기록됨 (입금 무관)
-    const invoiceRevRows = useInvoice
-      ? await db.select({
-          assignedTeam:   projects.assignedTeam,
-          assignedPerson: projects.assignedPerson,
-          invoiceDate:    projectRevenues.invoiceDate,
-          supplyPrice:    projectRevenues.supplyPrice,
-        })
-        .from(projectRevenues)
-        .innerJoin(projects, eq(projects.id, projectRevenues.projectId))
-        .where(and(
-          isNotNull(projectRevenues.invoiceDate),
-          sql`EXTRACT(YEAR FROM ${projectRevenues.invoiceDate}) = ${year}`,
-        ))
+    // 통장·계산서 기준: 결재확인 요청의 입금확인일·계산서 발행일과 요청 금액 — @/lib/revenue-stats 참고
+    const confirmRevRows = useBank || useInvoice
+      ? await fetchConfirmRevenue(useInvoice ? "invoice" : "deposit", `${year}-01-01`, `${year}-12-31`)
       : [];
 
     // ── 매출 집계 ──
@@ -71,22 +44,18 @@ export async function GET(req: NextRequest) {
     const other   = new Array(12).fill(0);
 
     // 금액은 항상 공급가 기준.
-    // 통장·계산서(실적 기준): 실제 매출 행 공급가를 입금 확인일·발행일 월에 귀속
+    // 통장·계산서(실적 기준): 결재확인 요청 공급가를 입금 확인일·발행일 월에 귀속
     // 캠페인 시작일(수주 기준): 입금확인요청이 확인완료된 프로젝트의 계약 공급가를 시작일 월에 귀속
-    const revEntries = useBank
-      ? bankRevRows.map(r => ({
-          month:  r.paymentDate ? parseInt(r.paymentDate.substring(5, 7)) - 1 : -1,
-          amount: r.supplyPrice ?? 0,
-          team:   r.assignedTeam   ?? "",
-          person: r.assignedPerson ?? "",
-        }))
-      : useInvoice
-      ? invoiceRevRows.map(r => ({
-          month:  r.invoiceDate ? parseInt(r.invoiceDate.substring(5, 7)) - 1 : -1,
-          amount: r.supplyPrice ?? 0,
-          team:   r.assignedTeam   ?? "",
-          person: r.assignedPerson ?? "",
-        }))
+    const revEntries = useBank || useInvoice
+      ? confirmRevRows.map(r => {
+          const d = useInvoice ? r.invoiceDate : r.paymentDate;
+          return {
+            month:  d ? parseInt(d.substring(5, 7)) - 1 : -1,
+            amount: r.supplyPrice,
+            team:   r.assignedTeam   ?? "",
+            person: r.assignedPerson ?? "",
+          };
+        })
       : projectData.map(p => ({
           month:  p.startDate ? parseInt(p.startDate.substring(5, 7)) - 1 : -1,
           amount: p.kpiSupply ?? Number(p.supplySum),

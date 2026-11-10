@@ -4,7 +4,7 @@ import { projects, projectRevenues, projectCosts, clients, annualCosts } from "@
 import { addApprovedExpenses, type CostCell } from "@/lib/expense-costs";
 import { eq, and, gte, lte, isNotNull, sql } from "drizzle-orm";
 import { monthRange } from "@/lib/month-range";
-import { isRevenueConfirmed } from "@/lib/revenue-stats";
+import { isRevenueConfirmed, fetchConfirmRevenue } from "@/lib/revenue-stats";
 
 const REV_FIELDS = {
   projectId:      projects.id,
@@ -35,23 +35,23 @@ export async function GET(req: NextRequest) {
     const criteria   = req.nextUrl.searchParams.get("criteria") ?? "캠페인 시작날짜";
     const useBank    = criteria === "통장";
     const useInvoice = criteria === "계산서날짜";
-    // 캠페인 시작날짜 = 수주 기준(계약 공급가) / 나머지 = 실적 기준(실제 매출 행)
+    // 캠페인 시작날짜 = 수주 기준(계약 공급가) / 나머지 = 실적 기준(결재확인 요청)
     const useContract = !useBank && !useInvoice;
 
-    // 매출 날짜: 통장 → 입금 확인일(paymentDate), 계산서 → 발행일(invoiceDate), 그 외 → 캠페인 시작일(startDate)
+    // 매출 날짜: 통장 → 결재확인 입금확인일, 계산서 → 결재확인 계산서 발행일, 그 외 → 캠페인 시작일(startDate)
     // 매입 날짜: 통장·계산서 → 확인일(purchaseDate, 결재 승인일), 그 외(캠페인 시작) → 작업시작일(workStartDate)
-    const revDateField  = useBank ? projectRevenues.paymentDate
-                        : useInvoice ? projectRevenues.invoiceDate
-                        : projects.startDate;
+    const revDateField  = projects.startDate;   // 수주 기준에서만 쓴다
     const costDateField = (useBank || useInvoice) ? projectCosts.purchaseDate   // 매입은 계산서 기준도 확인일(승인일)
                         : projectCosts.workStartDate;
 
     const { from, to } = monthRange(year, month);
 
+    // 실적 기준(계산서·통장) 매출: 결재확인 요청의 발행일·입금확인일과 요청 금액 — @/lib/revenue-stats 참고
+    const confirmRevP = useContract ? Promise.resolve([]) : fetchConfirmRevenue(useInvoice ? "invoice" : "deposit", from, to);
+
     // 3 쿼리 병렬 (월간매출 + 월간매입 + 연간SGA)
     const [revData, costData, sgaData] = await Promise.all([
-      // 수주 기준: 그 달에 시작해 입금확인요청이 확인완료된 프로젝트 (매출 행이 아직 없어도 포함) → LEFT JOIN
-      // 실적 기준: 그 달 날짜가 기록된 매출 행이 있는 프로젝트만          → INNER JOIN
+      // 수주 기준: 그 달에 시작해 입금확인요청이 확인완료된 프로젝트 (매출 행이 아직 없어도 포함)
       (useContract
         ? db.select(REV_FIELDS)
             .from(projects)
@@ -64,16 +64,7 @@ export async function GET(req: NextRequest) {
               isRevenueConfirmed(projects.id),
             ))
             .groupBy(...REV_GROUP_BY)
-        : db.select(REV_FIELDS)
-            .from(projectRevenues)
-            .innerJoin(projects, eq(projectRevenues.projectId, projects.id))
-            .leftJoin(clients, eq(projects.clientId, clients.id))
-            .where(and(
-              isNotNull(revDateField),
-              gte(revDateField, from),
-              lte(revDateField, to),
-            ))
-            .groupBy(...REV_GROUP_BY)),
+        : Promise.resolve([])),
 
       db.select({
         id:           projectCosts.id,
@@ -109,7 +100,8 @@ export async function GET(req: NextRequest) {
       db.select().from(annualCosts).where(eq(annualCosts.year, year)),
     ]);
 
-    const revRows = revData.map(p => ({
+    const confirmRev = await confirmRevP;
+    const contractRevRows = revData.map(p => ({
       id:           p.projectId,
       projectId:    p.projectId,
       campaignName: p.campaignName,
@@ -123,6 +115,20 @@ export async function GET(req: NextRequest) {
       total:       useContract ? (p.contractAmount ?? Number(p.totalSum  ?? 0)) : Number(p.totalSum  ?? 0),
       supplyPrice: useContract ? (p.kpiSupply      ?? Number(p.supplySum ?? 0)) : Number(p.supplySum ?? 0),
       tax:         useContract ? (p.kpiTax         ?? Number(p.taxSum    ?? 0)) : Number(p.taxSum    ?? 0),
+    }));
+    const revRows = useContract ? contractRevRows : confirmRev.map(r => ({
+      id:           r.id,
+      projectId:    r.projectId,
+      campaignName: r.campaignName,
+      assignedTeam: r.assignedTeam,
+      assignee:     r.assignedPerson,
+      startDate:    r.startDate,
+      invoiceDate:  r.invoiceDate,
+      paymentDate:  r.paymentDate,
+      clientName:   r.clientName,
+      total:        r.total,
+      supplyPrice:  r.supplyPrice,
+      tax:          r.tax,
     }));
 
     // ── 이번 달 판관비 (수동 입력) + 승인된 내부지출 ──

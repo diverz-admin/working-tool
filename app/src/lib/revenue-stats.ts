@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { projects, projectRevenues, projectCosts } from "@/db/schema";
+import { projects, projectCosts } from "@/db/schema";
 import { eq, and, sql, isNotNull, is, Column, getTableName, type AnyColumn, type SQL } from "drizzle-orm";
 
 /**
@@ -8,12 +8,12 @@ import { eq, and, sql, isNotNull, is, Column, getTableName, type AnyColumn, type
  *
  * 기준(criteria)별 귀속 월
  *   캠페인 시작날짜 → 매출: projects.start_date        / 매입: project_costs.work_start_date (작업시작일)
- *   계산서날짜      → 매출: revenues.invoice_date      / 매입: project_costs.invoice_date
- *   통장            → 매출: revenues.payment_date      / 매입: project_costs.purchase_date
+ *   계산서날짜      → 매출: confirm_requests.tax_invoice_date     / 매입: project_costs.purchase_date (확인일)
+ *   통장            → 매출: confirm_requests.deposit_confirmed_at / 매입: project_costs.purchase_date (확인일)
  *
  * 금액은 항상 공급가(VAT 제외) 기준이며, 매출 금액의 출처는 기준에 따라 다르다.
  *   캠페인 시작날짜 → 수주 기준: 입금확인요청이 확인완료된 프로젝트의 계약 공급가(projects.kpi_supply)
- *   계산서날짜·통장 → 실적 기준: 실제 매출 행(project_revenues.supply_price)
+ *   계산서날짜·통장 → 실적 기준: 결재확인 요청 금액(fetchConfirmRevenue 참고)
  */
 export type StatsCriteria = "캠페인 시작날짜" | "계산서날짜" | "통장";
 
@@ -32,6 +32,89 @@ export function isRevenueConfirmed(projectId: AnyColumn | SQL) {
     ? sql`${sql.identifier(getTableName(projectId.table))}.${sql.identifier(projectId.name)}`
     : projectId;
   return sql<boolean>`EXISTS (SELECT 1 FROM confirm_requests cr WHERE cr.project_id = ${ref} AND cr.status = '확인완료')`;
+}
+
+/**
+ * 계산서날짜·통장 기준 매출 = 결재확인(입금확인요청)에 기록된 발행일·입금확인일과 요청 금액.
+ *
+ * 계산서 발행·입금 확인은 요청 단위(대부분 계약금액 일괄 "__contract__")로 기록된다.
+ * 매출 행(project_revenues)에도 날짜를 복사해 두지만, 복사 시점 이후에 추가된 행엔 날짜가 없고
+ * 매출 행 합계가 계약금액과 다른 경우가 많아 행 기준으로 집계하면 매출이 크게 빠진다.
+ *
+ * 금액: 계약 일괄 요청이고 요청 금액이 프로젝트 계약금액과 같으면 계약 공급가·세액을 그대로 쓰고,
+ * 그 외에는 요청 금액(VAT 포함)에서 공급가를 역산한다.
+ */
+export type ConfirmRevenueKind = "invoice" | "deposit";
+
+export interface ConfirmRevenueRow {
+  id:             string;          // 결재확인 요청 id
+  projectId:      string | null;
+  campaignName:   string | null;
+  assignedTeam:   string | null;
+  assignedPerson: string | null;
+  startDate:      string | null;
+  clientName:     string | null;
+  productName:    string;
+  invoiceDate:    string | null;   // 계산서 발행일
+  paymentDate:    string | null;   // 입금 확인일
+  total:          number;          // VAT 포함
+  supplyPrice:    number;
+  tax:            number;
+}
+
+export async function fetchConfirmRevenue(
+  kind: ConfirmRevenueKind,
+  from: string,
+  to: string,
+  opts: { team?: string; projectIds?: string[] } = {},
+): Promise<ConfirmRevenueRow[]> {
+  if (opts.projectIds && opts.projectIds.length === 0) return [];
+  const dateCol = kind === "invoice" ? sql`cr.tax_invoice_date` : sql`cr.deposit_confirmed_at`;
+  const rows = await db.execute<{
+    id: string; project_id: string | null; campaign_name: string | null;
+    assigned_team: string | null; assigned_person: string | null; start_date: string | null;
+    client_name: string | null; product_name: string | null;
+    tax_invoice_date: string | null; deposit_confirmed_at: string | null;
+    row_key: string | null; amount: string | null;
+    contract_amount: number | null; kpi_supply: number | null; kpi_tax: number | null;
+  }>(sql`
+    SELECT cr.id, cr.project_id, p.campaign_name,
+           COALESCE(p.assigned_team, cr.assigned_team) AS assigned_team,
+           p.assigned_person, p.start_date::text AS start_date,
+           COALESCE(c.company_name, cr.client_name) AS client_name,
+           cr.product_name, cr.tax_invoice_date, cr.deposit_confirmed_at,
+           cr.row_key, cr.amount, p.contract_amount, p.kpi_supply, p.kpi_tax
+    FROM confirm_requests cr
+    LEFT JOIN projects p ON p.id = cr.project_id
+    LEFT JOIN clients  c ON c.id = p.client_id
+    WHERE cr.status <> '반려'
+      AND ${dateCol} IS NOT NULL AND ${dateCol} <> ''
+      AND ${dateCol} >= ${from} AND ${dateCol} <= ${to}
+      ${opts.team ? sql`AND COALESCE(p.assigned_team, cr.assigned_team) = ${opts.team}` : sql``}
+      ${opts.projectIds ? sql`AND cr.project_id IN (${sql.join(opts.projectIds.map(id => sql`${id}`), sql`, `)})` : sql``}
+    ORDER BY ${dateCol}
+  `);
+
+  return Array.from(rows).map(r => {
+    const total = Number(String(r.amount ?? "").replace(/[^0-9]/g, "")) || 0;
+    const isContract = r.row_key === "__contract__"
+      && r.kpi_supply != null && r.contract_amount != null && Number(r.contract_amount) === total;
+    const supplyPrice = isContract ? Number(r.kpi_supply) : Math.round(total / 1.1);
+    const tax = isContract && r.kpi_tax != null ? Number(r.kpi_tax) : total - supplyPrice;
+    return {
+      id:             r.id,
+      projectId:      r.project_id,
+      campaignName:   r.campaign_name,
+      assignedTeam:   r.assigned_team,
+      assignedPerson: r.assigned_person,
+      startDate:      r.start_date,
+      clientName:     r.client_name,
+      productName:    r.product_name || (r.row_key === "__contract__" ? "계약금액" : ""),
+      invoiceDate:    r.tax_invoice_date,
+      paymentDate:    r.deposit_confirmed_at,
+      total, supplyPrice, tax,
+    };
+  });
 }
 
 export interface RevenueStatRow {
@@ -111,39 +194,26 @@ export async function fetchRevenueStats(
 ): Promise<RevenueStatRow[]> {
   if (criteria === "캠페인 시작날짜") return fetchContractRevenueStats(year, team);
 
-  const dateExpr =
-    criteria === "계산서날짜" ? projectRevenues.invoiceDate : projectRevenues.paymentDate;
+  const kind: ConfirmRevenueKind = criteria === "계산서날짜" ? "invoice" : "deposit";
+  const rows = await fetchConfirmRevenue(kind, `${year}-01-01`, `${year}-12-31`, { team });
 
-  const teamFilter = team ? eq(projects.assignedTeam, team) : undefined;
-
-  const raw = await db
-    .select({
-      dateMonth:    sql<string>`TO_CHAR(${dateExpr}, 'YYYY-MM')`,
-      assignedTeam: projects.assignedTeam,
-      totalSum:     sql<number>`COALESCE(SUM(${projectRevenues.total}), 0)`,
-      supplySum:    sql<number>`COALESCE(SUM(${projectRevenues.supplyPrice}), 0)`,
-      taxSum:       sql<number>`COALESCE(SUM(${projectRevenues.tax}), 0)`,
-      projectCount: sql<number>`COUNT(DISTINCT ${projects.id})`,
-    })
-    .from(projectRevenues)
-    .innerJoin(projects, eq(projects.id, projectRevenues.projectId))
-    .where(
-      and(
-        isNotNull(dateExpr),
-        sql`EXTRACT(YEAR FROM ${dateExpr}) = ${year}`,
-        teamFilter,
-      ),
-    )
-    .groupBy(sql`TO_CHAR(${dateExpr}, 'YYYY-MM')`, projects.assignedTeam);
-
-  return raw.map(r => ({
-    dateMonth:    r.dateMonth,
-    assignedTeam: r.assignedTeam,
-    totalSum:     Number(r.totalSum    ?? 0),
-    supplySum:    Number(r.supplySum   ?? 0),
-    taxSum:       Number(r.taxSum      ?? 0),
-    projectCount: Number(r.projectCount ?? 0),
-  }));
+  const buckets = new Map<string, RevenueStatRow & { projects: Set<string> }>();
+  for (const r of rows) {
+    const date = kind === "invoice" ? r.invoiceDate : r.paymentDate;
+    if (!date) continue;
+    const dateMonth = date.substring(0, 7);
+    const key = `${dateMonth}|${r.assignedTeam ?? ""}`;
+    let b = buckets.get(key);
+    if (!b) {
+      b = { dateMonth, assignedTeam: r.assignedTeam, totalSum: 0, supplySum: 0, taxSum: 0, projectCount: 0, projects: new Set() };
+      buckets.set(key, b);
+    }
+    b.totalSum  += r.total;
+    b.supplySum += r.supplyPrice;
+    b.taxSum    += r.tax;
+    b.projects.add(r.projectId ?? r.id);
+  }
+  return Array.from(buckets.values()).map(({ projects: ps, ...b }) => ({ ...b, projectCount: ps.size }));
 }
 
 /** 승인된 매입만. 귀속 월은 통장·계산서날짜 기준→매입 확인일(결재 승인일), 캠페인 시작날짜 기준→작업시작일이며, 해당 날짜가 없는 행은 제외된다. */

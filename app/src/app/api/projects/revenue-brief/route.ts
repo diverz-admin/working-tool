@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { projects, projectRevenues, projectCosts, kpiTargets } from "@/db/schema";
 import { and, eq, ne, or, gte, lt, lte, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { monthRange } from "@/lib/month-range";
-import { isRevenueConfirmed } from "@/lib/revenue-stats";
+import { isRevenueConfirmed, fetchConfirmRevenue } from "@/lib/revenue-stats";
 
 /**
  * 회의록 "매출현황" 축에 붙는 브리핑 수치.
@@ -111,15 +111,9 @@ export async function GET(req: NextRequest) {
         if (p.startDate && p.startDate <= asOf) asOfRevenue += amount;
       }
     } else if (ids.length > 0) {
-      // 실적 기준: 매출 행의 입금일(통장) 또는 계산서 발행일
-      const dateCol = useBank ? projectRevenues.paymentDate : projectRevenues.invoiceDate;
-      const revRows = await db
-        .select({ supplyPrice: projectRevenues.supplyPrice, refDate: dateCol })
-        .from(projectRevenues)
-        .where(and(
-          inArray(projectRevenues.projectId, ids),
-          isNotNull(dateCol), gte(dateCol, from), lte(dateCol, to),
-        ));
+      // 실적 기준: 결재확인 요청의 입금확인일(통장) 또는 계산서 발행일과 요청 금액 — @/lib/revenue-stats 참고
+      const confirmRows = await fetchConfirmRevenue(useBank ? "deposit" : "invoice", from, to, { team: team || undefined });
+      const revRows = confirmRows.map(r => ({ supplyPrice: r.supplyPrice, refDate: useBank ? r.paymentDate : r.invoiceDate }));
       for (const r of revRows) {
         const amount = r.supplyPrice ?? 0;
         monthRevenue += amount;

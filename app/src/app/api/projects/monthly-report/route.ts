@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { projects, projectRevenues, projectCosts } from "@/db/schema";
 import { eq, and, gte, lte, isNotNull, inArray, sql } from "drizzle-orm";
 import { monthRange } from "@/lib/month-range";
-import { isRevenueConfirmed } from "@/lib/revenue-stats";
+import { isRevenueConfirmed, fetchConfirmRevenue } from "@/lib/revenue-stats";
 
 export async function GET(req: NextRequest) {
   try {
@@ -39,16 +39,16 @@ export async function GET(req: NextRequest) {
       .where(
         and(
           team ? eq(projects.assignedTeam, team) : undefined,
-          // 통장: 기간 내 입금/승인지급 활동 / 계산서: 기간 내 계산서 발행 활동 / 그 외: 캠페인 시작일이 기간 내
+          // 통장: 기간 내 입금확인·매입 승인 / 계산서: 기간 내 계산서 발행·매입 승인 / 그 외: 캠페인 시작일이 기간 내
           useBank
             ? sql`(
-                EXISTS (SELECT 1 FROM project_revenues pr WHERE pr.project_id = ${projects.id} AND pr.payment_date >= ${from} AND pr.payment_date <= ${to})
+                EXISTS (SELECT 1 FROM confirm_requests cr WHERE cr.project_id = ${projects.id} AND cr.status <> '반려' AND cr.deposit_confirmed_at >= ${from} AND cr.deposit_confirmed_at <= ${to})
                 OR EXISTS (SELECT 1 FROM project_costs pc WHERE pc.project_id = ${projects.id} AND pc.is_approved = true AND pc.purchase_date >= ${from} AND pc.purchase_date <= ${to})
               )`
             : useInvoice
             ? sql`(
-                EXISTS (SELECT 1 FROM project_revenues pr WHERE pr.project_id = ${projects.id} AND pr.invoice_date >= ${from} AND pr.invoice_date <= ${to})
-                OR EXISTS (SELECT 1 FROM project_costs pc WHERE pc.project_id = ${projects.id} AND pc.is_approved = true AND pc.invoice_date >= ${from} AND pc.invoice_date <= ${to})
+                EXISTS (SELECT 1 FROM confirm_requests cr WHERE cr.project_id = ${projects.id} AND cr.status <> '반려' AND cr.tax_invoice_date >= ${from} AND cr.tax_invoice_date <= ${to})
+                OR EXISTS (SELECT 1 FROM project_costs pc WHERE pc.project_id = ${projects.id} AND pc.is_approved = true AND pc.purchase_date >= ${from} AND pc.purchase_date <= ${to})
               )`
             // 캠페인 시작일이 기간 내이거나, 기간 내 작업시작일을 가진 승인 매입이 있는 프로젝트
             // (매출이 먼저 잡히고 매입은 실제 작업에 들어가야 생기므로, 시작월이 지난 프로젝트의 매입도 잡아야 한다)
@@ -72,37 +72,29 @@ export async function GET(req: NextRequest) {
 
     const projectIds = projectRows.map(p => p.id);
 
-    // 매출 행
-    const revRows = await db
-      .select({
-        projectId:   projectRevenues.projectId,
-        invoiceDate: projectRevenues.invoiceDate,
-        total:       projectRevenues.total,
-        supplyPrice: projectRevenues.supplyPrice,
-        productName: projectRevenues.productName,
-        paymentDate: projectRevenues.paymentDate,
-      })
-      .from(projectRevenues)
-      .where(
-        and(
-          inArray(projectRevenues.projectId, projectIds),
-          // 통장: 입금 확인일(paymentDate) 기간 내 = 입금 승인된 행 / 계산서: 발행일(invoiceDate) 기간 내 = 발행된 행
-          useBank
-            ? and(
-                isNotNull(projectRevenues.paymentDate),
-                gte(projectRevenues.paymentDate, from),
-                lte(projectRevenues.paymentDate, to),
-              )
-            : useInvoice
-            ? and(
-                isNotNull(projectRevenues.invoiceDate),
-                gte(projectRevenues.invoiceDate, from),
-                lte(projectRevenues.invoiceDate, to),
-              )
-            // 수주 기준에서는 금액을 프로젝트 계약 공급가로 잡으므로, 매출 행은 상세 표시용으로만 전부 가져온다
-            : undefined,
-        )
-      );
+    // 매출 행 — 수주 기준은 상세 표시용으로 프로젝트 매출 행 전부,
+    // 실적 기준(통장·계산서)은 결재확인 요청의 입금확인일·발행일과 요청 금액 (@/lib/revenue-stats 참고)
+    const revRows = useContract
+      ? await db
+          .select({
+            projectId:   projectRevenues.projectId,
+            invoiceDate: projectRevenues.invoiceDate,
+            total:       projectRevenues.total,
+            supplyPrice: projectRevenues.supplyPrice,
+            productName: projectRevenues.productName,
+            paymentDate: projectRevenues.paymentDate,
+          })
+          .from(projectRevenues)
+          .where(inArray(projectRevenues.projectId, projectIds))
+      : (await fetchConfirmRevenue(useBank ? "deposit" : "invoice", from, to, { projectIds }))
+          .map(r => ({
+            projectId:   r.projectId,
+            invoiceDate: r.invoiceDate,
+            total:       r.total as number | null,
+            supplyPrice: r.supplyPrice as number | null,
+            productName: r.productName as string | null,
+            paymentDate: r.paymentDate,
+          }));
 
     // 승인 매입 — 통장·계산서: 확인일(purchaseDate) / 캠페인 시작(그 외): 작업시작일(workStartDate)
     const costDate = (useBank || useInvoice) ? projectCosts.purchaseDate : projectCosts.workStartDate;
