@@ -47,7 +47,7 @@ export interface BoardContext {
   week: number | null;     // null = 월간회의
   asOf: string;            // YYYY-MM-DD
   weekStart: string;       // YYYY-MM-DD (월요일)
-  criteria: string;        // 매출 기준 — "캠페인 시작날짜" | "계산서날짜" | "통장"
+  criteria: string;        // 매출 기준 — "영업자 정산"(기본) | "캠페인 시작날짜" | "계산서날짜" | "통장"
   userName: string;        // 지금 쓰는 사람 (저장 시 updated_by)
 }
 

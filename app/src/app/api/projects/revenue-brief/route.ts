@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { projects, projectRevenues, projectCosts, kpiTargets } from "@/db/schema";
 import { and, eq, ne, or, gte, lt, lte, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { monthRange } from "@/lib/month-range";
-import { isRevenueConfirmed, fetchConfirmRevenue } from "@/lib/revenue-stats";
+import { isRevenueConfirmed, fetchConfirmRevenue, parseCriteria, confirmKindOf, confirmDateOf } from "@/lib/revenue-stats";
 
 /**
  * 회의록 "매출현황" 축에 붙는 브리핑 수치.
@@ -27,10 +27,9 @@ export async function GET(req: NextRequest) {
 
     const teamParam = searchParams.get("team") ?? "전체";
     const team      = teamParam === "전체" ? null : teamParam;
-    const criteria  = searchParams.get("criteria") ?? "캠페인 시작날짜";
-    const useBank    = criteria === "통장";
-    const useInvoice = criteria === "계산서날짜";
-    const useContract = !useBank && !useInvoice;   // 수주(계약 공급가) 기준
+    const criteria  = parseCriteria(searchParams.get("criteria"));
+    const confirmKind = confirmKindOf(criteria);   // 계산서·통장·영업자 정산 = 결재확인 날짜
+    const useContract = confirmKind === null;      // 수주(계약 공급가) 기준
 
     const { from, to } = monthRange(year, month);
 
@@ -112,8 +111,8 @@ export async function GET(req: NextRequest) {
       }
     } else if (ids.length > 0) {
       // 실적 기준: 결재확인 요청의 입금확인일(통장) 또는 계산서 발행일과 요청 금액 — @/lib/revenue-stats 참고
-      const confirmRows = await fetchConfirmRevenue(useBank ? "deposit" : "invoice", from, to, { team: team || undefined });
-      const revRows = confirmRows.map(r => ({ supplyPrice: r.supplyPrice, refDate: useBank ? r.paymentDate : r.invoiceDate }));
+      const confirmRows = await fetchConfirmRevenue(confirmKind!, from, to, { team: team || undefined });
+      const revRows = confirmRows.map(r => ({ supplyPrice: r.supplyPrice, refDate: confirmDateOf(r, confirmKind!) }));
       for (const r of revRows) {
         const amount = r.supplyPrice ?? 0;
         monthRevenue += amount;
@@ -129,7 +128,7 @@ export async function GET(req: NextRequest) {
     let asOfCost = 0;
     let monthCost = 0;
     if (ids.length > 0) {
-      const costDateCol = (useBank || useInvoice) ? projectCosts.purchaseDate
+      const costDateCol = !useContract ? projectCosts.purchaseDate
         : projectCosts.workStartDate;
       const costRows = await db
         .select({ supplyPrice: projectCosts.supplyPrice, refDate: costDateCol })

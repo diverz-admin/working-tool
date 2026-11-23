@@ -12,8 +12,10 @@
 
 import { useState } from "react";
 import MeetingBoard from "./board/MeetingBoard";
+import { DEFAULT_CRITERIA } from "@/lib/criteria";
 
 const CRITERIA = [
+  { value: "영업자 정산",     label: "영업자 정산기준" },
   { value: "캠페인 시작날짜", label: "캠페인 시작일 기준" },
   { value: "계산서날짜",     label: "계산서 발행일 기준" },
   { value: "통장",           label: "입금 승인일 기준" },
@@ -36,7 +38,7 @@ export default function MeetingsPage() {
   const now = new Date();
   const [year,  setYear]  = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
-  const [criteria, setCriteria] = useState<string>("캠페인 시작날짜");
+  const [criteria, setCriteria] = useState<string>(DEFAULT_CRITERIA);
 
   return (
     <div className="space-y-4">

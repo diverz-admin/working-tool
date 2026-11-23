@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { users, projects, projectRevenues, memberKpiTargets } from "@/db/schema";
 import { and, eq, ne, or, gte, lte, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { monthRange } from "@/lib/month-range";
-import { isRevenueConfirmed, parseCriteria } from "@/lib/revenue-stats";
+import { confirmKindOf, fetchConfirmRevenue, isRevenueConfirmed, parseCriteria } from "@/lib/revenue-stats";
 
 /**
  * 회의록 "멤버별 매출 KPI" — 인원이 적은 지금은 팀보다 사람 단위로 목표를 보는 게 맞다.
@@ -12,7 +12,7 @@ import { isRevenueConfirmed, parseCriteria } from "@/lib/revenue-stats";
  * 행마다 따로 적혀 있어 프로젝트 담당과 어긋나는 경우가 있으므로 쓰지 않는다.
  *
  * 금액 규칙은 revenue-brief와 같다.
- *   실적 — 화면에서 고른 기준(캠페인 시작일 = 확인완료된 수주 / 계산서·통장 = 실제 매출 행), 그 달 전체
+ *   실적 — 화면에서 고른 기준(캠페인 시작일 = 확인완료된 수주 / 계산서·통장·영업자 정산 = 결재확인 요청 금액), 그 달 전체
  *   예상 — 당월 시작 프로젝트의 계약 공급가 (확인 여부 무관, 이미 수주한 금액)
  *   운영중 — 기준일(asOf) 현재 돌고 있는 캠페인 건수
  *   계약 — 당월 시작 프로젝트 중 확인완료된 건수
@@ -76,14 +76,10 @@ export async function GET(req: NextRequest) {
     }
 
     if (criteria !== "캠페인 시작날짜") {
-      const dateCol = criteria === "통장" ? projectRevenues.paymentDate : projectRevenues.invoiceDate;
-      const rows = await db
-        .select({ person: projects.assignedPerson, amount: sql<number>`COALESCE(SUM(${projectRevenues.supplyPrice}), 0)` })
-        .from(projectRevenues)
-        .innerJoin(projects, eq(projects.id, projectRevenues.projectId))
-        .where(and(isNotNull(dateCol), gte(dateCol, from), lte(dateCol, to)))
-        .groupBy(projects.assignedPerson);
-      for (const r of rows) add(revenue, r.person, Number(r.amount ?? 0));
+      // 결재확인 요청의 발행일·입금확인일과 요청 금액 — 대시보드·revenue-brief와 같은 출처.
+      // 매출 행(project_revenues)의 날짜는 복사 이후 추가된 행에 비어 있어 집계하면 매출이 빠진다.
+      const rows = await fetchConfirmRevenue(confirmKindOf(criteria)!, from, to);
+      for (const r of rows) add(revenue, r.assignedPerson, r.supplyPrice);
     }
 
     // ── 기준일 현재 운영중 — revenue-brief와 같이 날짜 구간으로 판별한다 ──

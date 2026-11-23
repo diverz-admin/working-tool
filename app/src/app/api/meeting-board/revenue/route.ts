@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { kpiTargets } from "@/db/schema";
 import { and, eq, or, sql } from "drizzle-orm";
 import { monthRange } from "@/lib/month-range";
-import { isRevenueConfirmed, parseCriteria } from "@/lib/revenue-stats";
+import { confirmDateOf, confirmKindOf, fetchConfirmRevenue, isRevenueConfirmed, parseCriteria } from "@/lib/revenue-stats";
 
 /**
  * 정기 회의록 "① 전체 매출" — 회사 전체(팀 구분 없음) 매출을 회의에서 읽는 모양으로 돌려준다.
@@ -14,7 +14,8 @@ import { isRevenueConfirmed, parseCriteria } from "@/lib/revenue-stats";
  *
  * 금액 규칙은 revenue-brief·revenue-stats와 같다.
  *   캠페인 시작날짜 — 입금확인요청이 확인완료된 프로젝트의 계약 공급가(kpi_supply, 비면 매출 행 공급가 합), 시작일로 귀속
- *   계산서날짜·통장 — 실제 매출 행 공급가, 발행일·입금일로 귀속
+ *   계산서날짜·통장·영업자 정산 — 결재확인 요청 금액(공급가 환산), 발행일·입금확인일로 귀속 (fetchConfirmRevenue)
+ *     영업자 정산은 계산서 발행일, 계산서가 없는 건은 입금확인일
  *   수주 예상 — 당월 시작 프로젝트의 계약 공급가 합 (확인 여부 무관)
  * 목표는 kpi_targets — "전체" 행이 있으면 그 값, 없으면 팀 행 합. 0은 미설정으로 본다.
  */
@@ -77,14 +78,14 @@ export async function GET(req: NextRequest) {
         GROUP BY 1
       `));
     } else {
-      const col = criteria === "계산서날짜" ? sql`r.invoice_date` : sql`r.payment_date`;
-      rows = Array.from(await db.execute<Row>(sql`
-        SELECT TO_CHAR(${col}, 'YYYY-MM-DD') AS ref_date,
-               SUM(COALESCE(r.supply_price, 0)) AS amount
-        FROM project_revenues r
-        WHERE ${col} IS NOT NULL AND ${col} >= ${rangeFrom} AND ${col} <= ${rangeTo}
-        GROUP BY 1
-      `));
+      // 결재확인 요청의 발행일·입금확인일과 요청 금액 — 대시보드·revenue-brief와 같은 출처.
+      // 매출 행(project_revenues)의 날짜는 복사 이후 추가된 행에 비어 있어 집계하면 매출이 빠진다.
+      const kind = confirmKindOf(criteria)!;
+      const confirmRows = await fetchConfirmRevenue(kind, rangeFrom, rangeTo);
+      rows = confirmRows.flatMap(r => {
+        const d = confirmDateOf(r, kind);
+        return d ? [{ ref_date: d, amount: r.supplyPrice }] : [];
+      });
     }
     const daily = rows.map(r => ({ date: r.ref_date, amount: Number(r.amount ?? 0) }));
     const sumBetween = (a: string, b: string) =>

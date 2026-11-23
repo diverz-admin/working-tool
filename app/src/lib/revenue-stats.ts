@@ -10,15 +10,33 @@ import { eq, and, sql, isNotNull, is, Column, getTableName, type AnyColumn, type
  *   캠페인 시작날짜 → 매출: projects.start_date        / 매입: project_costs.work_start_date (작업시작일)
  *   계산서날짜      → 매출: confirm_requests.tax_invoice_date     / 매입: project_costs.purchase_date (확인일)
  *   통장            → 매출: confirm_requests.deposit_confirmed_at / 매입: project_costs.purchase_date (확인일)
+ *   영업자 정산     → 매출: 계산서 발행일, 계산서 없는 건은 입금확인일 / 매입: project_costs.purchase_date (확인일)
  *
  * 금액은 항상 공급가(VAT 제외) 기준이며, 매출 금액의 출처는 기준에 따라 다르다.
  *   캠페인 시작날짜 → 수주 기준: 입금확인요청이 확인완료된 프로젝트의 계약 공급가(projects.kpi_supply)
- *   계산서날짜·통장 → 실적 기준: 결재확인 요청 금액(fetchConfirmRevenue 참고)
+ *   계산서날짜·통장·영업자 정산 → 실적 기준: 결재확인 요청 금액(fetchConfirmRevenue 참고)
+ *
+ * 화면의 기본 기준은 영업자 정산이다(DEFAULT_CRITERIA). 기준 없이 호출된 API는 예전 동작을 지키려고 캠페인 시작날짜로 본다.
  */
-export type StatsCriteria = "캠페인 시작날짜" | "계산서날짜" | "통장";
+import type { StatsCriteria } from "./criteria";
+export type { StatsCriteria } from "./criteria";
+export { DEFAULT_CRITERIA } from "./criteria";
 
 export function parseCriteria(raw: string | null): StatsCriteria {
-  return raw === "계산서날짜" || raw === "통장" ? raw : "캠페인 시작날짜";
+  return raw === "계산서날짜" || raw === "통장" || raw === "영업자 정산" ? raw : "캠페인 시작날짜";
+}
+
+/** 기준 → 결재확인 매출의 날짜 종류. 캠페인 시작날짜(수주 기준)는 결재확인 날짜를 쓰지 않으므로 null */
+export function confirmKindOf(criteria: StatsCriteria): ConfirmRevenueKind | null {
+  return criteria === "계산서날짜" ? "invoice" : criteria === "통장" ? "deposit"
+       : criteria === "영업자 정산" ? "settlement" : null;
+}
+
+/** 결재확인 매출 한 건이 귀속되는 날짜 ('YYYY-MM-DD'). fetchConfirmRevenue의 날짜 조건과 같은 규칙 */
+export function confirmDateOf(r: { invoiceDate: string | null; paymentDate: string | null }, kind: ConfirmRevenueKind): string | null {
+  const inv = r.invoiceDate?.trim() || null, dep = r.paymentDate?.trim() || null;
+  const d = kind === "invoice" ? inv : kind === "deposit" ? dep : (inv ?? dep);
+  return d ? d.slice(0, 10) : null;
 }
 
 /**
@@ -201,12 +219,12 @@ export async function fetchRevenueStats(
 ): Promise<RevenueStatRow[]> {
   if (criteria === "캠페인 시작날짜") return fetchContractRevenueStats(year, team);
 
-  const kind: ConfirmRevenueKind = criteria === "계산서날짜" ? "invoice" : "deposit";
+  const kind = confirmKindOf(criteria)!;
   const rows = await fetchConfirmRevenue(kind, `${year}-01-01`, `${year}-12-31`, { team });
 
   const buckets = new Map<string, RevenueStatRow & { projects: Set<string> }>();
   for (const r of rows) {
-    const date = kind === "invoice" ? r.invoiceDate : r.paymentDate;
+    const date = confirmDateOf(r, kind);
     if (!date) continue;
     const dateMonth = date.substring(0, 7);
     const key = `${dateMonth}|${r.assignedTeam ?? ""}`;
@@ -223,14 +241,14 @@ export async function fetchRevenueStats(
   return Array.from(buckets.values()).map(({ projects: ps, ...b }) => ({ ...b, projectCount: ps.size }));
 }
 
-/** 승인된 매입만. 귀속 월은 통장·계산서날짜 기준→매입 확인일(결재 승인일), 캠페인 시작날짜 기준→작업시작일이며, 해당 날짜가 없는 행은 제외된다. */
+/** 승인된 매입만. 귀속 월은 통장·계산서날짜·영업자 정산 기준→매입 확인일(결재 승인일), 캠페인 시작날짜 기준→작업시작일이며, 해당 날짜가 없는 행은 제외된다. */
 export async function fetchCostStats(
   year: number,
   criteria: StatsCriteria,
   team?: string,
 ): Promise<CostStatRow[]> {
   const dateExpr =
-    criteria === "통장" || criteria === "계산서날짜" ? projectCosts.purchaseDate   // 매입은 계산서 기준도 확인일
+    criteria !== "캠페인 시작날짜" ? projectCosts.purchaseDate   // 매입은 계산서·영업자 정산 기준도 확인일
     : projectCosts.workStartDate;   // 캠페인 시작날짜 기준 → 매입은 작업시작일
 
   const raw = await db
