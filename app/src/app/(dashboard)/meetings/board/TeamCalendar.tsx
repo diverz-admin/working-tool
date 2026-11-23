@@ -169,8 +169,6 @@ export default function TeamCalendar({
   // ── 카드 바로 고치기 (달력 위 작은 창) ──
   const [openId, setOpenId] = useState<string | null>(null);
   const [form, setForm] = useState({ title: "", who: "", start: "", end: "" });
-  const editorRef = useRef<HTMLDivElement | null>(null);
-  const draftRef = useRef<HTMLDivElement | null>(null);
   const touchRef = useRef(false);   // 마지막 누름이 터치였나 — 터치는 끌기 없이 '눌러서 열기'만
 
   const openEditor = (t: Task) => {
@@ -278,10 +276,12 @@ export default function TeamCalendar({
   useEffect(() => {
     if (!openId && !draft) return;
     const key = (e: KeyboardEvent) => { if (e.key === "Escape") { setOpenId(null); setDraft(null); } };
+    // 창은 넓은 화면(달력)·좁은 화면(목록)용으로 두 벌 그려진다 — 숨은 쪽 하나만 보고 판정하면
+    // 보이는 창 안을 눌러도 '밖'으로 여겨 닫혀 버리므로, 눌린 곳이 어느 창이든 그 안인지로 본다
     const down = (e: PointerEvent) => {
-      const target = e.target as Node;
-      if (openId && editorRef.current && !editorRef.current.contains(target)) setOpenId(null);
-      if (draft && draftRef.current && !draftRef.current.contains(target)) {
+      const target = e.target instanceof Element ? e.target : null;
+      if (openId && !target?.closest("[data-task-editor]")) setOpenId(null);
+      if (draft && !target?.closest("[data-task-draft]")) {
         if (draft.text.trim()) add(draft); else setDraft(null);
       }
     };
@@ -378,7 +378,7 @@ export default function TeamCalendar({
 
   /** 카드를 눌렀을 때 그 아래 뜨는 고치기 창 */
   const renderEditor = (t: Task, alignRight: boolean) => (
-    <div ref={editorRef} onPointerDown={stop}
+    <div data-task-editor onPointerDown={stop}
       className="absolute top-full mt-1 z-30 w-[280px] max-w-[calc(100vw-48px)] rounded-xl p-3 flex flex-col gap-2 text-left cursor-auto"
       style={{ [alignRight ? "right" : "left"]: 0, background: "#fff", border: `1px solid ${C.line}`, boxShadow: "0 8px 24px rgba(0,0,0,0.12)" }}>
       <input autoFocus value={form.title} maxLength={TITLE_MAX} aria-label="할 일 제목"
@@ -424,7 +424,7 @@ export default function TeamCalendar({
     if (!draft) return null;
     if (!first) return <div className="h-full rounded-md" style={{ background: C.accentSoft, border: `1px dashed ${C.accent}`, minHeight: 34 }} />;
     return (
-      <div ref={draftRef} className="rounded-lg p-1.5 flex flex-col gap-1" onPointerDown={stop}
+      <div data-task-draft className="rounded-lg p-1.5 flex flex-col gap-1" onPointerDown={stop}
         style={{ background: "#fff", border: `1.5px solid ${C.accent}`, boxShadow: `0 0 0 3px ${C.accentSoft}` }}>
         <input autoFocus value={draft.text} maxLength={TITLE_MAX} placeholder="할 일 제목 입력 후 Enter"
           aria-label="새 할 일 제목"
