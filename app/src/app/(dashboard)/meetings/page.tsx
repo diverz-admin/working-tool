@@ -12,7 +12,7 @@
 
 import { useState } from "react";
 import MeetingBoard from "./board/MeetingBoard";
-import { DEFAULT_CRITERIA } from "@/lib/criteria";
+import { DEFAULT_CRITERIA, criteriaDescription } from "@/lib/criteria";
 
 const CRITERIA = [
   { value: "영업자 정산",     label: "영업자 정산기준" },
@@ -48,6 +48,7 @@ export default function MeetingsPage() {
           <p className="text-[13px] mt-1" style={{ color: "#6B7684" }}>
             전체 매출부터 팀별 할 일까지 회의 순서대로 읽고 적습니다
           </p>
+          <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>{criteriaDescription(criteria)}</p>
         </div>
 
         {/* 매출현황 자동 집계가 어떤 날짜를 매출로 볼지 정한다 */}
