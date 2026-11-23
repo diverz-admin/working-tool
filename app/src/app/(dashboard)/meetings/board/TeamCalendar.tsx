@@ -114,11 +114,34 @@ export default function TeamCalendar({
   const monthLast = lastDayOf(ctx.year, ctx.month);
   const lastWeekStart = addDays(ctx.weekStart, -7);
   const lastWeekEnd = addDays(ctx.weekStart, -1);
-  const gridStart = mondayOf(lastWeekStart < monthFirst ? lastWeekStart : monthFirst);
-  const weeks = Math.max(6, Math.ceil((daysBetween(gridStart, monthLast) + 1) / 7));
-  const gridEnd = addDays(gridStart, weeks * 7 - 1);
+  const baseStart = mondayOf(lastWeekStart < monthFirst ? lastWeekStart : monthFirst);
+  const baseWeeks = Math.max(6, Math.ceil((daysBetween(baseStart, monthLast) + 1) / 7));
+  const baseEnd = addDays(baseStart, baseWeeks * 7 - 1);
   const weekEnd = addDays(ctx.weekStart, 6);
   const today = ctx.asOf;
+
+  // ── 달 넘기기 — 회의 달(0)에서 몇 달 앞뒤를 보는지. 다른 회의로 바뀌면 다시 회의 달로 ──
+  const baseKey = `${ctx.year}-${ctx.month}`;
+  const [nav, setNav] = useState({ base: baseKey, offset: 0 });
+  const offset = nav.base === baseKey ? nav.offset : 0;
+  const shiftMonth = (n: number) => {
+    setNav({ base: baseKey, offset: n === 0 ? 0 : offset + n });
+    setDraft(null);      // 열려 있던 입력칸·고치기 창은 달을 넘기면 닫는다
+    setOpenId(null);
+  };
+  const viewDate = new Date(ctx.year, ctx.month - 1 + offset, 1);
+  const viewYear = viewDate.getFullYear();
+  const viewMonth = viewDate.getMonth() + 1;
+  const viewFirst = `${viewYear}-${String(viewMonth).padStart(2, "0")}-01`;
+  const viewLast = lastDayOf(viewYear, viewMonth);
+
+  // 회의 달은 지난주 결과까지 보이게 위 범위 그대로, 다른 달은 그 달이 든 주만
+  const gridStart = offset === 0 ? baseStart : mondayOf(viewFirst);
+  const weeks = offset === 0 ? baseWeeks : Math.ceil((daysBetween(gridStart, viewLast) + 1) / 7);
+  const gridEnd = addDays(gridStart, weeks * 7 - 1);
+  // 숫자(이번 주·지난주·이번 달)는 늘 회의 달 기준이라, 다른 달을 볼 때도 회의 달 범위까지 함께 불러온다
+  const fetchFrom = gridStart < baseStart ? gridStart : baseStart;
+  const fetchTo = gridEnd > baseEnd ? gridEnd : baseEnd;
 
   const weekStarts = Array.from({ length: weeks }, (_, i) => addDays(gridStart, i * 7));
 
@@ -133,12 +156,12 @@ export default function TeamCalendar({
     let alive = true;
     setLoading(true);
     setLoadError(null);
-    fetchJson<{ tasks?: Task[] }>(`/api/team-tasks?team=${team}&from=${gridStart}&to=${gridEnd}`)
+    fetchJson<{ tasks?: Task[] }>(`/api/team-tasks?team=${team}&from=${fetchFrom}&to=${fetchTo}`)
       .then(d => { if (alive) setTasks((d.tasks ?? []).map(t => ({ ...t, endDate: t.endDate ?? null }))); })
       .catch(e => { if (alive) { setTasks([]); setLoadError(e instanceof Error ? e.message : String(e)); } })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
-  }, [team, gridStart, gridEnd, reloadKey]);
+  }, [team, fetchFrom, fetchTo, reloadKey]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // ── 담당자 후보 — 활성 사용자. 실패해도 지금 쓰는 사람은 고를 수 있게 둔다 ──
@@ -507,8 +530,9 @@ export default function TeamCalendar({
   const dayLabel = (d: string, first: boolean) => (first || d.endsWith("-01") ? md(d) : String(Number(d.slice(8))));
 
   // 좁은 화면 — 시작일 순 목록
-  const listTasks = [...tasks].sort((a, b) => a.taskDate.localeCompare(b.taskDate) || endOf(a).localeCompare(endOf(b)));
-  const addDay = today >= gridStart && today <= gridEnd ? today : ctx.weekStart;
+  const listTasks = tasks.filter(t => overlaps(t, gridStart, gridEnd)).sort((a, b) => a.taskDate.localeCompare(b.taskDate) || endOf(a).localeCompare(endOf(b)));
+  const addDay = today >= viewFirst && today <= viewLast ? today : offset === 0 ? ctx.weekStart : viewFirst;
+  const navBtn = "w-8 h-8 inline-flex items-center justify-center rounded-lg text-[15px] hover:bg-[#F2F4F6] disabled:opacity-40";
 
   return (
     <SectionCard id={id} no={no} title={title} hint={hint}>
@@ -532,7 +556,22 @@ export default function TeamCalendar({
         {!loadError && <KpiRow items={loading ? kpis.map(k => (k === extraKpi ? k : { ...k, value: "…", sub: undefined, color: undefined })) : kpis} />}
 
         <div className="flex items-center justify-between gap-3 flex-wrap mt-5 mb-2.5">
-          <p className="text-[15px] font-semibold" style={{ color: C.ink }}>{ctx.month}월 할 일</p>
+          <div className="flex items-center gap-1">
+            <button type="button" onClick={() => shiftMonth(-1)} disabled={loading} aria-label="전달"
+              className={navBtn} style={{ color: C.body }}>‹</button>
+            <p className="text-[15px] font-semibold tabular-nums min-w-[92px] text-center" style={{ color: C.ink }}>
+              {viewYear !== ctx.year ? `${viewYear}년 ` : ""}{viewMonth}월 할 일
+            </p>
+            <button type="button" onClick={() => shiftMonth(1)} disabled={loading} aria-label="다음달"
+              className={navBtn} style={{ color: C.body }}>›</button>
+            {offset !== 0 && (
+              <button type="button" onClick={() => shiftMonth(0)}
+                className="ml-1 text-[12px] font-medium rounded-md px-2 py-1 hover:bg-[#F2F4F6]"
+                style={{ color: C.accent, border: `1px solid ${C.line}` }}>
+                {ctx.month}월로
+              </button>
+            )}
+          </div>
           {!loadError && (
             <button type="button" onClick={() => newDraft(addDay, addDay)}
               className="text-[13px] font-semibold rounded-lg px-3 py-1.5 hover:bg-[#EAF2FE]"
@@ -563,7 +602,7 @@ export default function TeamCalendar({
         ) : (
           <>
             {/* 넓은 화면 — 월요일 시작 달력, 주마다 카드 줄 */}
-            <div aria-label={`${title} ${ctx.month}월 할 일 캘린더`}
+            <div aria-label={`${title} ${viewMonth}월 할 일 캘린더`}
               className="hidden min-[761px]:block rounded-[14px]"
               style={{ border: `1px solid ${C.line}`, userSelect: active ? "none" : undefined, cursor: drag ? (drag.mode === "move" ? "grabbing" : "ew-resize") : undefined }}>
               <div className="grid rounded-t-[14px]" style={{ gridTemplateColumns: "repeat(7, minmax(0, 1fr))", background: C.soft, borderBottom: `1px solid ${C.line}` }}>
@@ -587,7 +626,7 @@ export default function TeamCalendar({
                     }}>
                     {Array.from({ length: 7 }, (_, i) => {
                       const d = addDays(ws, i);
-                      const out = d < monthFirst || d > monthLast;
+                      const out = d < viewFirst || d > viewLast;
                       const wk = d >= ctx.weekStart && d <= weekEnd;
                       const isToday = d === today;
                       return (
